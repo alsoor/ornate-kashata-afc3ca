@@ -2012,7 +2012,12 @@ async function sendRealChatMessage(opts: {
     { url: '/api/messages', bodies: [...shapes(false), ...(opts.meta ? shapes(true) : [])] },
     { url: `/api/messages/${encodeURIComponent(to)}`, bodies: [{ text: opts.text, ...media }, { content: opts.text, ...media }] },
     { url: `/api/conversations/${encodeURIComponent(to)}/messages`, bodies: [{ text: opts.text, ...media }] },
-    { url: '/api/support/messages', bodies: [{ toUserId: to, text: opts.text, from: 'support', isSupportReply: true, ...media }] },
+    { url: '/api/support/messages', bodies: [
+      (opts.meta as Record<string, unknown> | undefined)?.isSupportTicket
+        // رسالة مستخدم للدعم: لا نعلّمها كرد دعم أبداً (كانت تضيع/تتكرر)
+        ? { toUserId: to, toUsername: 'stooorna', text: opts.text, isSupportTicket: true, ...media, ...(opts.meta || {}) }
+        : { toUserId: to, text: opts.text, from: 'support', isSupportReply: true, ...media },
+    ] },
   ];
 
   // رد الدعم: مسار الدعم المخصص أولاً
@@ -2067,6 +2072,8 @@ function queueSupportTicket(ticket: {
   try {
     const key = 'stooorna_support_tickets';
     const prev = JSON.parse(localStorage.getItem(key) || '[]') as unknown[];
+    const lastT = prev[prev.length - 1] as { fromUserId?: string; text?: string; at?: string } | undefined;
+    if (lastT && lastT.fromUserId === ticket.fromUserId && lastT.text === ticket.text && Date.now() - (Date.parse(String(lastT.at || '')) || 0) < 60000) return;
     const next = [
       ...prev,
       {
@@ -2343,12 +2350,37 @@ function supportHiddenKey(uid: string) {
 function getHiddenSupportReplies(uid: string): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(supportHiddenKey(uid)) || '[]')); } catch { return new Set(); }
 }
-function hideSupportReply(uid: string, id: string) {
+function hideSupportReply(uid: string, id: string, msg?: { text?: string | null; mediaUrl?: string | null; at?: number | null }) {
   try {
     const ids = getHiddenSupportReplies(uid);
     ids.add(id);
     localStorage.setItem(supportHiddenKey(uid), JSON.stringify(Array.from(ids).slice(-300)));
+    // نفس الرد قد يصل من أكثر من قناة بمعرّفات مختلفة → نخفيه أيضاً بمحتواه
+    if (msg) {
+      const sigs = getHiddenSupportSigs(uid);
+      sigs.push({ s: supportReplySig(msg), at: Number(msg.at) || 0 });
+      localStorage.setItem(supportHiddenSigKey(uid), JSON.stringify(sigs.slice(-300)));
+    }
   } catch { /* ignore */ }
+}
+const SUPPORT_DUP_WINDOW_MS = 5 * 60 * 1000;
+function supportReplySig(m: { text?: string | null; mediaUrl?: string | null }): string {
+  return `${String(m.text || '').replace(/\s+/g, ' ').trim()}|${String(m.mediaUrl || '')}`;
+}
+function supportHiddenSigKey(uid: string) {
+  return `stooorna_support_hidden_sigs_${uid}`;
+}
+function getHiddenSupportSigs(uid: string): Array<{ s: string; at: number }> {
+  try {
+    const v = JSON.parse(localStorage.getItem(supportHiddenSigKey(uid)) || '[]');
+    return Array.isArray(v) ? v : [];
+  } catch { return []; }
+}
+function isSupportSigHidden(sigs: Array<{ s: string; at: number }>, m: { text?: string | null; mediaUrl?: string | null; at?: number | null }): boolean {
+  if (!sigs.length) return false;
+  const s = supportReplySig(m);
+  const at = Number(m.at) || 0;
+  return sigs.some(x => x.s === s && (!x.at || !at || Math.abs(x.at - at) < SUPPORT_DUP_WINDOW_MS));
 }
 
 /** مفتاح "آخر رد شافه المستخدم" — يُستخدم لنقطة التنبيه على أيقونة الدعم */
@@ -2529,7 +2561,16 @@ async function fetchSupportReplies(uid: string, uname?: string | null): Promise<
   out = out.filter(m => !wipedAt || !m.at || m.at > wipedAt);
   const hidden = getHiddenSupportReplies(uid);
   if (hidden.size) out = out.filter(m => !hidden.has(m.id));
-  return out.sort((x, y) => x.at - y.at);
+  const hiddenSigs = getHiddenSupportSigs(uid);
+  if (hiddenSigs.length) out = out.filter(m => !isSupportSigHidden(hiddenSigs, m));
+  // نفس الرد وصل من أكثر من قناة (رسائل + دعم + إشعارات) → يظهر مرة واحدة فقط
+  const uniq: SupportMsg[] = [];
+  for (const m of out.slice().sort((x, y) => x.at - y.at)) {
+    const sig = supportReplySig(m);
+    const dup = uniq.some(u => supportReplySig(u) === sig && (!u.at || !m.at || Math.abs(u.at - m.at) < SUPPORT_DUP_WINDOW_MS));
+    if (!dup) uniq.push(m);
+  }
+  return uniq;
 }
 
 type SupportAttachment = { url: string; type: 'image' | 'video' | 'file'; name: string };
@@ -2556,12 +2597,14 @@ function SupportChatOverlay({
         send: 'إرسال', sending: 'جاري الإرسال…', sentTitle: 'تم إرسال طلبك', sentSub: 'وسوف يتم الرد عليكم قريباً',
         replies: 'رسائل الدعم', image: 'صورة', video: 'فيديو', file: 'ملف', attach: 'إرفاق',
         badEmail: 'اكتب بريداً إلكترونياً صحيحاً', needProblem: 'اكتب المشكلة أو أرفق ملفاً',
+        sendFail: 'تعذّر إرسال رسالتك، تأكد من الاتصال وحاول مرة ثانية',
       }
     : {
         user: 'User', guest: 'Guest', emailPh: 'Email address', problemPh: 'Describe your problem...',
         send: 'Send', sending: 'Sending…', sentTitle: 'Your request has been sent', sentSub: 'We will reply to you soon',
         replies: 'Support messages', image: 'Image', video: 'Video', file: 'File', attach: 'Attach',
         badEmail: 'Enter a valid email address', needProblem: 'Describe the problem or attach a file',
+        sendFail: 'Could not send your message. Check your connection and try again',
       };
 
   const [email, setEmail] = useState('');
@@ -2588,7 +2631,8 @@ function SupportChatOverlay({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, currentUser?.id]);
 
-  async function deliverToSupport(p: { email: string; text: string; media: SupportAttachment | null }) {
+  async function deliverToSupport(p: { email: string; text: string; media: SupportAttachment | null }): Promise<boolean> {
+    let ok = false;
     const fromUsername = uname || null;
     const fromName = currentUser ? (currentUser.name ?? null) : 'Guest';
     const fromUserId = currentUser?.id;
@@ -2616,7 +2660,7 @@ function SupportChatOverlay({
     try {
       const supportId = await resolveSupportUserId();
       if (supportId) {
-        await sendRealChatMessage({
+        ok = await sendRealChatMessage({
           toUserId: supportId,
           text: notifyText,
           mediaUrl: p.media?.url,
@@ -2624,25 +2668,33 @@ function SupportChatOverlay({
           meta: { isSupportTicket: true, support: true, fromUsername, fromName, fromEmail: p.email, lang, accountRole: 'user' },
         });
       }
-      await fetch('/api/support/messages', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: notifyText,
-          mediaUrl: p.media?.url,
-          mediaType: p.media?.type,
-          toUsername: 'stooorna',
-          toUserId: supportId,
-          fromUserId,
-          fromUsername,
-          fromName,
-          fromEmail: p.email,
-          lang,
-          accountRole: 'user',
-        }),
-      }).catch(() => {});
+      // القناة الثانية فقط إذا الأولى فشلت (قبل كانت ترسل نسختين → تكرار عند الدعم)
+      if (!ok) {
+        try {
+          const r2 = await fetch('/api/support/messages', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: notifyText,
+              mediaUrl: p.media?.url,
+              mediaType: p.media?.type,
+              toUsername: 'stooorna',
+              toUserId: supportId,
+              fromUserId,
+              fromUsername,
+              fromName,
+              fromEmail: p.email,
+              lang,
+              accountRole: 'user',
+              isSupportTicket: true,
+            }),
+          });
+          ok = r2.ok || r2.status === 201;
+        } catch { /* ignore */ }
+      }
     } catch { /* non-blocking */ }
+    return ok;
   }
 
   async function submit() {
@@ -2654,7 +2706,12 @@ function SupportChatOverlay({
     setError('');
     setSending(true);
     try {
-      await deliverToSupport({ email: mail, text, media: attachment });
+      const delivered = await deliverToSupport({ email: mail, text, media: attachment });
+      if (!delivered) {
+        // الرسالة ما وصلت للسيرفر: لا نقول "تم الإرسال" — نبقي النص ليعيد المحاولة
+        setError(t.sendFail);
+        return;
+      }
       pushOwnerSupportAlert(uname ? `@${uname}` : (currentUser?.name || mail));
       setProblem('');
       setAttachment(null);
@@ -3225,7 +3282,14 @@ function OwnerSupportThread({
           if (hasReal && x.id.startsWith('peer-last-')) continue; // الرسالة المؤقتة تُستبدل بالحقيقية
           byId.set(x.id, x);
         }
-        return Array.from(byId.values()).sort((x, y) => x.at - y.at);
+        // نفس الرسالة من التذكرة المحلية + السيرفر (معرّفات مختلفة) → تظهر مرة واحدة
+        const uniqMsgs: Msg[] = [];
+        for (const x of Array.from(byId.values()).sort((a, b) => a.at - b.at)) {
+          const sigX = `${x.from}|${String(x.text || '').replace(/\s+/g, ' ').trim()}|${x.mediaUrl || ''}`;
+          const dup = uniqMsgs.some(u => `${u.from}|${String(u.text || '').replace(/\s+/g, ' ').trim()}|${u.mediaUrl || ''}` === sigX && Math.abs(u.at - x.at) < 3 * 60 * 1000);
+          if (!dup) uniqMsgs.push(x);
+        }
+        return uniqMsgs;
       });
     };
 
@@ -3349,16 +3413,21 @@ function OwnerSupportThread({
       }
 
       // قنوات إضافية (لا تضر): API الدعم + قناة محلية لنفس المتصفح
-      void fetch('/api/support/messages', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: body, mediaUrl: media?.url, mediaType: media?.type,
-          toUserId: candidates[0] || peer.id, toUsername: peer.username || null,
-          from: 'support', isSupportReply: true,
-        }),
-      }).then(r => { if (r.ok) delivered = true; }).catch(() => {});
+      if (!delivered) {
+        try {
+          const r2 = await fetch('/api/support/messages', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: body, mediaUrl: media?.url, mediaType: media?.type,
+              toUserId: candidates[0] || peer.id, toUsername: peer.username || null,
+              from: 'support', isSupportReply: true,
+            }),
+          });
+          if (r2.ok) delivered = true;
+        } catch { /* ignore */ }
+      }
       void fetch('/api/notifications', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -6053,6 +6122,71 @@ export default function SettingsPage() {
         }
       }
 
+      // 2b) رسائل المستخدمين قد تصل عبر قناة الدعم أو كرسائل عادية (بدون قائمة محادثات) → نجمّعها حسب المستخدم
+      try {
+        const ownIdForGroup = String((user as { id?: string } | null)?.id || '');
+        const grouped = new Map<string, SupportPeer>();
+        const addGrouped = (rawList: any[]) => {
+          for (const m of rawList || []) {
+            if (!m || typeof m !== 'object') continue;
+            const text = String(m.text || m.content || m.body || m.message || '');
+            if (!text && !m.mediaUrl) continue;
+            if (text.includes('[[support-thread-deleted]]')) continue;
+            const sender = pickId(m.fromUserId ?? m.senderId ?? m.authorId ?? m.sender_id ?? m.fromId ?? m.from_user_id ?? m.sender ?? m.author ?? (typeof m.from === 'object' ? m.from : ''));
+            const receiver = pickId(m.toUserId ?? m.recipientId ?? m.receiverId ?? m.to_user_id ?? m.toId ?? m.receiver ?? m.recipient ?? (typeof m.to === 'object' ? m.to : ''));
+            const peerId = sender && sender !== ownIdForGroup ? sender : receiver;
+            if (!peerId || peerId === ownIdForGroup) continue;
+            const at = toMs(m.at ?? m.createdAt ?? m.sentAt ?? m.created_at ?? m.timestamp);
+            const cur = grouped.get(peerId);
+            const fromThem = sender === peerId;
+            const unreadFlag = fromThem && (m.read === false || m.isRead === false) ? 1 : 0;
+            if (!cur) {
+              grouped.set(peerId, {
+                id: peerId,
+                name: m.fromName || m.sender?.name || m.user?.name || null,
+                username: m.fromUsername || m.senderUsername || m.sender?.username || m.user?.username || null,
+                email: m.fromEmail || m.sender?.email || m.user?.email || null,
+                avatarUrl: m.sender?.avatarUrl || m.user?.avatarUrl || null,
+                online: false,
+                lastIp: null,
+                country: null,
+                unread: unreadFlag,
+                lastMessage: stripSupportHeader(text) || text,
+                lastAt: at ? new Date(at).toISOString() : null,
+              } as SupportPeer);
+            } else {
+              cur.unread = (cur.unread || 0) + unreadFlag;
+              cur.name = cur.name || m.fromName || m.sender?.name || null;
+              cur.username = cur.username || m.fromUsername || m.senderUsername || m.sender?.username || null;
+              cur.email = cur.email || m.fromEmail || m.sender?.email || null;
+              if (at >= toMs(cur.lastAt)) { cur.lastMessage = stripSupportHeader(text) || text; cur.lastAt = at ? new Date(at).toISOString() : cur.lastAt; }
+            }
+          }
+        };
+        // رسائل عادية جاءت بدون شكل "محادثة" (لا فيها lastMessage) نجمّعها نحن
+        const looksLikePlainMessages = list.length > 0 && list.every((x: any) => x && x.lastMessage == null && (x.text || x.content || x.body || x.message));
+        if (looksLikePlainMessages) { addGrouped(list as any[]); list = []; }
+        for (const url of ['/api/support/messages?role=owner', '/api/support/messages']) {
+          try {
+            const r = await fetch(url, { credentials: 'include' });
+            if (!r.ok) continue;
+            const d = await r.json();
+            const rawS = Array.isArray(d) ? d : (d.messages || d.items || []);
+            if (rawS.length) { addGrouped(rawS); break; }
+          } catch { /* next */ }
+        }
+        for (const gp of grouped.values()) {
+          const ex = list.find(x => String(x.id) === gp.id);
+          if (!ex) list.push(gp);
+          else {
+            ex.name = ex.name || gp.name;
+            ex.username = ex.username || gp.username;
+            ex.email = ex.email || gp.email;
+            if (toMs(gp.lastAt) > toMs(ex.lastAt)) { ex.lastAt = gp.lastAt; ex.lastMessage = gp.lastMessage || ex.lastMessage; }
+          }
+        }
+      } catch { /* */ }
+
       // 3) Local tickets queue (same browser) — merged so each user appears ONCE
       const localTickets = readLocalSupportTickets();
       const deletedIds = getDeletedThreadIds();
@@ -6170,7 +6304,21 @@ export default function SettingsPage() {
   function deleteSupportReply(id: string) {
     const uid = (user as { id?: string } | null)?.id;
     if (!uid) return;
-    hideSupportReply(uid, id);
+    const gone = supportReplies.find(m => m.id === id);
+    hideSupportReply(uid, id, gone);
+    try {
+      if (gone) {
+        const sig = supportReplySig(gone);
+        const rest = readQueuedSupportReplies().filter(q => supportReplySig(q) !== sig);
+        localStorage.setItem(SUPPORT_REPLY_QUEUE_KEY, JSON.stringify(rest));
+      }
+      // حذف من السيرفر إن كان يدعم ذلك (صامت) — حتى لا يرجع بعد تسجيل الخروج/الدخول
+      if (/^[A-Za-z0-9_-]{8,}$/.test(id) && !id.startsWith('qreply-')) {
+        for (const url of [`/api/support/messages/${encodeURIComponent(id)}`, `/api/notifications/${encodeURIComponent(id)}`]) {
+          void fetch(url, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+        }
+      }
+    } catch { /* ignore */ }
     setSupportReplies(prev => {
       const next = prev.filter(m => m.id !== id);
       setSupportReplyDot(next.length > 0);

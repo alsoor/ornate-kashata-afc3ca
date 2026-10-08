@@ -24995,6 +24995,20 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     } catch { /* ignore */ }
   }, [headerOpen]);
 
+  // أيقونة الشات العائمة (RootLayout) تختفي لما الهيدر يُرفع (headerOpen=true) وتظهر لما ينزل
+  useEffect(() => {
+    try {
+      (window as any).__stooornaHeaderLifted = !!headerOpen;
+      window.dispatchEvent(new CustomEvent('stooorna:header-lifted', { detail: { lifted: !!headerOpen } }));
+    } catch { /* ignore */ }
+  }, [headerOpen]);
+  useEffect(() => () => {
+    try {
+      (window as any).__stooornaHeaderLifted = false;
+      window.dispatchEvent(new CustomEvent('stooorna:header-lifted', { detail: { lifted: false } }));
+    } catch { /* ignore */ }
+  }, []);
+
   // Sub-tab inside the Profile page, replacing the old STOOORNA divider: switches the content
   // strip below it between the text-posts feed and the video/photo grid — independently of
   // everything above (stories strip, header, etc. never move when this changes).
