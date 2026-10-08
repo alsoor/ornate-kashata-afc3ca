@@ -4972,9 +4972,9 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
 
         {isRegister && !isCompany && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <div style={{ position: 'relative', width: 148, flex: '0 0 148px' }}>
-              <button type="button" onClick={() => { setDialOpen(v => !v); setDialQuery(''); }} style={{ ...fieldCss(), width: '100%', textAlign: 'left', cursor: 'pointer' }}>
-                {(DIAL_CODES.find(c => c.dial === signupDial)?.name || 'Country')} {signupDial}
+            <div style={{ position: 'relative', width: 92, flex: '0 0 92px' }}>
+              <button type="button" onClick={() => { setDialOpen(v => !v); setDialQuery(''); }} style={{ ...fieldCss(), width: '100%', textAlign: 'center', cursor: 'pointer', paddingLeft: 8, paddingRight: 8 }}>
+                {signupDial}
               </button>
               {dialOpen && (
                 <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 6px)', left: 0, width: 260, background: '#f7f7f8', borderRadius: 12, border: '1px solid #e5e7eb', boxShadow: '0 12px 30px rgba(0,0,0,0.28)', overflow: 'hidden' }}>
@@ -5082,7 +5082,11 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 const fromLink = String(d.devLink || '').split('forgot=')[1] || '';
                 const tok = String(d.appToken || fromLink || '').trim();
                 setForgotToken(tok);
-                setForgotPhoneMask(String(d.phoneMask || ''));
+                let mask = String(d.phoneMask || '');
+                if (!mask) {
+                  try { mask = maskStoredPhone(localStorage.getItem(`stooorna_phone_${em}`) || ''); } catch { /* */ }
+                }
+                setForgotPhoneMask(mask);
                 setForgotPhoneInput('');
                 setForgotPw1(''); setForgotPw2('');
                 setForgotMsg('');
@@ -5113,7 +5117,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 <p style={{ margin: 0, color: 'rgba(190,220,220,0.75)', fontSize: 13, textAlign: 'center', lineHeight: 1.55 }}>
                   {isEn ? 'Tap the lock. Your mobile will show with the last 3 digits.' : 'اضغط القفل. يبين رقم موبايلك وآخر ٣ أرقام.'}
                 </p>
-                {forgotPhoneMask ? <p style={{ margin: 0, color: '#00BCD4', fontWeight: 900, letterSpacing: 1 }} dir="ltr">{maskStoredPhone(forgotPhoneMask) || forgotPhoneMask}</p> : null}
+                {forgotPhoneMask ? <p style={{ margin: 0, color: '#00BCD4', fontWeight: 900, letterSpacing: 1 }} dir="ltr">{forgotPhoneMask}</p> : null}
                 <button
                   type="button"
                   aria-label={isEn ? 'Open password reset' : 'فتح تعيين كلمة المرور'}
@@ -5130,7 +5134,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             {forgotStep === 'reset' && (
               <>
                 <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, fontSize: 16, textAlign: 'center' }}>{isEn ? 'New password' : 'كلمة المرور الجديدة'}</p>
-                <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, letterSpacing: 1, fontSize: 15 }} dir="ltr">{maskStoredPhone(forgotPhoneMask) || forgotPhoneMask || '+xx'}</p>
+                <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, letterSpacing: 1, fontSize: 15 }} dir="ltr">{forgotPhoneMask}</p>
                 <p style={{ margin: 0, color: 'rgba(190,220,220,0.7)', fontSize: 12, textAlign: 'center' }}>{isEn ? 'Last 3 digits of the mobile linked to this email' : 'آخر ٣ أرقام من موبايل هذا الإيميل'}</p>
                 <input type="tel" value={forgotPhoneInput} onChange={e => setForgotPhoneInput(e.target.value.replace(/[^0-9+]/g, '').slice(0, 18))} placeholder={isEn ? 'Full mobile number' : 'رقم الموبايل كامل'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />
                 <input type={showPw ? 'text' : 'password'} value={forgotPw1} onChange={e => setForgotPw1(e.target.value)} placeholder={isEn ? 'New password' : 'كلمة المرور الجديدة'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />
