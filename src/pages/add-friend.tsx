@@ -24942,7 +24942,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
   const [friends, setFriends] = useState<Friend[]>(() => (user?.id && headerListsCache.uid === String(user.id) ? headerListsCache.friends as Friend[] : []));
   const [mentionHits, setMentionHits] = useState<Array<{ id: string; username: string; name: string }>>([]);
-  const [noticeTop, setNoticeTop] = useState<{ id: string; title: string; body: string; messageId: string } | null>(null);
+  const [noticeTop, setNoticeTop] = useState<{ id: string; title: string; body: string; messageId: string; kind?: string } | null>(null);
   useEffect(() => {
     try { (window as any).__stooornaFriends = friends.map(f => ({ id: String(f.friendId), username: f.username, name: f.name })); } catch { /* */ }
   }, [friends]);
@@ -24978,7 +24978,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (!n?.id || seen.has(n.id)) continue;
           seen.add(n.id);
           since = Math.max(since, Number(n.at) || 0);
-          setNoticeTop({ id: n.id, title: n.title || 'Stooorna', body: n.body || '', messageId: n.messageId || '' });
+          if (n.type === 'call' && document.visibilityState === 'visible') continue;
+          if (n.type === 'call' && document.visibilityState === 'hidden') {
+            try { sessionStorage.setItem('stooorna_missed_call', JSON.stringify({ title: n.title || 'كان عندك اتصال', body: n.body || '' })); } catch { /* */ }
+          }
+          setNoticeTop({ id: n.id, title: n.title || 'Stooorna', body: n.body || '', messageId: n.messageId || '', kind: n.type || '' });
           if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
             const sys = new Notification(n.title || 'Stooorna', { body: n.body || '', tag: n.id });
             sys.onclick = () => {
@@ -25000,14 +25004,33 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, [user?.id]);
   useEffect(() => {
     if (!profilePlusIncomingCallUi.ringing) return;
+    if (document.visibilityState !== 'hidden') return;
     const title = 'Incoming call';
     const body = profilePlusIncomingCallUi.callerLabel || 'Someone is calling';
-    setNoticeTop({ id: `call_${Date.now()}`, title, body, messageId: '' });
+    try { sessionStorage.setItem('stooorna_missed_call', JSON.stringify({ title: 'كان عندك اتصال', body })); } catch { /* */ }
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       try { new Notification(title, { body, tag: 'stooorna-call' }); } catch { /* */ }
     }
     void fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'call', toUserId: user?.id, toUsername: (user as any)?.username, fromName: body, title, body, room: 'call' }) }).catch(() => {});
   }, [profilePlusIncomingCallUi.ringing, profilePlusIncomingCallUi.callerLabel]);
+  useEffect(() => {
+    const showMissed = () => {
+      if (document.visibilityState === 'hidden') return;
+      let raw = '';
+      try { raw = sessionStorage.getItem('stooorna_missed_call') || ''; } catch { return; }
+      if (!raw) return;
+      try { sessionStorage.removeItem('stooorna_missed_call'); } catch { /* */ }
+      const d = JSON.parse(raw);
+      setNoticeTop({ id: `missed_${Date.now()}`, title: d.title || 'كان عندك اتصال', body: d.body || '', messageId: '', kind: 'call' });
+    };
+    document.addEventListener('visibilitychange', showMissed);
+    window.addEventListener('focus', showMissed);
+    showMissed();
+    return () => {
+      document.removeEventListener('visibilitychange', showMissed);
+      window.removeEventListener('focus', showMissed);
+    };
+  }, []);
   useEffect(() => {
     const flash = () => {
       const id = sessionStorage.getItem('stooorna_flash_msg');
@@ -27385,10 +27408,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           </div>
         )}
         {noticeTop && (
-          <button type="button" onClick={() => { if (noticeTop.messageId) { try { sessionStorage.setItem('stooorna_flash_msg', noticeTop.messageId); } catch { /* */ } setChatOverlayOpen(true); } setNoticeTop(null); }} style={{ position: 'fixed', top: 8, left: 12, right: 12, zIndex: 13000, background: '#111', color: '#fff', border: '1px solid #fff', borderRadius: 14, padding: '10px 12px', textAlign: 'left' }}>
-            <b>{noticeTop.title}</b>
-            <div style={{ fontSize: 12, opacity: 0.8 }}>{noticeTop.body}</div>
-          </button>
+          <div style={{ position: 'fixed', top: 8, left: 12, right: 12, zIndex: 13000, background: '#111', color: '#fff', border: '1px solid #fff', borderRadius: 14, padding: '10px 12px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+            <button type="button" onClick={() => { if (noticeTop.messageId) { try { sessionStorage.setItem('stooorna_flash_msg', noticeTop.messageId); } catch { /* */ } setChatOverlayOpen(true); } setNoticeTop(null); }} style={{ flex: 1, background: 'none', border: 'none', color: '#fff', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
+              <b>{noticeTop.title}</b>
+              <div style={{ fontSize: 12, opacity: 0.8 }}>{noticeTop.body}</div>
+            </button>
+            <button type="button" aria-label="Close notification" onClick={() => setNoticeTop(null)} style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #fff', background: 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>×</button>
+          </div>
         )}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
