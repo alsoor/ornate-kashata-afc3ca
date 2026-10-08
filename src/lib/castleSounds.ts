@@ -18,6 +18,7 @@
  */
 
 export interface CastleSoundCfg {
+  speed?: number;          // playback speed of the whole timeline (1 = normal)
   totalS: number;          // المدة الكلية
   doorsAt: number;         // فتح البوابة
   carpetAt: number;        // فرد السجادة
@@ -49,7 +50,7 @@ export function playCastleSound(cfg: CastleSoundCfg): () => void {
   try { ctx.resume().catch(() => { /* ignore */ }); } catch { /* ignore */ }
 
   const base = ctx.currentTime + 0.06;
-  const T = (s: number) => base + Math.max(0, s);
+  const T = (s: number) => base + Math.max(0, s) / (cfg.speed || 1); // CASTLE-9S-SPEED
 
   // ── السلسلة الرئيسية: master → compressor → output، + إرسال للصدى ──
   const comp = ctx.createDynamicsCompressor();

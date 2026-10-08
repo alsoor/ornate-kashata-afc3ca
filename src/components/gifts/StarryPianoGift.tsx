@@ -31,8 +31,10 @@ import type { ScoreEvent } from '../../lib/starryPianoSounds';
 
 // ── gift settings ───────────────────────────────────────────────────────
 const PRICE = 400;
-const TOTAL_MS = 15000;
-const TOTAL_S = TOTAL_MS / 1000;
+// GIFTS-9S-V2: every gift lasts 9 seconds
+const TOTAL_MS = 9000;            // real duration (9 seconds)
+const TOTAL_S = 15;               // internal timeline length (original story)
+const TIME_K = TOTAL_S / (TOTAL_MS / 1000); // playback speed so the whole story fits in 9 s
 
 const NIGHT_IN = 1.8;            // sky fades to night
 const NIGHT_MAX = 0.74;          // darkness strength (1 = black)
@@ -738,9 +740,9 @@ function StarryPianoAnimation({ onDone }: { onDone: () => void }) {
     let last = start;
 
     const frame = (now: number) => {
-      const t = (now - start) / 1000;
+      const t = ((now - start) / 1000) * TIME_K;
       const raw = (now - last) / 1000;
-      const dt = Math.min(0.033, raw);
+      const dt = Math.min(0.033, raw) * TIME_K;
       last = now;
       emaDt += (raw - emaDt) * 0.05;
       if (emaDt > 0.036) q = Math.max(0.45, q - 0.015);

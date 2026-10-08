@@ -31,8 +31,10 @@ import { playGardenSound } from '../../lib/gardenSounds';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 500;
-const TOTAL_MS = 20000;            // مدة الأنميشن الكلية (20 ثانية)
-const TOTAL_S = TOTAL_MS / 1000;
+// GIFTS-9S-V2: every gift lasts 9 seconds
+const TOTAL_MS = 9000;            // real duration (9 seconds)
+const TOTAL_S = 20;               // internal timeline length (original story)
+const TIME_K = TOTAL_S / (TOTAL_MS / 1000); // playback speed so the whole story fits in 9 s
 
 const GARDEN_IN_AT = 0.2;          // الحديقة تبدأ تظهر
 const GARDEN_IN_S = 1.9;
@@ -776,14 +778,15 @@ function GardenAnimation({ onDone }: { onDone: () => void }) {
     };
 
     // الصوت
+    // GARDEN-9S-SND: sound plan on the real 9 s clock
     const snd = playGardenSound({
-      totalS: TOTAL_S,
+      totalS: TOTAL_MS / 1000,
       mode,
-      fadeInS: GARDEN_IN_S + 0.4,
-      fadeOutAt: GARDEN_OUT_AT,
-      liftAt: LIFT_AT,
-      morphAt: MORPH_AT,
-      downAt: DOWN_AT,
+      fadeInS: (GARDEN_IN_S + 0.4) / TIME_K,
+      fadeOutAt: GARDEN_OUT_AT / TIME_K,
+      liftAt: LIFT_AT / TIME_K,
+      morphAt: MORPH_AT / TIME_K,
+      downAt: DOWN_AT / TIME_K,
     });
 
     // ── جسيمات ──
@@ -859,8 +862,8 @@ function GardenAnimation({ onDone }: { onDone: () => void }) {
     let last = t0;
 
     const frame = (now: number) => {
-      const t = (now - t0) / 1000;
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const t = ((now - t0) / 1000) * TIME_K;
+      const dt = Math.min(0.05, (now - last) / 1000) * TIME_K;
       last = now;
 
       const outK = 1 - smooth((t - GARDEN_OUT_AT) / GARDEN_OUT_S);

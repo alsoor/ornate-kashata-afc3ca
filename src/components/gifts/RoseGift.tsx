@@ -28,8 +28,10 @@ import { playRoseSound } from '../../lib/roseSounds';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 25;
-const TOTAL_MS = 6000;             // مدة الأنميشن الكلية (6 ثواني)
-const TOTAL_S = TOTAL_MS / 1000;
+// GIFTS-9S-V2: every gift lasts 9 seconds
+const TOTAL_MS = 9000;            // real duration (9 seconds)
+const TOTAL_S = 6;               // internal timeline length (original story)
+const TIME_K = TOTAL_S / (TOTAL_MS / 1000); // playback speed so the whole story fits in 9 s
 
 // وضع صاحب البث (الوردة بمنتصف البث)
 const HOST_IN_S = 0.75;            // مدة الظهور
@@ -326,7 +328,7 @@ function RoseAnimation({ onDone }: { onDone: () => void }) {
       c.drawImage(sp, x - r, y - r, r * 2, r * 2);
     };
 
-    const snd = playRoseSound({ mode: L ? 'lift' : 'host', totalS: TOTAL_S });
+    const snd = playRoseSound({ mode: L ? 'lift' : 'host', totalS: TOTAL_MS / 1000 });
 
     // ── الجسيمات (بتلات + نجوم) ──
     const parts: Pa[] = [];
@@ -425,8 +427,8 @@ function RoseAnimation({ onDone }: { onDone: () => void }) {
     let last = t0;
 
     const frame = (now: number) => {
-      const t = (now - t0) / 1000;
-      const dt = Math.min(0.05, (now - last) / 1000);
+      const t = ((now - t0) / 1000) * TIME_K;
+      const dt = Math.min(0.05, (now - last) / 1000) * TIME_K;
       last = now;
 
       c.setTransform(dpr, 0, 0, dpr, 0, 0);

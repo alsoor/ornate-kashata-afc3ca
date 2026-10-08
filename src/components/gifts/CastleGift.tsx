@@ -37,8 +37,10 @@ import { playCastleSound } from '../../lib/castleSounds';
 
 // ── إعدادات الهدية ──────────────────────────────────────────────────────
 const PRICE = 3500;
-const TOTAL_MS = 20000;            // مدة الأنميشن الكلية (20 ثانية)
-const TOTAL_S = TOTAL_MS / 1000;
+// GIFTS-9S-V2: every gift lasts 9 seconds
+const TOTAL_MS = 9000;            // real duration (9 seconds)
+const TOTAL_S = 20;               // internal timeline length (original story)
+const TIME_K = TOTAL_S / (TOTAL_MS / 1000); // playback speed so the whole story fits in 9 s
 
 const DARK_IN = 1.4;               // مدة تحول البث لقلعة
 const DOORS_AT = 0.9;              // بداية انفتاح البوابة
@@ -698,6 +700,7 @@ function CastleAnimation({ onDone }: { onDone: () => void }) {
     // ── الصوت ──
     const stopSound = playCastleSound({
       totalS: TOTAL_S,
+      speed: TIME_K,
       doorsAt: DOORS_AT,
       carpetAt: CARPET_AT,
       fanfareAt: FANFARE_AT,
@@ -858,9 +861,9 @@ function CastleAnimation({ onDone }: { onDone: () => void }) {
     let raf = 0;
 
     const frame = (now: number) => {
-      const t = (now - start) / 1000;
+      const t = ((now - start) / 1000) * TIME_K;
       const raw = (now - last) / 1000;
-      const dt = Math.min(0.033, raw);
+      const dt = Math.min(0.033, raw) * TIME_K;
       last = now;
       emaDt += (raw - emaDt) * 0.05;
       if (emaDt > 0.036) q = Math.max(0.45, q - 0.015);

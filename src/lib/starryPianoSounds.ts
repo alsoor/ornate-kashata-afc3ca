@@ -24,6 +24,9 @@ export interface ScoreEvent {
 export const STARRY_TOTAL_S = 15;
 /** Audio is scheduled this many seconds after the animation clock starts; visuals use the same lead. */
 export const STARRY_LEAD_S = 0.08;
+// PIANO-9S-SPEED: the whole piece is played faster so it lasts 9 real seconds
+export const STARRY_REAL_S = 9;
+const SPEED = STARRY_TOTAL_S / STARRY_REAL_S;
 
 const T0 = 1.4;                 // music starts after the sky has begun to darken
 const EIGHTH = 0.4167;          // eighth-note length (72 bpm)
@@ -105,8 +108,8 @@ export function playStarryPianoSound(): () => void {
   const master = ctx.createGain();
   master.gain.setValueAtTime(0.0001, base);
   master.gain.exponentialRampToValueAtTime(0.9, base + 0.5);
-  master.gain.setValueAtTime(0.9, base + STARRY_TOTAL_S - 1.2);
-  master.gain.linearRampToValueAtTime(0.0001, base + STARRY_TOTAL_S - 0.05);
+  master.gain.setValueAtTime(0.9, base + STARRY_REAL_S - 1.2);
+  master.gain.linearRampToValueAtTime(0.0001, base + STARRY_REAL_S - 0.05);
   master.connect(comp);
 
   const bus = ctx.createGain();
@@ -241,13 +244,13 @@ export function playStarryPianoSound(): () => void {
 
   // ── schedule everything up-front ──
   STARRY_SCORE.forEach(e => {
-    const when = base + e.t;
+    const when = base + e.t / SPEED;
     if (e.kind === 'chime') bell(when, e.midi, e.vel);
-    else pianoNote(when, e.midi, e.dur, e.vel);
+    else pianoNote(when, e.midi, e.dur / SPEED, e.vel);
   });
   CHORDS.forEach((ch, ci) => {
     const last = ci === CHORDS.length - 1;
-    pad(base + T0 + ci * CHORD_S, ch.pad, last ? STARRY_TOTAL_S - (T0 + ci * CHORD_S) - 1.3 : CHORD_S + 0.2);
+    pad(base + (T0 + ci * CHORD_S) / SPEED, ch.pad, (last ? STARRY_TOTAL_S - (T0 + ci * CHORD_S) - 1.3 : CHORD_S + 0.2) / SPEED);
   });
 
   let stopped = false;
