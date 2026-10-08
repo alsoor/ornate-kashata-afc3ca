@@ -2896,10 +2896,16 @@ function GlobalBottomNavigation() {
         if (!r.ok) return;
         const d = await r.json() as { members?: { userId?: string; id?: string; name?: string; username?: string; avatarUrl?: string }[] };
         const remote = d.members || [];
-        setHomeCallMembers(prev => prev.map(m => ({
-          ...m,
-          joined: m.id === user.id || remote.some(x => String(x.userId || x.id) === m.id),
-        })));
+        setHomeCallMembers(prev => prev.map(m => {
+          const hit = remote.find(x => String(x.userId || x.id) === m.id);
+          return {
+            ...m,
+            avatarUrl: m.avatarUrl || hit?.avatarUrl || null,
+            username: m.username || hit?.username || null,
+            name: (!m.name || m.name === 'User') ? (hit?.name || hit?.username || m.name) : m.name,
+            joined: m.id === user.id || !!hit,
+          };
+        }));
         const others = remote.filter(x => String(x.userId || x.id) !== String(user.id));
         if (others.length > 0 && (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating')) {
           setHomeCallPhase('live');
@@ -3579,12 +3585,18 @@ function GlobalBottomNavigation() {
       try {
         const r = await fetch(`/api/room?id=${encodeURIComponent(channel)}`, { credentials: 'include' });
         if (!r.ok) return;
-        const d = await r.json() as { members?: { userId?: string; id?: string }[] };
+        const d = await r.json() as { members?: { userId?: string; id?: string; name?: string; username?: string; avatarUrl?: string }[] };
         const remote = d.members || [];
-        setHomeCallMembers(prev => prev.map(m => ({
-          ...m,
-          joined: m.id === user.id || remote.some(x => String(x.userId || x.id) === m.id),
-        })));
+        setHomeCallMembers(prev => prev.map(m => {
+          const hit = remote.find(x => String(x.userId || x.id) === m.id);
+          return {
+            ...m,
+            avatarUrl: m.avatarUrl || hit?.avatarUrl || null,
+            username: m.username || hit?.username || null,
+            name: (!m.name || m.name === 'User') ? (hit?.name || hit?.username || m.name) : m.name,
+            joined: m.id === user.id || !!hit,
+          };
+        }));
       } catch { /* */ }
     };
     void poll();
@@ -3699,6 +3711,51 @@ function GlobalBottomNavigation() {
       });
     }
   }
+
+  // SOFT REFRESH every 60s while a call is live: re-attaches remote audio (fixes "voice disappears after a long talk")
+  // and re-reads the room members (fixes avatar stuck on the "U" letter). It never reloads the page, never leaves/rejoins
+  // Agora and never touches the mic, so the call is not interrupted.
+  useEffect(() => {
+    if (homeCallPhase !== 'live') return;
+    const tick = async () => {
+      try {
+        const client = homeCallAgoraRef.current;
+        if (client) {
+          for (const remoteUser of (client.remoteUsers || [])) {
+            try {
+              if (!remoteUser.hasAudio) continue;
+              if (!remoteUser.audioTrack) await client.subscribe(remoteUser, 'audio');
+              const t = remoteUser.audioTrack;
+              if (!t) continue;
+              try { t.stop(); } catch { /* */ }
+              try { t.play(); } catch { /* */ }
+              try { t.setVolume?.(100); } catch { /* */ }
+            } catch { /* */ }
+          }
+        }
+        const ch = homeCallChannelRef.current;
+        if (ch) {
+          const r = await fetch(`/api/room?id=${encodeURIComponent(String(ch))}`, { credentials: 'include' });
+          if (r.ok) {
+            const d = await r.json() as { members?: { userId?: string; id?: string; name?: string; username?: string; avatarUrl?: string }[] };
+            const remote = d.members || [];
+            setHomeCallMembers(prev => prev.map(m => {
+              const hit = remote.find(x => String(x.userId || x.id) === m.id);
+              if (!hit) return m;
+              return {
+                ...m,
+                avatarUrl: m.avatarUrl || hit.avatarUrl || null,
+                username: m.username || hit.username || null,
+                name: (!m.name || m.name === 'User') ? (hit.name || hit.username || m.name) : m.name,
+              };
+            }));
+          }
+        }
+      } catch { /* */ }
+    };
+    const iv = window.setInterval(() => { void tick(); }, 60000);
+    return () => window.clearInterval(iv);
+  }, [homeCallPhase]);
 
   useEffect(() => {
     const onLeft = (e: Event) => {
