@@ -14,6 +14,7 @@ import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from
 import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
 import { registerAppReleaseRoutes } from "./app-releases-routes.js"; // APP-RELEASES-PATCH
 import { registerTemplatesRoutes } from "./templates-routes.js"; // TEMPLATES-PATCH
+import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -332,7 +333,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: "12mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── Serve uploaded story/post media ─────────────────────────────────────────
@@ -560,6 +561,7 @@ app.post("/api/live-chat/voice", (req, res) => {
   trimLiveVoiceMem(); // MEM-PATCH
   res.json({ ok: true, id, url: `/api/live-chat/voice?id=${encodeURIComponent(id)}`, voiceUrl: `/api/live-chat/voice?id=${encodeURIComponent(id)}` });
 });
+registerChatImageRoutes(app);
 app.post("/api/live-chat/media", (req, res) => {
   const body = (req.body || {}) as any;
   const dataUrl = String(body.image || body.video || body.media || body.file || "");
@@ -739,7 +741,8 @@ app.post("/api/live-chat", (req, res) => {
     payload.voiceUrl = `/api/live-chat/voice?id=${encodeURIComponent(String(payload.id))}`;
   }
   if (typeof payload.imageUrl === "string" && payload.imageUrl.startsWith("data:")) {
-    const saved = saveLiveChatMedia(String(payload.id), payload.imageUrl);
+    const chatUrl = saveChatImage(String(payload.id), payload.imageUrl);
+    const saved = chatUrl ? { url: chatUrl } : saveLiveChatMedia(String(payload.id), payload.imageUrl);
     if (saved) payload.imageUrl = saved.url;
   }
   const mem = liveChatMem();

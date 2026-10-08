@@ -15957,6 +15957,7 @@ async function uploadLiveChatFile(blob: Blob, userId: string, kind: 'image' | 'v
 
   // Reliable storage routes (file host only). Flags mark live-chat; status/stories are blocked above.
   const endpoints: Array<{ ep: string; field: string; ms: number }> = [
+    { ep: '/api/chat-images', field: 'file', ms: 30000 },
     { ep: '/api/live-chat/media', field: 'file', ms: 30000 },
     { ep: '/api/live-chat/media', field: 'media', ms: 30000 },
     { ep: '/api/live-chat/upload', field: 'file', ms: 30000 },
@@ -15986,7 +15987,7 @@ async function uploadLiveChatFile(blob: Blob, userId: string, kind: 'image' | 'v
         const bodies = [
           { id: `up_${Date.now()}`, userId, kind: isVid ? 'video' : 'image', video: isVid ? dataUrl : undefined, image: !isVid ? dataUrl : undefined, media: dataUrl, file: dataUrl, room: LIVE_CHAT_ROOM, roomId: LIVE_CHAT_ROOM, noStory: 1 },
         ];
-        for (const path of ['/api/live-chat/media', '/api/live-chat/video', '/api/live-chat/upload', '/api/live-chat/voice']) {
+        for (const path of ['/api/chat-images', '/api/live-chat/media', '/api/live-chat/video', '/api/live-chat/upload']) {
           try {
             const r = await fetch(path, {
               method: 'POST', credentials: 'include',
@@ -16200,10 +16201,14 @@ function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading
             <video
               ref={vidRef}
               src={url}
-              preload="metadata"
+              preload="auto"
               playsInline
+              autoPlay
+              muted
+              controls={false}
+              poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
               disablePictureInPicture
-              controlsList="nodownload noplaybackrate"
+              controlsList="nodownload noplaybackrate nofullscreen"
               onTimeUpdate={e => { const v = e.currentTarget; if (v.duration > 0) setProg(v.currentTime / v.duration); }}
               onEnded={() => { setPlaying(false); setProg(0); }}
               onPause={() => setPlaying(false)}
@@ -16220,16 +16225,9 @@ function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading
               <span>{isMe ? (seenCount > 0 ? `Opened · ${seenCount}` : 'Sent once') : (seen ? 'Opened' : 'Tap to view')}</span>
             </div>
           ) : !playing ? (
-            <>
-              <div style={{ ...overlayBase, background: 'rgba(0,0,0,0.18)' }}>
-                <span style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Play size={22} fill="#fff" color="#fff" />
-                </span>
-              </div>
-              <span style={{ position: 'absolute', left: '50%', bottom: 10, transform: 'translateX(-50%)', padding: '2px 8px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: '0.66rem', fontWeight: 800 }}>
-                {fmtRecTime(duration)}
-              </span>
-            </>
+            <span style={{ position: 'absolute', left: '50%', bottom: 10, transform: 'translateX(-50%)', padding: '2px 8px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: '0.66rem', fontWeight: 800 }}>
+              {fmtRecTime(duration)}
+            </span>
           ) : null}
         </div>
         {!once && (playing || prog > 0) ? (
@@ -16317,8 +16315,11 @@ function LiveRoundOnceViewer({ url, onStarted, onClose }: { url: string; onStart
             src={url}
             playsInline
             autoPlay
+            muted
+            controls={false}
+            poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
             disablePictureInPicture
-            controlsList="nodownload noplaybackrate"
+            controlsList="nodownload noplaybackrate nofullscreen"
             onPlaying={() => { if (!startedRef.current) { startedRef.current = true; onStarted(); } setNeedTap(false); }}
             onTimeUpdate={e => { const v = e.currentTarget; if (v.duration > 0) setProg(v.currentTime / v.duration); }}
             onEnded={onClose}
