@@ -18022,6 +18022,12 @@ function PublicLiveCommentsPanel({
   // ── Location (Telegram-style picker + viewer) ──
   const [locPickerOpen, setLocPickerOpen] = useState(false);
   const [locView, setLocView] = useState<{ lat: number; lng: number; label: string; name?: string | null; avatar?: string | null } | null>(null);
+  useEffect(() => {
+    const openSaved = () => setSavedOpen(true);
+    window.addEventListener('stooorna:open-saved', openSaved);
+    try { if (sessionStorage.getItem('stooorna_saved_open') === '1') setSavedOpen(true); } catch { /* */ }
+    return () => window.removeEventListener('stooorna:open-saved', openSaved);
+  }, []);
   const [savedOpen, setSavedOpen] = useState(() => {
     try { return sessionStorage.getItem('stooorna_saved_open') === '1'; } catch { return false; }
   });
@@ -25057,8 +25063,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const t = window.setTimeout(() => {
       try { sessionStorage.setItem('stooorna_saved_open', '1'); } catch { /* */ }
       setSavedJoinSpin(false);
-      setSavedOpen(true);
       setChatOverlayOpen(true);
+      try { window.dispatchEvent(new CustomEvent('stooorna:open-saved')); } catch { /* */ }
     }, 3000);
     return () => window.clearTimeout(t);
   }, [savedJoinSpin]);
@@ -27546,8 +27552,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
         {savedJoinSpin && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 200001, background: '#041414', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: 92, height: 92, borderRadius: '50%', border: '4px solid rgba(0,188,212,0.25)', borderTopColor: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'stooornaLiveSpin 0.9s linear infinite' }}>
-              <MessageCircle size={36} color="#00BCD4" />
+            <style>{'@keyframes stooornaSavedSpin{to{transform:rotate(360deg)}}'}</style>
+            <div style={{ position: 'relative', width: 92, height: 92 }}>
+              <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '4px solid rgba(0,188,212,0.25)', borderTopColor: '#00BCD4', animation: 'stooornaSavedSpin 0.9s linear infinite' }} />
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <MessageCircle size={36} color="#00BCD4" />
+              </div>
             </div>
           </div>
         )}
