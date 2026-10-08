@@ -14444,6 +14444,8 @@ type SavedMsg = {
   id: string;
   kind: SavedMsgKind;
   text?: string | null;
+  senderName?: string | null;
+  avatarUrl?: string | null;
   mediaUrl?: string | null;
   fileName?: string | null;
   fileSize?: number | null;
@@ -14464,6 +14466,8 @@ function loadSavedMessages(uid: string): SavedMsg[] {
         id: String(x.id),
         kind: (['text', 'image', 'video', 'file', 'location'].includes(x.kind) ? x.kind : 'text') as SavedMsgKind,
         text: x.text != null ? String(x.text).slice(0, 2000) : null,
+        senderName: x.senderName ?? null,
+        avatarUrl: x.avatarUrl ?? null,
         mediaUrl: x.mediaUrl ?? null,
         fileName: x.fileName ?? null,
         fileSize: typeof x.fileSize === 'number' ? x.fileSize : null,
@@ -14668,7 +14672,7 @@ function SavedMessagesScreen({
         if (!room) { setRoomMembers([]); setJoinedOwner(''); return; }
         setJoinedOwner(d.joined ? String(room.ownerId) : '');
         setRoomMembers(room.members || []);
-        const extra = (room.messages || []).map((m: any) => ({ id: String(m.id), kind: 'text' as const, text: `${m.name || ''}: ${m.text}`, createdAt: Number(m.at) || Date.now() }));
+        const extra = (room.messages || []).map((m: any) => ({ id: String(m.id), kind: 'text' as const, text: String(m.text || ''), senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() }));
         if (extra.length) setItems(prev => {
           const ids = new Set(prev.map(x => x.id));
           const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id));
@@ -14696,7 +14700,8 @@ function SavedMessagesScreen({
     return () => window.clearInterval(id);
   }, [open, userId, userUsername]);
   const inviteUser = async (username: string, name: string) => {
-    await fetch('/api/saved-room/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId, ownerName: userName || userUsername, username, name }) });
+    const friend = (((window as any).__stooornaFriends || []) as any[]).find(f => String(f.username || '').replace(/^@/, '') === username.replace(/^@/, ''));
+    await fetch('/api/saved-room/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId, ownerName: userName || userUsername, ownerAvatar: userAvatar, username, name, avatarUrl: friend?.avatarUrl || friend?.image || null }) });
     await fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'invite', usernames: [username], fromUserId: userId, fromName: userName || userUsername, title: 'دعوة شات محفوظات', body: 'تمت دعوتك لشات خاص', room: `saved:${userId}`, href: '/?saved=1' }) });
     setInviteOpen(false);
     setToast(`تمت دعوة @${username}`);
@@ -14726,7 +14731,7 @@ function SavedMessagesScreen({
     };
     persist([...loadSavedMessages(userId), row]);
     if (roomOwner && (partial.text || partial.mediaUrl)) {
-      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, text: partial.text || partial.mediaUrl || partial.kind }) });
+      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.text || partial.mediaUrl || partial.kind }) });
     }
   };
 
@@ -14949,7 +14954,8 @@ function SavedMessagesScreen({
           {roomMembers.length > 0 && (
             <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap' }}>
               {roomMembers.map(m => (
-                <span key={m.username} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12 }}>
+                <span key={m.username} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <img src={(m as any).avatarUrl || ''} alt="" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4' }} />
                   @{m.username}
                   {!joinedOwner && <button type="button" onClick={() => void kickUser(m.username)} style={{ marginLeft: 6, border: 'none', background: 'none', color: '#fca5a5', cursor: 'pointer' }}>طرد</button>}
                 </span>
@@ -15018,7 +15024,10 @@ function SavedMessagesScreen({
                   }}
                 >
                   {m.kind === 'text' && (
-                    <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111' }}>{m.text}</p>
+                    <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                      {m.senderName ? <img src={m.avatarUrl || ''} alt="" style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4', flexShrink: 0 }} /> : null}
+                      <span>{m.senderName ? `@${m.senderName}: ` : ''}{m.text}</span>
+                    </p>
                   )}
                   {m.kind === 'image' && m.mediaUrl && (
                     <button

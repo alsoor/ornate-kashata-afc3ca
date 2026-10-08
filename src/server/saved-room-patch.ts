@@ -3,8 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Express, Request, Response } from "express";
 
-type Member = { userId: string; username: string; name: string };
-type RoomMsg = { id: string; userId: string; name: string; text: string; at: number };
+type Member = { userId: string; username: string; name: string; avatarUrl?: string | null };
+type RoomMsg = { id: string; userId: string; name: string; text: string; at: number; avatarUrl?: string | null };
 type Room = { ownerId: string; ownerName: string; members: Member[]; messages: RoomMsg[]; kicked: string[] };
 
 const FILE = join(dirname(fileURLToPath(import.meta.url)), "data", "saved-rooms.json");
@@ -34,7 +34,7 @@ export function registerSavedRoomRoutes(app: Express) {
     const room = rooms[ownerId] || { ownerId, ownerName: String(body.ownerName || "Saved"), members: [], messages: [], kicked: [] };
     room.kicked = room.kicked.filter(k => k.toLowerCase() !== username.toLowerCase());
     if (!room.members.some(m => m.username.toLowerCase() === username.toLowerCase())) {
-      room.members.push({ userId: String(body.userId || ""), username, name: String(body.name || username) });
+      room.members.push({ userId: String(body.userId || ""), username, name: String(body.name || username), avatarUrl: body.avatarUrl || null } as Member);
     }
     rooms[ownerId] = room;
     save();
@@ -45,7 +45,7 @@ export function registerSavedRoomRoutes(app: Express) {
     const ownerId = String(body.ownerId || "");
     const room = rooms[ownerId];
     if (!room) return res.status(404).json({ error: "no-room" });
-    const msg: RoomMsg = { id: `sr_${Date.now()}`, userId: String(body.userId || ""), name: String(body.name || ""), text: String(body.text || "").slice(0, 2000), at: Date.now() };
+    const msg: RoomMsg = { id: `sr_${Date.now()}`, userId: String(body.userId || ""), name: String(body.name || ""), text: String(body.text || "").slice(0, 2000), at: Date.now(), avatarUrl: body.avatarUrl || null };
     room.messages.push(msg);
     room.messages = room.messages.slice(-400);
     save();
