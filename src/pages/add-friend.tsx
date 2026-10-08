@@ -24485,13 +24485,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     storyPullProgressRef.current = 0;
     storyPullActiveRef.current = false;
     lastFeedScrollTopRef.current = 0;
-    try {
-      window.scrollTo(0, 0);
-      document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0;
-    } catch { /* */ }
-    const el = profileFeedScrollRef.current;
-    if (el) el.scrollTop = 0;
+    // Do not force scroll-to-top on focus/pageshow — that made the chat jump up and down on entry.
     try {
       window.dispatchEvent(new CustomEvent('stooorna:story-page-active', {
         detail: { active: pageTab === 'profile' },
@@ -25046,11 +25040,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     ...storyGroups.map(g => String(g.userId)),
   ], [user?.id, friends, storyGroups]);
   const anyLiveBroadcast = useAnyLiveBroadcast(anyLiveHostIds);
-  // Drop the raised story sheet only when a user has a published story, or a live is open.
-  const storySheetDrop = storyGroups.some(g => Array.isArray(g.items) && g.items.length > 0) || anyLiveBroadcast;
+  // Drop the raised story sheet only after entry, when a new story is published or a live opens.
+  // Existing stories on load must not lower it (that made the sheet bounce on entry).
+  const storyItemCount = storyGroups.reduce((n, g) => n + (Array.isArray(g.items) ? g.items.length : 0), 0);
+  const storyDropBoot = useRef(true);
+  const storyDropCount = useRef(0);
+  const storyDropLive = useRef(false);
   useEffect(() => {
-    if (storySheetDrop) setHeaderOpen(true);
-  }, [storySheetDrop]);
+    if (storyDropBoot.current) {
+      storyDropBoot.current = false;
+      storyDropCount.current = storyItemCount;
+      storyDropLive.current = !!anyLiveBroadcast;
+      return;
+    }
+    const published = storyItemCount > storyDropCount.current;
+    const liveOpened = !!anyLiveBroadcast && !storyDropLive.current;
+    storyDropCount.current = storyItemCount;
+    storyDropLive.current = !!anyLiveBroadcast;
+    if (published || liveOpened) setHeaderOpen(true);
+  }, [storyItemCount, anyLiveBroadcast]);
   // مرشّحو بطاقات البث في الرئيسية: أصحاب القصص + الأصدقاء (بدون أنا)
   const homeLiveHosts = useMemo<HomeLiveHost[]>(() => {
     const me = String(user?.id || '');
