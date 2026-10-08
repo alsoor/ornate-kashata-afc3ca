@@ -24781,7 +24781,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const bottomHeaderShown = !guestMode && !chatLifted && !isFriendManagement && !visitorProfileOpen && !dockSettingsOpen;
   useEffect(() => {
     try {
-      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(52px + env(safe-area-inset-bottom, 0px))' : '0px');
+      document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(74px + env(safe-area-inset-bottom, 0px))' : '0px');
     } catch { /* */ }
     return () => { try { document.documentElement.style.setProperty('--stooorna-bottom-bar-h', '0px'); } catch { /* */ } };
   }, [bottomHeaderShown]);
