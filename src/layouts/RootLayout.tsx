@@ -5326,6 +5326,23 @@ function GlobalPublicChatHost({ user }: { user: any }) {
   });
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // موضع زر الشات العائم: يتحرك بالإصبع لأي مكان (فوق/تحت/يمين/يسار) ويتذكر مكانه
+  const FAB_SIZE = 44;
+  const [fabPos, setFabPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const raw = localStorage.getItem('stooorna_public_chat_fab_pos');
+      if (!raw) return null;
+      const v = JSON.parse(raw);
+      if (typeof v?.x === 'number' && typeof v?.y === 'number') return { x: v.x, y: v.y };
+    } catch { /* */ }
+    return null;
+  });
+  const fabDragRef = useRef<{ sx: number; sy: number; ox: number; oy: number; id: number; moved: boolean } | null>(null);
+  const fabMovedRef = useRef(false);
+  const fabClamp = (x: number, y: number) => ({
+    x: Math.max(4, Math.min(window.innerWidth - FAB_SIZE - 4, x)),
+    y: Math.max(4, Math.min(window.innerHeight - FAB_SIZE - 4, y)),
+  });
   useEffect(() => {
     const sync = (e?: Event) => {
       const detail = (e as CustomEvent | undefined)?.detail as { on?: boolean } | undefined;
@@ -5345,11 +5362,44 @@ function GlobalPublicChatHost({ user }: { user: any }) {
       {!open ? (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => { if (fabMovedRef.current) { fabMovedRef.current = false; return; } setOpen(true); }}
+          onPointerDown={e => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            fabDragRef.current = { sx: e.clientX, sy: e.clientY, ox: r.left, oy: r.top, id: e.pointerId, moved: false };
+            fabMovedRef.current = false;
+            try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* */ }
+          }}
+          onPointerMove={e => {
+            const d = fabDragRef.current;
+            if (!d || d.id !== e.pointerId) return;
+            const dx = e.clientX - d.sx;
+            const dy = e.clientY - d.sy;
+            if (!d.moved && Math.hypot(dx, dy) < 6) return;
+            d.moved = true;
+            fabMovedRef.current = true;
+            setFabPos(fabClamp(d.ox + dx, d.oy + dy));
+          }}
+          onPointerUp={e => {
+            const d = fabDragRef.current;
+            if (!d || d.id !== e.pointerId) return;
+            fabDragRef.current = null;
+            try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* */ }
+            if (d.moved) {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              const np = fabClamp(r.left, r.top);
+              setFabPos(np);
+              try { localStorage.setItem('stooorna_public_chat_fab_pos', JSON.stringify(np)); } catch { /* */ }
+            }
+          }}
+          onPointerCancel={() => { fabDragRef.current = null; }}
           aria-label="فتح الشات العام"
           style={{
-            position: 'fixed', right: 16, bottom: 'max(92px, calc(env(safe-area-inset-bottom, 0px) + 78px))',
-            zIndex: 23000, width: 52, height: 52, borderRadius: '50%', cursor: 'pointer',
+            position: 'fixed',
+            ...(fabPos
+              ? { left: Math.max(4, Math.min((typeof window !== 'undefined' ? window.innerWidth : 400) - FAB_SIZE - 4, fabPos.x)), top: Math.max(4, Math.min((typeof window !== 'undefined' ? window.innerHeight : 800) - FAB_SIZE - 4, fabPos.y)) }
+              : { right: 16, bottom: 'max(92px, calc(env(safe-area-inset-bottom, 0px) + 78px))' }),
+            touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
+            zIndex: 23000, width: FAB_SIZE, height: FAB_SIZE, borderRadius: '50%', cursor: 'pointer', padding: 0,
             border: '1.5px solid #ffffff', background: 'rgba(6,16,18,0.94)',
             color: busy ? '#3b82f6' : '#ffffff',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -5357,7 +5407,7 @@ function GlobalPublicChatHost({ user }: { user: any }) {
             animation: 'stooornaPublicChatFloat 1.35s ease-in-out infinite',
           }}
         >
-          <MessageCircle size={24} strokeWidth={2.2} />
+          <MessageCircle size={22} strokeWidth={2.2} />
         </button>
       ) : null}
       <Suspense fallback={null}>
