@@ -26,6 +26,19 @@ import { WalletSheet } from '@/components/LiveCoinsDock';
 
 function OwnerLiveIconsControls() {
   const [hide, setHide] = useState({ coins: false, gifts: false, deposit: false });
+  useEffect(() => {
+    const hideCard = () => {
+      document.querySelectorAll<HTMLElement>('div,section,article').forEach(el => {
+        const text = el.textContent || '';
+        if (!text.includes('Deposit box') || text.includes('Gifts icon') || text.includes('Coins')) return;
+        el.style.display = 'none';
+      });
+    };
+    hideCard();
+    const obs = new MutationObserver(hideCard);
+    obs.observe(document.body, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, []);
   const [priv, setPriv] = useState(false);
   useEffect(() => {
     try {
@@ -53,7 +66,6 @@ function OwnerLiveIconsControls() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {row('coins', 'إخفاء الشحن')}
       {row('gifts', 'إخفاء الهدايا')}
-      {row('deposit', 'إخفاء الإيداع')}
       <button type="button" onClick={() => {
         const next = !priv; setPriv(next);
         try { localStorage.setItem('stooorna_owner_live_icons_private', next ? '1' : '0'); } catch { /* */ }
