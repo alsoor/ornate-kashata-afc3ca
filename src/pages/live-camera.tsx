@@ -2313,11 +2313,12 @@ export default function LiveCameraPage() {
     <>
       {savedInvite && (
         <div style={{ position: 'fixed', top: 12, left: 12, right: 12, zIndex: 200000, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 16, padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button type="button" onClick={() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); sessionStorage.setItem('stooorna_saved_owner', savedInvite.ownerId); } catch { /* */ } window.location.href = '/?saved=1'; }} style={{ flex: 1, background: 'none', border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
+          <div style={{ flex: 1 }}>
             <b>@{savedInvite.fromName}</b>
-            <div style={{ fontSize: 13, color: '#00BCD4', fontWeight: 800 }}>Join the Chat</div>
-          </button>
-          <button type="button" aria-label="Ignore invite" onClick={() => setSavedInvite(null)} style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #fff', background: 'transparent', color: '#fff' }}>×</button>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>دعوة لشات المحفوظات</div>
+          </div>
+          <button type="button" onClick={() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); sessionStorage.setItem('stooorna_saved_owner', savedInvite.ownerId); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: savedInvite.ownerId, userId: myId, name: myUsername || myName, text: 'Join the chat' }) }); window.location.href = '/?saved=1'; }} style={{ border: 'none', borderRadius: 999, background: '#22c55e', color: '#041414', fontWeight: 800, padding: '8px 12px' }}>Accept</button>
+          <button type="button" onClick={() => setSavedInvite(null)} style={{ border: '1px solid #fff', borderRadius: 999, background: 'transparent', color: '#fff', fontWeight: 800, padding: '8px 12px' }}>Decline</button>
         </div>
       )}
     <div

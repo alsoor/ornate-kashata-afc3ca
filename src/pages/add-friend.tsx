@@ -25059,6 +25059,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (n.type === 'invite' && !n.read) {
             const ownerId = String(n.room || '').replace('saved:', '');
             setSavedInvite({ id: n.id, fromName: n.fromName || 'Someone', ownerId });
+            continue;
           }
           if (n.type === 'call' && document.visibilityState === 'visible') continue;
           if (n.type === 'call' && document.visibilityState === 'hidden') {
@@ -27492,11 +27493,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
         {savedInvite && (
           <div style={{ position: 'fixed', top: 54, left: 12, right: 12, zIndex: 200000, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 16, padding: '12px', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <button type="button" onClick={() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); sessionStorage.setItem('stooorna_saved_owner', savedInvite.ownerId); } catch { /* */ } setSavedOpen(true); setChatOverlayOpen(true); setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: savedInvite.id }) }); }} style={{ flex: 1, background: 'none', border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
+            <div style={{ flex: 1 }}>
               <b>@{savedInvite.fromName}</b>
-              <div style={{ fontSize: 13, color: '#00BCD4', fontWeight: 800 }}>Join the Chat</div>
-            </button>
-            <button type="button" aria-label="Ignore invite" onClick={() => setSavedInvite(null)} style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #fff', background: 'transparent', color: '#fff', cursor: 'pointer' }}>×</button>
+              <div style={{ fontSize: 12, opacity: 0.8 }}>دعوة لشات المحفوظات</div>
+            </div>
+            <button type="button" onClick={() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); sessionStorage.setItem('stooorna_saved_owner', savedInvite.ownerId); } catch { /* */ } setSavedOpen(true); setChatOverlayOpen(true); void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: savedInvite.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: savedInvite.id }) }); }} style={{ border: 'none', borderRadius: 999, background: '#22c55e', color: '#041414', fontWeight: 800, padding: '8px 12px', cursor: 'pointer' }}>Accept</button>
+            <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ border: '1px solid #fff', borderRadius: 999, background: 'transparent', color: '#fff', fontWeight: 800, padding: '8px 12px', cursor: 'pointer' }}>Decline</button>
           </div>
         )}
         {noticeTop && (
