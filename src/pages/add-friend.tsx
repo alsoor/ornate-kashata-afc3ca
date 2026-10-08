@@ -19434,18 +19434,6 @@ export function PublicLiveCommentsPanel({
         transform: (chatDragPos.x || chatDragPos.y) ? `translate(${chatDragPos.x}px, ${chatDragPos.y}px)` : undefined,
       }}
     >
-      {chatLift === 1 ? (
-        <div
-          role="button"
-          aria-label="تحريك الشات"
-          onPointerDown={chatDragStart}
-          onPointerMove={chatDragMove}
-          onPointerUp={chatDragEnd}
-          onPointerCancel={chatDragEnd}
-          style={{ position: 'absolute', left: 10, top: 'calc(max(8px, env(safe-area-inset-top)) + 8px)', zIndex: 31, pointerEvents: 'auto', width: 40, height: 40, borderRadius: '50%', background: 'rgba(6,23,26,0.9)', border: '1px solid rgba(0,188,212,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none', cursor: 'grab', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20" /></svg>
-        </div>
-      ) : null}
       {chatLift === 1 ? <LiveChatClearCountdown onDotClick={() => setBigEmojiOpen(v => !v)} dotActive={bigEmojiOpen} onTap={dropChatToStory} /> : null}
       {chatLift === 1 && bigEmojiOpen ? (
         <>
