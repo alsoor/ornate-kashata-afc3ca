@@ -2310,6 +2310,7 @@ export default function LiveCameraPage() {
   }
 
   return (
+    <>
       {savedInvite && (
         <div style={{ position: 'fixed', top: 12, left: 12, right: 12, zIndex: 200000, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 16, padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
           <button type="button" onClick={() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); sessionStorage.setItem('stooorna_saved_owner', savedInvite.ownerId); } catch { /* */ } window.location.href = '/?saved=1'; }} style={{ flex: 1, background: 'none', border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
@@ -3527,5 +3528,6 @@ export default function LiveCameraPage() {
       )}
       <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} />
     </div>
+    </>
   );
 }
