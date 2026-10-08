@@ -14674,10 +14674,11 @@ function SavedMessagesScreen({
         setJoinedOwner(d.joined ? String(room.ownerId) : '');
         setRoomMembers(room.members || []);
         const extra = (room.messages || []).map((m: any) => {
-          const text = String(m.text || '');
-          const isImg = /^data:image\//.test(text) || /\/api\/chat-images/.test(text) && !/video/.test(text);
-          const isVid = /^data:video\//.test(text) || /\.(mp4|webm|mov)(\?|$)/i.test(text);
-          return { id: String(m.id), kind: (isVid ? 'video' : isImg ? 'image' : 'text') as SavedMsg['kind'], text: isImg || isVid ? '' : text, mediaUrl: isImg || isVid ? text : null, senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() };
+          const raw = String(m.text || '');
+          const isImg = raw.startsWith('img:');
+          const isVid = raw.startsWith('vid:');
+          const url = isImg || isVid ? raw.slice(4) : '';
+          return { id: String(m.id), kind: (isVid ? 'video' : isImg ? 'image' : 'text') as SavedMsg['kind'], text: isImg || isVid ? '' : raw, mediaUrl: url || null, senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() };
         });
         if (extra.length) setItems(prev => {
           const ids = new Set(prev.map(x => x.id));
@@ -14739,7 +14740,7 @@ function SavedMessagesScreen({
     };
     persist([...loadSavedMessages(userId), row]);
     if (roomOwner && (partial.text || partial.mediaUrl)) {
-      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.text || partial.mediaUrl || partial.kind }) });
+      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? `img:${partial.mediaUrl || ''}` : partial.kind === 'video' ? `vid:${partial.mediaUrl || ''}` : (partial.text || partial.kind) }) });
     }
   };
 
@@ -14932,12 +14933,16 @@ function SavedMessagesScreen({
                 background: '#00BCD4',
                 boxShadow: '0 0 0 2px rgba(0,188,212,0.25)',
               }}>
+                {(joinedOwner ? sessionStorage.getItem('stooorna_saved_owner_avatar') : userAvatar) ? (
+                  <img src={(joinedOwner ? sessionStorage.getItem('stooorna_saved_owner_avatar') : userAvatar) || ''} alt="" style={{ width: 34, height: 34, objectFit: 'cover' }} />
+                ) : (
                 <UserAvatar
                   name={(joinedOwner ? (sessionStorage.getItem('stooorna_saved_owner_name') || 'Friend') : (userName || userUsername || '?'))}
-                  avatarUrl={joinedOwner ? null : userAvatar}
+                  avatarUrl={userAvatar}
                   size={34}
                   style={{ border: 'none' }}
                 />
+                )}
               </span>
               <span style={{
                 fontWeight: 700,
@@ -14964,9 +14969,11 @@ function SavedMessagesScreen({
             </div>
           )}
           {memberMenu && (
-            <div style={{ margin: '0 12px 8px', background: '#111', color: '#fff', borderRadius: 14, padding: 10, display: 'flex', gap: 8 }}>
-              <button type="button" onClick={() => void kickUser(memberMenu.username)} style={{ flex: 1, border: 'none', borderRadius: 12, background: '#ef4444', color: '#fff', fontWeight: 800, padding: '10px' }}>طرد</button>
-              <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('stooorna:open-friend-profile', { detail: memberMenu })); setMemberMenu(null); }} style={{ flex: 1, border: '1px solid #00BCD4', borderRadius: 12, background: 'transparent', color: '#00BCD4', fontWeight: 800, padding: '10px' }}>البروفايل</button>
+            <div onClick={() => setMemberMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 80 }}>
+              <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 108, left: 12, background: '#111', color: '#fff', borderRadius: 12, padding: 6, display: 'flex', flexDirection: 'column', gap: 4, width: 120 }}>
+                <button type="button" onClick={() => void kickUser(memberMenu.username)} style={{ border: 'none', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 800, padding: '6px 8px', fontSize: 12 }}>طرد</button>
+                <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('stooorna:open-friend-profile', { detail: memberMenu })); setMemberMenu(null); }} style={{ border: '1px solid #00BCD4', borderRadius: 8, background: 'transparent', color: '#00BCD4', fontWeight: 800, padding: '6px 8px', fontSize: 12 }}>البروفايل</button>
+              </div>
             </div>
           )}
           {inviteOpen && (
@@ -15014,7 +15021,7 @@ function SavedMessagesScreen({
                 </p>
               </div>
             ) : null}
-            {items.map(m => (
+            {[...items].sort((a, b) => a.createdAt - b.createdAt).map(m => (
               <SavedMsgDeleteFx
                 key={m.id}
                 enabled
@@ -15036,8 +15043,8 @@ function SavedMessagesScreen({
                 >
                   {m.kind === 'text' && (
                     <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                      {m.senderName ? <img src={m.avatarUrl || ''} alt="" style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4', flexShrink: 0 }} /> : null}
-                      <span>{m.senderName ? `@${m.senderName}: ` : ''}{m.text}</span>
+                      {m.senderName ? <img src={m.avatarUrl || ''} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', background: '#123', flexShrink: 0 }} /> : null}
+                      <span><b style={{ fontSize: '0.95rem' }}>{m.senderName ? `@${m.senderName}` : ''}</b>{m.senderName ? ' ' : ''}{m.text}</span>
                     </p>
                   )}
                   {m.kind === 'image' && m.mediaUrl && (
@@ -15087,22 +15094,8 @@ function SavedMessagesScreen({
                           width: '100%', maxHeight: 280, borderRadius: 10, background: '#000',
                           display: 'block', pointerEvents: 'none', objectFit: 'cover',
                         }}
+                      poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                       />
-                      <span
-                        aria-hidden
-                        style={{
-                          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          pointerEvents: 'none',
-                        }}
-                      >
-                        <span style={{
-                          width: 52, height: 52, borderRadius: '50%',
-                          background: 'rgba(0,0,0,0.45)', border: '2px solid rgba(255,255,255,0.85)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        }}>
-                          <Play size={22} color="#fff" fill="#fff" style={{ marginLeft: 3 }} />
-                        </span>
-                      </span>
                     </button>
                   )}
                   {m.kind === 'file' && (
@@ -18030,6 +18023,14 @@ function PublicLiveCommentsPanel({
   // ── Location (Telegram-style picker + viewer) ──
   const [locPickerOpen, setLocPickerOpen] = useState(false);
   const [locView, setLocView] = useState<{ lat: number; lng: number; label: string; name?: string | null; avatar?: string | null } | null>(null);
+  useEffect(() => {
+    const onProfile = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      setProfilePeer({ userId: String(d.userId || ''), name: d.name || d.username || 'User', username: d.username || null, avatarUrl: d.avatarUrl || null } as any);
+    };
+    window.addEventListener('stooorna:open-friend-profile', onProfile as EventListener);
+    return () => window.removeEventListener('stooorna:open-friend-profile', onProfile as EventListener);
+  }, []);
   useEffect(() => {
     const openSaved = () => setSavedOpen(true);
     window.addEventListener('stooorna:open-saved', openSaved);
@@ -25120,7 +25121,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (!n?.id || seen.has(n.id)) continue;
           seen.add(n.id);
           since = Math.max(since, Number(n.at) || 0);
-          if (String(n.title || '').includes('طرد')) { setKickedBox(true); continue; }
+          if (String(n.title || '').includes('طرد')) { try { const seen = sessionStorage.getItem('stooorna_kick_seen') || ''; if (!seen.includes(n.id)) { sessionStorage.setItem('stooorna_kick_seen', seen + n.id); setKickedBox(true); } } catch { /* */ } void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: n.id }) }); continue; }
           if (n.type === 'invite' && !n.read) {
             const ownerId = String(n.room || '').replace('saved:', '');
             setSavedInvite({ id: n.id, fromName: n.fromName || 'Someone', ownerId, fromAvatar: n.fromAvatar || '' });
@@ -27573,7 +27574,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <div style={{ fontWeight: 900, fontSize: 22 }}>{savedInvite.fromName}</div>
               <div style={{ fontSize: 15, opacity: 0.85, margin: '14px 0 18px' }}>يدعوك للانضمام الى الشات الخاص به</div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 16, background: '#22c55e', color: '#041414', fontWeight: 900, padding: '14px 12px', cursor: 'pointer' }}>Accept ✓</button>
+                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); sessionStorage.setItem('stooorna_saved_owner_avatar', inv.fromAvatar || ''); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 16, background: '#22c55e', color: '#041414', fontWeight: 900, padding: '14px 12px', cursor: 'pointer' }}>Accept ✓</button>
                 <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ flex: 1, border: '1px solid #ef4444', borderRadius: 16, background: 'rgba(80,20,20,0.45)', color: '#fca5a5', fontWeight: 900, padding: '14px 12px', cursor: 'pointer' }}>Decline ✕</button>
               </div>
             </div>
