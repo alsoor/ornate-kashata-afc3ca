@@ -9,6 +9,7 @@ import { usePresenceQuery } from '@/hooks/usePresence';
 import LiveLocationMap from '@/components/LiveLocationMap';
 import PublicVoiceLive from '@/components/PublicVoiceLive';
 import { ensureMyCountry, readSavedCountry } from '@/lib/profileCountry';
+import { maskStoredPhone } from './forgot-phone-mask';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 // Owner-only paid Ads panel (feed ads) — loaded on demand
 const OwnerAdsPanelLazy = React.lazy(() => import('./add-friend').then((m) => ({ default: m.OwnerAdsPanel })));
@@ -3771,6 +3772,8 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   const [confirmEmail, setConfirmEmail] = useState('');
   const [signupDial, setSignupDial] = useState('+965');
   const [signupPhone, setSignupPhone] = useState('');
+  const [dialOpen, setDialOpen] = useState(false);
+  const [dialQuery, setDialQuery] = useState('');
   const [forgotPhoneMask, setForgotPhoneMask] = useState('');
   const [forgotPhoneInput, setForgotPhoneInput] = useState('');
 
@@ -4969,9 +4972,23 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
 
         {isRegister && !isCompany && (
           <div style={{ display: 'flex', gap: 8 }}>
-            <select value={signupDial} onChange={e => setSignupDial(e.target.value)} aria-label={isEn ? 'Country code' : 'مفتاح الدولة'} style={{ ...fieldCss(), width: 118, flex: '0 0 118px', paddingLeft: 10, paddingRight: 8 }}>
-              {DIAL_CODES.map(c => <option key={c.iso + c.dial} value={c.dial}>{c.iso} {c.dial}</option>)}
-            </select>
+            <div style={{ position: 'relative', width: 148, flex: '0 0 148px' }}>
+              <button type="button" onClick={() => { setDialOpen(v => !v); setDialQuery(''); }} style={{ ...fieldCss(), width: '100%', textAlign: 'left', cursor: 'pointer' }}>
+                {(DIAL_CODES.find(c => c.dial === signupDial)?.name || 'Country')} {signupDial}
+              </button>
+              {dialOpen && (
+                <div style={{ position: 'absolute', zIndex: 30, top: 'calc(100% + 6px)', left: 0, width: 260, background: '#f7f7f8', borderRadius: 12, border: '1px solid #e5e7eb', boxShadow: '0 12px 30px rgba(0,0,0,0.28)', overflow: 'hidden' }}>
+                  <input value={dialQuery} onChange={e => setDialQuery(e.target.value)} placeholder="Search country" autoFocus style={{ width: '100%', boxSizing: 'border-box', border: 'none', borderBottom: '1px solid #e5e7eb', padding: '12px 12px', fontSize: 14, outline: 'none' }} />
+                  <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+                    {DIAL_CODES.filter(c => `${c.name} ${c.iso} ${c.dial}`.toLowerCase().includes(dialQuery.trim().toLowerCase())).map(c => (
+                      <button key={c.iso + c.dial} type="button" onClick={() => { setSignupDial(c.dial); setDialOpen(false); setDialQuery(''); }} style={{ width: '100%', textAlign: 'left', padding: '11px 12px', border: 'none', borderBottom: '1px solid #eee', background: c.dial === signupDial ? '#e8f8fb' : '#fff', color: '#111', cursor: 'pointer', fontSize: 14 }}>
+                        {c.name} {c.dial}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <div style={{ position: 'relative', flex: 1 }}>
               <Phone size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
               <input type="tel" inputMode="numeric" placeholder={isEn ? 'Mobile number' : 'رقم الموبايل'} value={signupPhone} onChange={e => setSignupPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 15))} required style={{ ...fieldCss(), paddingLeft: 40 }} dir="ltr" />
@@ -5096,7 +5113,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 <p style={{ margin: 0, color: 'rgba(190,220,220,0.75)', fontSize: 13, textAlign: 'center', lineHeight: 1.55 }}>
                   {isEn ? 'Tap the lock. Your mobile will show with the last 3 digits.' : 'اضغط القفل. يبين رقم موبايلك وآخر ٣ أرقام.'}
                 </p>
-                {forgotPhoneMask ? <p style={{ margin: 0, color: '#00BCD4', fontWeight: 900, letterSpacing: 1 }} dir="ltr">{forgotPhoneMask}</p> : null}
+                {forgotPhoneMask ? <p style={{ margin: 0, color: '#00BCD4', fontWeight: 900, letterSpacing: 1 }} dir="ltr">{maskStoredPhone(forgotPhoneMask) || forgotPhoneMask}</p> : null}
                 <button
                   type="button"
                   aria-label={isEn ? 'Open password reset' : 'فتح تعيين كلمة المرور'}
@@ -5113,7 +5130,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             {forgotStep === 'reset' && (
               <>
                 <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, fontSize: 16, textAlign: 'center' }}>{isEn ? 'New password' : 'كلمة المرور الجديدة'}</p>
-                <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, letterSpacing: 1, fontSize: 15 }} dir="ltr">{forgotPhoneMask || 'xxx'}</p>
+                <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, letterSpacing: 1, fontSize: 15 }} dir="ltr">{maskStoredPhone(forgotPhoneMask) || forgotPhoneMask || '+xx'}</p>
                 <p style={{ margin: 0, color: 'rgba(190,220,220,0.7)', fontSize: 12, textAlign: 'center' }}>{isEn ? 'Last 3 digits of the mobile linked to this email' : 'آخر ٣ أرقام من موبايل هذا الإيميل'}</p>
                 <input type="tel" value={forgotPhoneInput} onChange={e => setForgotPhoneInput(e.target.value.replace(/[^0-9+]/g, '').slice(0, 18))} placeholder={isEn ? 'Full mobile number' : 'رقم الموبايل كامل'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />
                 <input type={showPw ? 'text' : 'password'} value={forgotPw1} onChange={e => setForgotPw1(e.target.value)} placeholder={isEn ? 'New password' : 'كلمة المرور الجديدة'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />

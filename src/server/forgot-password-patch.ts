@@ -9,6 +9,7 @@ import { randomBytes, scrypt as scryptCb } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { maskStoredPhone } from "./forgot-phone-mask.js";
 
 const scrypt = promisify(scryptCb);
 const TTL_MS = 30 * 60 * 1000;
@@ -119,9 +120,7 @@ async function sendResetEmail(to: string, resetUrl: string): Promise<boolean> {
 
 function digitsOf(raw: string): string { return String(raw || "").replace(/\D/g, ""); }
 function maskPhone(raw: string): string {
-  const d = digitsOf(raw);
-  if (d.length < 4) return "";
-  return `+${"x".repeat(Math.max(4, d.length - 3))}${d.slice(-3)}`;
+  return maskStoredPhone(raw);
 }
 function phonesMatch(stored: string, given: string): boolean {
   const a = digitsOf(stored);
