@@ -15,10 +15,11 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Volume2, VolumeX, X, Users, Snowflake, LogOut, Hand } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, X, Users, Snowflake, LogOut, Hand, Minimize2 } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import UserAvatar from '@/components/UserAvatar';
 import HostProfileSheet from './HostProfileSheet';
@@ -126,6 +127,7 @@ export default function LivePage() {
 
   const [joined, setJoined] = useState(false);
   const [livePageClosing, setLivePageClosing] = useState(false);
+  const [minimized, setMinimized] = useState(false);
   const [enterGateDone, setEnterGateDone] = useState(false);
   const [hostProfileOpen, setHostProfileOpen] = useState(false);
   const [joining, setJoining] = useState(false);
@@ -626,11 +628,14 @@ export default function LivePage() {
 
   const dismissLivePage = useCallback(() => {
     if (livePageClosing) return;
+    setMinimized(false);
     setLivePageClosing(true);
     window.setTimeout(() => {
       void leaveRoom();
     }, 280);
   }, [livePageClosing, leaveRoom]);
+
+  const minimizeLive = useCallback(() => setMinimized(true), []);
 
   // Host ended broadcast elsewhere — eject listeners still on this page
   useEffect(() => {
@@ -1400,9 +1405,41 @@ export default function LivePage() {
     void joinRoom();
   }, [enterGateDone, myId, joined, joining, joinRoom]);
 
+  const speakingMember = members.find(m => speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn)));
+  const miniName = speakingMember?.name || (micOn && !micFrozenByHost ? myName : hostName);
+  const miniLiveDock = minimized && typeof document !== 'undefined' ? createPortal(
+    <>
+      <iframe title="Stooorna" src="/" style={{ position: 'fixed', inset: 0, zIndex: 20000, width: '100%', height: '100%', border: 'none', background: '#04120f' }} />
+      <button type="button" onClick={() => setMinimized(false)} aria-label="فتح البث"
+        style={{ position: 'fixed', top: 'max(10px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 20020, width: 'min(92vw, 340px)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 16, background: 'rgba(6,16,18,0.96)', border: '1px solid rgba(239,68,68,0.45)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', textAlign: 'left' }}>
+        <span role="button" onClick={(e) => { e.stopPropagation(); dismissLivePage(); }} aria-label="خروج من البث"
+          style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.5)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <LogOut size={17} strokeWidth={2.4} />
+        </span>
+        <span style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 16, flexShrink: 0 }}>
+          {[0,1,2,3].map(i => (
+            <span key={i} style={{ width: 3, borderRadius: 2, background: speakingMember || (micOn && !micFrozenByHost) ? '#22c55e' : '#00BCD4', height: speakingMember || (micOn && !micFrozenByHost) ? 6 + ((i % 3) * 4) : 5, animation: speakingMember || (micOn && !micFrozenByHost) ? 'stooornaMiniBars 0.8s ease-in-out '+i*0.12+'s infinite' : 'none' }} />
+          ))}
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#ef4444', letterSpacing: '0.04em' }}>VOICE</span>
+          <span style={{ display: 'block', fontSize: 13, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{miniName}</span>
+        </span>
+        <span role="button" onClick={(e) => { e.stopPropagation(); void toggleMic(); }} aria-label="المايك"
+          style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, border: micOn ? '1px solid rgba(34,197,94,0.55)' : '1px solid rgba(0,188,212,0.35)', background: micOn ? 'rgba(34,197,94,0.15)' : 'rgba(0,188,212,0.1)', color: micOn ? '#22c55e' : '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {micOn ? <Mic size={15} /> : <MicOff size={15} />}
+        </span>
+      </button>
+      <style>{'@keyframes stooornaMiniBars{0%,100%{transform:scaleY(0.45)}50%{transform:scaleY(1)}}'}</style>
+    </>,
+    document.body,
+  ) : null;
+
   // ── Lobby ─────────────────────────────────────────────────────────────────
   if (!joined) {
     return (
+      <>
+      {miniLiveDock}
       <div
         style={{
           position: 'fixed',
@@ -1439,7 +1476,11 @@ export default function LivePage() {
           padding: 'max(env(safe-area-inset-top,0px),14px) 14px 8px',
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         }}>
-          <button type="button" onClick={dismissLivePage} aria-label="خروج من البث"
+          <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
+          style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)', color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          <Minimize2 size={16} strokeWidth={2.4} />
+        </button>
+        <button type="button" onClick={dismissLivePage} aria-label="خروج من البث"
             style={{
               width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
               background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.5)',
@@ -1462,12 +1503,14 @@ export default function LivePage() {
           {error ? <p style={{ margin: 0, color: '#ef4444', fontSize: '0.78rem' }}>{error}</p> : null}
         </div>
       </div>
+      </>
     );
   }
 
   // ── In room ───────────────────────────────────────────────────────────────
   return (
     <>
+      {miniLiveDock}
       {savedInvite && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200000, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div style={{ width: '100%', maxWidth: 320, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 18, padding: 18, textAlign: 'center' }}>
@@ -1723,6 +1766,10 @@ export default function LivePage() {
             )}
           </button>
         )}
+        <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
+          style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)', color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          <Minimize2 size={16} strokeWidth={2.4} />
+        </button>
         <button type="button" onClick={dismissLivePage} aria-label="خروج من البث"
           style={{
             width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',

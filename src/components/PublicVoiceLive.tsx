@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LogOut, Mic, MicOff, Users, Volume2, VolumeX, X } from 'lucide-react';
+import { LogOut, Mic, MicOff, Users, Volume2, VolumeX, X, Minimize2 } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 
 const ROOM = 'stooorna-public-voice';
@@ -46,14 +46,17 @@ export default function PublicVoiceLive({
   userUsername,
   userAvatar,
   onClose,
+  onMinimized,
 }: {
   userId?: string;
   userName?: string;
   userUsername?: string | null;
   userAvatar?: string | null;
   onClose?: () => void;
+  onMinimized?: (minimized: boolean) => void;
 }) {
   const [peers, setPeers] = useState<Peer[]>([]);
+  const [minimized, setMinimized] = useState(false);
   const [talking, setTalking] = useState(false);
   const [floorBusy, setFloorBusy] = useState(false);
   const [leftMs, setLeftMs] = useState(0);
@@ -590,6 +593,33 @@ export default function PublicVoiceLive({
   const secs = Math.ceil(leftMs / 1000);
   const cool = Math.ceil(coolMs / 1000);
 
+  const talker = list.find(p => p.talking);
+  const miniName = talker?.name || (talking ? (userName || 'You') : 'Public Voice');
+  if (minimized) {
+    return (
+      <div style={{ position: 'fixed', top: 'max(10px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 15050, width: 'min(92vw, 340px)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 16, background: 'rgba(6,16,18,0.96)', border: '1px solid rgba(239,68,68,0.45)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)', color: '#fff' }}>
+        <button type="button" onClick={onClose} aria-label="خروج من البث" style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', flexShrink: 0, background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.5)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          <LogOut size={17} strokeWidth={2.4} />
+        </button>
+        <button type="button" onClick={() => { setMinimized(false); onMinimized?.(false); }} aria-label="فتح البث" style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', textAlign: 'left', padding: 0 }}>
+          <span style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 16, flexShrink: 0 }}>
+            {[0,1,2,3].map(i => (
+              <span key={i} style={{ width: 3, borderRadius: 2, background: talker || talking ? '#22c55e' : '#00BCD4', height: talker || talking ? 6 + ((i % 3) * 4) : 5, animation: talker || talking ? `stooornaMiniBars 0.8s ease-in-out ${i * 0.12}s infinite` : 'none' }} />
+            ))}
+          </span>
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: 10, fontWeight: 800, color: '#ef4444', letterSpacing: '0.04em' }}>PUBLIC</span>
+            <span style={{ display: 'block', fontSize: 13, fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{miniName}</span>
+          </span>
+        </button>
+        <button type="button" onClick={() => { if (talking) stopMic(); else startMic(); }} aria-label="المايك" style={{ width: 34, height: 34, borderRadius: '50%', cursor: 'pointer', flexShrink: 0, border: talking ? '1px solid rgba(239,68,68,0.55)' : '1px solid rgba(0,188,212,0.35)', background: talking ? 'rgba(239,68,68,0.15)' : 'rgba(0,188,212,0.1)', color: talking ? '#ef4444' : '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          {talking ? <Mic size={15} /> : <MicOff size={15} />}
+        </button>
+        <style>{'@keyframes stooornaMiniBars{0%,100%{transform:scaleY(0.45)}50%{transform:scaleY(1)}}'}</style>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -627,6 +657,19 @@ export default function PublicVoiceLive({
         >
           <Users size={11} />
           <span>{list.length}</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => { setMinimized(true); onMinimized?.(true); }}
+          aria-label="تصغير البث للتصفح"
+          title="تصغير — الصوت يبقى"
+          style={{
+            width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
+            background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
+            color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Minimize2 size={13} />
         </button>
         <button
           type="button"

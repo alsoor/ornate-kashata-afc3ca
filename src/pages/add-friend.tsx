@@ -24715,6 +24715,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [, setProfilePlusOpen] = useState(false);
   // ── Dock bubble: tapping Call / LIVE / Settings opens a speech-bubble panel above the dock, with a tail pointing at the tapped icon ──
   const [showPublicVoice, setShowPublicVoice] = useState(false);
+  const [publicVoiceMini, setPublicVoiceMini] = useState(false);
   // PERF: bubble state lives in an external store (dockSet/dockGet) — this page does NOT subscribe to it,
   // so opening/closing the bubble no longer re-renders this ~12k-line component.
   const openDockBubble = (kind: 'call' | 'live' | 'settings' | 'templates', el: HTMLElement | null) => {
@@ -34030,13 +34031,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
       {showPublicVoice && user?.id && (
         <>
-          <LiveVipDock hostId={String(user.id)} currentUserId={user.id} />
+          {!publicVoiceMini && <LiveVipDock hostId={String(user.id)} currentUserId={user.id} />}
           <React.Suspense fallback={null}><PublicVoiceLive
             userId={String(user.id)}
             userName={(user as any)?.name || (user as any)?.username || 'Me'}
             userUsername={(user as any)?.username || null}
             userAvatar={(user as any)?.avatarUrl || (user as any)?.image || null}
+            onMinimized={setPublicVoiceMini}
             onClose={() => {
+              setPublicVoiceMini(false);
               setShowPublicVoice(false);
               try { sessionStorage.setItem('stooorna_story_refresh', '1'); } catch { /* */ }
               window.setTimeout(() => { try { window.location.reload(); } catch { /* */ } }, 60);
