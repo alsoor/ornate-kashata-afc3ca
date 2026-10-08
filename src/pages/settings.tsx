@@ -266,6 +266,34 @@ type AuthCopy = {
   goRegister: string;
 };
 
+
+const DIAL_CODES: { iso: string; dial: string; name: string }[] = [
+  {iso:'AF',dial:'+93',name:'Afghanistan'},{iso:'AL',dial:'+355',name:'Albania'},{iso:'DZ',dial:'+213',name:'Algeria'},{iso:'AS',dial:'+1684',name:'American Samoa'},{iso:'AD',dial:'+376',name:'Andorra'},{iso:'AO',dial:'+244',name:'Angola'},{iso:'AI',dial:'+1264',name:'Anguilla'},{iso:'AG',dial:'+1268',name:'Antigua and Barbuda'},{iso:'AR',dial:'+54',name:'Argentina'},{iso:'AM',dial:'+374',name:'Armenia'},{iso:'AW',dial:'+297',name:'Aruba'},{iso:'AU',dial:'+61',name:'Australia'},{iso:'AT',dial:'+43',name:'Austria'},{iso:'AZ',dial:'+994',name:'Azerbaijan'},
+  {iso:'BS',dial:'+1242',name:'Bahamas'},{iso:'BH',dial:'+973',name:'Bahrain'},{iso:'BD',dial:'+880',name:'Bangladesh'},{iso:'BB',dial:'+1246',name:'Barbados'},{iso:'BY',dial:'+375',name:'Belarus'},{iso:'BE',dial:'+32',name:'Belgium'},{iso:'BZ',dial:'+501',name:'Belize'},{iso:'BJ',dial:'+229',name:'Benin'},{iso:'BM',dial:'+1441',name:'Bermuda'},{iso:'BT',dial:'+975',name:'Bhutan'},{iso:'BO',dial:'+591',name:'Bolivia'},{iso:'BA',dial:'+387',name:'Bosnia and Herzegovina'},{iso:'BW',dial:'+267',name:'Botswana'},{iso:'BR',dial:'+55',name:'Brazil'},{iso:'BN',dial:'+673',name:'Brunei'},{iso:'BG',dial:'+359',name:'Bulgaria'},{iso:'BF',dial:'+226',name:'Burkina Faso'},{iso:'BI',dial:'+257',name:'Burundi'},
+  {iso:'KH',dial:'+855',name:'Cambodia'},{iso:'CM',dial:'+237',name:'Cameroon'},{iso:'CA',dial:'+1',name:'Canada'},{iso:'CV',dial:'+238',name:'Cape Verde'},{iso:'KY',dial:'+1345',name:'Cayman Islands'},{iso:'CF',dial:'+236',name:'Central African Republic'},{iso:'TD',dial:'+235',name:'Chad'},{iso:'CL',dial:'+56',name:'Chile'},{iso:'CN',dial:'+86',name:'China'},{iso:'CO',dial:'+57',name:'Colombia'},{iso:'KM',dial:'+269',name:'Comoros'},{iso:'CG',dial:'+242',name:'Congo'},{iso:'CD',dial:'+243',name:'Congo DR'},{iso:'CR',dial:'+506',name:'Costa Rica'},{iso:'CI',dial:'+225',name:'Cote dIvoire'},{iso:'HR',dial:'+385',name:'Croatia'},{iso:'CU',dial:'+53',name:'Cuba'},{iso:'CY',dial:'+357',name:'Cyprus'},{iso:'CZ',dial:'+420',name:'Czechia'},
+  {iso:'DK',dial:'+45',name:'Denmark'},{iso:'DJ',dial:'+253',name:'Djibouti'},{iso:'DM',dial:'+1767',name:'Dominica'},{iso:'DO',dial:'+1809',name:'Dominican Republic'},
+  {iso:'EC',dial:'+593',name:'Ecuador'},{iso:'EG',dial:'+20',name:'Egypt'},{iso:'SV',dial:'+503',name:'El Salvador'},{iso:'GQ',dial:'+240',name:'Equatorial Guinea'},{iso:'ER',dial:'+291',name:'Eritrea'},{iso:'EE',dial:'+372',name:'Estonia'},{iso:'SZ',dial:'+268',name:'Eswatini'},{iso:'ET',dial:'+251',name:'Ethiopia'},
+  {iso:'FJ',dial:'+679',name:'Fiji'},{iso:'FI',dial:'+358',name:'Finland'},{iso:'FR',dial:'+33',name:'France'},
+  {iso:'GA',dial:'+241',name:'Gabon'},{iso:'GM',dial:'+220',name:'Gambia'},{iso:'GE',dial:'+995',name:'Georgia'},{iso:'DE',dial:'+49',name:'Germany'},{iso:'GH',dial:'+233',name:'Ghana'},{iso:'GR',dial:'+30',name:'Greece'},{iso:'GD',dial:'+1473',name:'Grenada'},{iso:'GT',dial:'+502',name:'Guatemala'},{iso:'GN',dial:'+224',name:'Guinea'},{iso:'GW',dial:'+245',name:'Guinea-Bissau'},{iso:'GY',dial:'+592',name:'Guyana'},
+  {iso:'HT',dial:'+509',name:'Haiti'},{iso:'HN',dial:'+504',name:'Honduras'},{iso:'HK',dial:'+852',name:'Hong Kong'},{iso:'HU',dial:'+36',name:'Hungary'},
+  {iso:'IS',dial:'+354',name:'Iceland'},{iso:'IN',dial:'+91',name:'India'},{iso:'ID',dial:'+62',name:'Indonesia'},{iso:'IR',dial:'+98',name:'Iran'},{iso:'IQ',dial:'+964',name:'Iraq'},{iso:'IE',dial:'+353',name:'Ireland'},{iso:'IL',dial:'+972',name:'Israel'},{iso:'IT',dial:'+39',name:'Italy'},
+  {iso:'JM',dial:'+1876',name:'Jamaica'},{iso:'JP',dial:'+81',name:'Japan'},{iso:'JO',dial:'+962',name:'Jordan'},
+  {iso:'KZ',dial:'+7',name:'Kazakhstan'},{iso:'KE',dial:'+254',name:'Kenya'},{iso:'KI',dial:'+686',name:'Kiribati'},{iso:'KW',dial:'+965',name:'Kuwait'},{iso:'KG',dial:'+996',name:'Kyrgyzstan'},
+  {iso:'LA',dial:'+856',name:'Laos'},{iso:'LV',dial:'+371',name:'Latvia'},{iso:'LB',dial:'+961',name:'Lebanon'},{iso:'LS',dial:'+266',name:'Lesotho'},{iso:'LR',dial:'+231',name:'Liberia'},{iso:'LY',dial:'+218',name:'Libya'},{iso:'LI',dial:'+423',name:'Liechtenstein'},{iso:'LT',dial:'+370',name:'Lithuania'},{iso:'LU',dial:'+352',name:'Luxembourg'},
+  {iso:'MO',dial:'+853',name:'Macao'},{iso:'MG',dial:'+261',name:'Madagascar'},{iso:'MW',dial:'+265',name:'Malawi'},{iso:'MY',dial:'+60',name:'Malaysia'},{iso:'MV',dial:'+960',name:'Maldives'},{iso:'ML',dial:'+223',name:'Mali'},{iso:'MT',dial:'+356',name:'Malta'},{iso:'MH',dial:'+692',name:'Marshall Islands'},{iso:'MR',dial:'+222',name:'Mauritania'},{iso:'MU',dial:'+230',name:'Mauritius'},{iso:'MX',dial:'+52',name:'Mexico'},{iso:'FM',dial:'+691',name:'Micronesia'},{iso:'MD',dial:'+373',name:'Moldova'},{iso:'MC',dial:'+377',name:'Monaco'},{iso:'MN',dial:'+976',name:'Mongolia'},{iso:'ME',dial:'+382',name:'Montenegro'},{iso:'MA',dial:'+212',name:'Morocco'},{iso:'MZ',dial:'+258',name:'Mozambique'},{iso:'MM',dial:'+95',name:'Myanmar'},
+  {iso:'NA',dial:'+264',name:'Namibia'},{iso:'NR',dial:'+674',name:'Nauru'},{iso:'NP',dial:'+977',name:'Nepal'},{iso:'NL',dial:'+31',name:'Netherlands'},{iso:'NZ',dial:'+64',name:'New Zealand'},{iso:'NI',dial:'+505',name:'Nicaragua'},{iso:'NE',dial:'+227',name:'Niger'},{iso:'NG',dial:'+234',name:'Nigeria'},{iso:'KP',dial:'+850',name:'North Korea'},{iso:'MK',dial:'+389',name:'North Macedonia'},{iso:'NO',dial:'+47',name:'Norway'},
+  {iso:'OM',dial:'+968',name:'Oman'},
+  {iso:'PK',dial:'+92',name:'Pakistan'},{iso:'PW',dial:'+680',name:'Palau'},{iso:'PS',dial:'+970',name:'Palestine'},{iso:'PA',dial:'+507',name:'Panama'},{iso:'PG',dial:'+675',name:'Papua New Guinea'},{iso:'PY',dial:'+595',name:'Paraguay'},{iso:'PE',dial:'+51',name:'Peru'},{iso:'PH',dial:'+63',name:'Philippines'},{iso:'PL',dial:'+48',name:'Poland'},{iso:'PT',dial:'+351',name:'Portugal'},
+  {iso:'QA',dial:'+974',name:'Qatar'},
+  {iso:'RO',dial:'+40',name:'Romania'},{iso:'RU',dial:'+7',name:'Russia'},{iso:'RW',dial:'+250',name:'Rwanda'},
+  {iso:'KN',dial:'+1869',name:'Saint Kitts and Nevis'},{iso:'LC',dial:'+1758',name:'Saint Lucia'},{iso:'VC',dial:'+1784',name:'Saint Vincent'},{iso:'WS',dial:'+685',name:'Samoa'},{iso:'SM',dial:'+378',name:'San Marino'},{iso:'ST',dial:'+239',name:'Sao Tome and Principe'},{iso:'SA',dial:'+966',name:'Saudi Arabia'},{iso:'SN',dial:'+221',name:'Senegal'},{iso:'RS',dial:'+381',name:'Serbia'},{iso:'SC',dial:'+248',name:'Seychelles'},{iso:'SL',dial:'+232',name:'Sierra Leone'},{iso:'SG',dial:'+65',name:'Singapore'},{iso:'SK',dial:'+421',name:'Slovakia'},{iso:'SI',dial:'+386',name:'Slovenia'},{iso:'SB',dial:'+677',name:'Solomon Islands'},{iso:'SO',dial:'+252',name:'Somalia'},{iso:'ZA',dial:'+27',name:'South Africa'},{iso:'KR',dial:'+82',name:'South Korea'},{iso:'SS',dial:'+211',name:'South Sudan'},{iso:'ES',dial:'+34',name:'Spain'},{iso:'LK',dial:'+94',name:'Sri Lanka'},{iso:'SD',dial:'+249',name:'Sudan'},{iso:'SR',dial:'+597',name:'Suriname'},{iso:'SE',dial:'+46',name:'Sweden'},{iso:'CH',dial:'+41',name:'Switzerland'},{iso:'SY',dial:'+963',name:'Syria'},
+  {iso:'TW',dial:'+886',name:'Taiwan'},{iso:'TJ',dial:'+992',name:'Tajikistan'},{iso:'TZ',dial:'+255',name:'Tanzania'},{iso:'TH',dial:'+66',name:'Thailand'},{iso:'TL',dial:'+670',name:'Timor-Leste'},{iso:'TG',dial:'+228',name:'Togo'},{iso:'TO',dial:'+676',name:'Tonga'},{iso:'TT',dial:'+1868',name:'Trinidad and Tobago'},{iso:'TN',dial:'+216',name:'Tunisia'},{iso:'TR',dial:'+90',name:'Turkey'},{iso:'TM',dial:'+993',name:'Turkmenistan'},{iso:'TV',dial:'+688',name:'Tuvalu'},
+  {iso:'UG',dial:'+256',name:'Uganda'},{iso:'UA',dial:'+380',name:'Ukraine'},{iso:'AE',dial:'+971',name:'United Arab Emirates'},{iso:'GB',dial:'+44',name:'United Kingdom'},{iso:'US',dial:'+1',name:'United States'},{iso:'UY',dial:'+598',name:'Uruguay'},{iso:'UZ',dial:'+998',name:'Uzbekistan'},
+  {iso:'VU',dial:'+678',name:'Vanuatu'},{iso:'VA',dial:'+379',name:'Vatican'},{iso:'VE',dial:'+58',name:'Venezuela'},{iso:'VN',dial:'+84',name:'Vietnam'},
+  {iso:'YE',dial:'+967',name:'Yemen'},
+  {iso:'ZM',dial:'+260',name:'Zambia'},{iso:'ZW',dial:'+263',name:'Zimbabwe'},
+];
+
 const AUTH_COPY: Record<AuthLang, AuthCopy> = {
   ar: {
     enterEmailPw: 'أدخل البريد وكلمة المرور',
@@ -3740,6 +3768,10 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   const [companyPhone, setCompanyPhone] = useState('');
   const [companyPhone2, setCompanyPhone2] = useState('');
   const [confirmEmail, setConfirmEmail] = useState('');
+  const [signupDial, setSignupDial] = useState('+965');
+  const [signupPhone, setSignupPhone] = useState('');
+  const [forgotPhoneMask, setForgotPhoneMask] = useState('');
+  const [forgotPhoneInput, setForgotPhoneInput] = useState('');
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -3950,6 +3982,13 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       if (em !== confirmEmail.trim().toLowerCase()) {
         setError('Email and confirm email do not match');
         return;
+      }
+      if (!isCompany) {
+        const national = signupPhone.replace(/\D/g, '');
+        if (national.length < 6) {
+          setError(L.needPhone);
+          return;
+        }
       }
       // اليوزرنيم مطلوب للأفراد والشركات عند التسجيل
       {
@@ -4309,6 +4348,14 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           try {
             localStorage.setItem('stooorna_pending_username', uname);
             localStorage.setItem(`stooorna_username_${em}`, uname);
+            if (!isCompany) {
+              const fullPhone = `${signupDial}${signupPhone.replace(/\D/g, '')}`;
+              localStorage.setItem(`stooorna_phone_${em}`, fullPhone);
+              try {
+                await fetch('/api/users/me/phone', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: fullPhone }) });
+                await fetch('/api/password/phone-bind', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em, phone: fullPhone }) });
+              } catch { /* phone retry stays in settings if the route is late */ }
+            }
             if (usedPhone) rememberPhoneAuth(rawId, em);
           } catch { /* ignore */ }
           try {
@@ -4919,6 +4966,18 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           </div>
         )}
 
+        {isRegister && !isCompany && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <select value={signupDial} onChange={e => setSignupDial(e.target.value)} aria-label={isEn ? 'Country code' : 'مفتاح الدولة'} style={{ ...fieldCss(), width: 118, flex: '0 0 118px', paddingLeft: 10, paddingRight: 8 }}>
+              {DIAL_CODES.map(c => <option key={c.iso + c.dial} value={c.dial}>{c.iso} {c.dial}</option>)}
+            </select>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Phone size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+              <input type="tel" inputMode="numeric" placeholder={isEn ? 'Mobile number' : 'رقم الموبايل'} value={signupPhone} onChange={e => setSignupPhone(e.target.value.replace(/[^0-9]/g, '').slice(0, 15))} required style={{ ...fieldCss(), paddingLeft: 40 }} dir="ltr" />
+            </div>
+          </div>
+        )}
+
         {/* Password */}
         <div style={{ position: 'relative' }}>
           <Lock size={16} color={T.primaryDim} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
@@ -5001,6 +5060,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               const d = await r.json().catch(() => ({} as any));
               if (!r.ok || d.ok === false || d.error === 'not_registered') {
                 if (d.error === 'not_registered') setForgotMsg(isEn ? 'This email is not registered' : 'هذا البريد غير مسجّل في التطبيق');
+                else if (d.error === 'no_phone') setForgotMsg(isEn ? 'This account has no mobile number' : 'هذا الحساب بدون رقم موبايل');
                 else if (r.status === 404 && !d.error) setForgotMsg(isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط');
                 else setForgotMsg(isEn ? 'Could not start reset. Check the email.' : 'تعذر بدء الاستعادة. تأكد من البريد.');
               }
@@ -5008,6 +5068,8 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 const fromLink = String(d.devLink || '').split('forgot=')[1] || '';
                 const tok = String(d.appToken || fromLink || '').trim();
                 setForgotToken(tok);
+                setForgotPhoneMask(String(d.phoneMask || ''));
+                setForgotPhoneInput('');
                 setForgotPw1(''); setForgotPw2('');
                 setForgotStep('icon');
               }
@@ -5052,15 +5114,19 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             {forgotStep === 'reset' && (
               <>
                 <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, fontSize: 16, textAlign: 'center' }}>{isEn ? 'New password' : 'كلمة المرور الجديدة'}</p>
+                <p style={{ margin: 0, color: '#00BCD4', fontWeight: 800, letterSpacing: 1, fontSize: 15 }} dir="ltr">{forgotPhoneMask || 'xxx'}</p>
+                <p style={{ margin: 0, color: 'rgba(190,220,220,0.7)', fontSize: 12, textAlign: 'center' }}>{isEn ? 'Last 3 digits of the mobile linked to this email' : 'آخر ٣ أرقام من موبايل هذا الإيميل'}</p>
+                <input type="tel" value={forgotPhoneInput} onChange={e => setForgotPhoneInput(e.target.value.replace(/[^0-9+]/g, '').slice(0, 18))} placeholder={isEn ? 'Full mobile number' : 'رقم الموبايل كامل'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />
                 <input type={showPw ? 'text' : 'password'} value={forgotPw1} onChange={e => setForgotPw1(e.target.value)} placeholder={isEn ? 'New password' : 'كلمة المرور الجديدة'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />
                 <input type={showConfirmPw ? 'text' : 'password'} value={forgotPw2} onChange={e => setForgotPw2(e.target.value)} placeholder={isEn ? 'Repeat password' : 'أعد كتابة كلمة المرور'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />
                 <button type="button" disabled={loading} onClick={async () => {
                   if (forgotPw1.length < 6 || forgotPw1 !== forgotPw2) { setForgotMsg(isEn ? 'Passwords must match (min 6)' : 'كلمتا المرور غير متطابقتين (٦ أحرف على الأقل)'); return; }
+                  if (forgotPhoneInput.replace(/\D/g, '').length < 6) { setForgotMsg(isEn ? 'Enter the mobile number' : 'أدخل رقم الموبايل'); return; }
                   setLoading(true); setForgotMsg('');
                   try {
-                    const r = await fetch('/api/password/forgot/confirm', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: forgotToken, email: email.trim(), password: forgotPw1, confirm: forgotPw2 }) });
+                    const r = await fetch('/api/password/forgot/confirm', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: forgotToken, email: email.trim(), password: forgotPw1, confirm: forgotPw2, phone: forgotPhoneInput }) });
                     const d = await r.json().catch(() => ({} as any));
-                    if (!r.ok || d.ok === false || d.applied !== true) setForgotMsg(d.error === 'not_registered' ? (isEn ? 'This email is not registered' : 'هذا البريد غير مسجّل في التطبيق') : (isEn ? 'Password was not saved. Try again.' : 'ما انحفظت كلمة المرور. حاول مرة ثانية.'));
+                    if (!r.ok || d.ok === false || d.applied !== true) setForgotMsg(d.error === 'phone_mismatch' ? (isEn ? 'This mobile does not belong to the email' : 'رقم الموبايل لا يخص هذا الإيميل') : d.error === 'not_registered' ? (isEn ? 'This email is not registered' : 'هذا البريد غير مسجّل في التطبيق') : (isEn ? 'Password was not saved. Try again.' : 'ما انحفظت كلمة المرور. حاول مرة ثانية.'));
                     else { setPassword(''); setForgotMsg(isEn ? 'Password changed successfully' : 'تم تغيير كلمة المرور بنجاح'); setForgotStep('done'); }
                   } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
                   setLoading(false);
@@ -6712,6 +6778,7 @@ export default function SettingsPage() {
   const [phoneLoading, setPhoneLoading] = useState(false);
   const [phoneMsg, setPhoneMsg] = useState('');
   const [profilePhone, setProfilePhone] = useState('');
+  const [phoneChecked, setPhoneChecked] = useState(false);
 
   // Share / QR state
   const [copied, setCopied] = useState(false);
@@ -6785,7 +6852,13 @@ export default function SettingsPage() {
         if (cached) setCoverUrl(cached);
       }
       if (d?.name) setDisplayNameState(d.name);
-    });
+      const serverPhone = String(d?.phone || d?.phoneNumber || d?.mobile || '').trim();
+      let localPhone = '';
+      try { localPhone = localStorage.getItem(`stooorna_phone_${String(user.email || '').toLowerCase()}`) || ''; } catch { /* */ }
+      setProfilePhone(serverPhone || localPhone);
+      if (serverPhone || localPhone) setPhoneInput(serverPhone || localPhone);
+      setPhoneChecked(true);
+    }).catch(() => setPhoneChecked(true));
   }, [user]);
 
   // Load bio when user is available
@@ -7125,6 +7198,10 @@ export default function SettingsPage() {
           phone: phoneInput
         })
       });
+      try {
+        await fetch('/api/password/phone-bind', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user?.email || '', phone: phoneInput }) });
+        if (user?.email) localStorage.setItem(`stooorna_phone_${String(user.email).toLowerCase()}`, phoneInput);
+      } catch { /* */ }
       const d = await r.json();
       if (r.ok) {
         setPhoneMsg('Saved!');
@@ -13084,6 +13161,26 @@ export default function SettingsPage() {
 
       {/* ── Wallet (Balance | Deposit) — from profile $ button ── */}
       {user?.id && (
+        {user?.id && phoneChecked && !String(profilePhone || '').trim() && createPortal(
+          <div style={{ position: 'fixed', inset: 0, zIndex: 15000, background: 'rgba(2,10,12,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+            <div style={{ width: 'min(92vw, 360px)', background: '#0e2c30', border: '1px solid rgba(0,188,212,0.4)', borderRadius: 18, padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, textAlign: 'center' }}>رقم الموبايل مطلوب</p>
+              <p style={{ margin: 0, color: 'rgba(190,220,220,0.75)', fontSize: 13, textAlign: 'center' }}>لا يمكن استخدام الحساب بدون رقم موبايل. اختر المفتاح ثم أدخل الرقم.</p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select value={phoneInput.startsWith('+') ? (DIAL_CODES.find(c => phoneInput.startsWith(c.dial))?.dial || '+965') : '+965'} onChange={e => setPhoneInput(prev => e.target.value + prev.replace(/^\+\d+/, '').replace(/\D/g, ''))} style={{ width: 110, borderRadius: 10, background: '#062024', color: '#d7eeee', border: '1px solid rgba(0,188,212,0.35)', padding: 8 }}>
+                  {DIAL_CODES.map(c => <option key={c.iso + c.dial} value={c.dial}>{c.iso} {c.dial}</option>)}
+                </select>
+                <input value={phoneInput.replace(/^\+\d+/, '')} onChange={e => {
+                  const dial = (DIAL_CODES.find(c => phoneInput.startsWith(c.dial))?.dial || '+965');
+                  setPhoneInput(dial + e.target.value.replace(/\D/g, '').slice(0, 15));
+                }} placeholder="Mobile" dir="ltr" style={{ flex: 1, borderRadius: 10, background: '#062024', color: '#d7eeee', border: '1px solid rgba(0,188,212,0.35)', padding: 10 }} />
+              </div>
+              <button type="button" disabled={phoneLoading} onClick={() => { void savePhone(); }} style={{ padding: 12, borderRadius: 12, border: 'none', background: '#00BCD4', color: '#041018', fontWeight: 900, cursor: 'pointer' }}>{phoneLoading ? '...' : 'حفظ الرقم'}</button>
+              {phoneMsg ? <p style={{ margin: 0, color: '#eab308', fontSize: 12, textAlign: 'center' }}>{phoneMsg}</p> : null}
+            </div>
+          </div>,
+          document.body,
+        )}
         <WalletSheet open={walletOpen} onClose={() => setWalletOpen(false)} userId={user.id} allowWithdraw />
       )}
 

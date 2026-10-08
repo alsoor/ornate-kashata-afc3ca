@@ -14,7 +14,7 @@ const scrypt = promisify(scryptCb);
 const TTL_MS = 30 * 60 * 1000;
 const APP_NAME = "Stooorna";
 
-type ResetRec = { email: string; at: number; used: boolean };
+type ResetRec = { email: string; at: number; used: boolean; phone?: string };
 type Store = Map<string, ResetRec>;
 
 function store(): Store {
@@ -114,6 +114,70 @@ async function sendResetEmail(to: string, resetUrl: string): Promise<boolean> {
     return false;
   }
   return true;
+}
+
+
+function digitsOf(raw: string): string { return String(raw || "").replace(/\D/g, ""); }
+function maskPhone(raw: string): string {
+  const d = digitsOf(raw);
+  if (d.length < 4) return "";
+  return `+${"x".repeat(Math.max(4, d.length - 3))}${d.slice(-3)}`;
+}
+function phonesMatch(stored: string, given: string): boolean {
+  const a = digitsOf(stored);
+  const b = digitsOf(given);
+  if (a.length < 8 || b.length < 8) return false;
+  return a === b || a.endsWith(b) || b.endsWith(a);
+}
+function phoneFile(dataDir: string) { return join(dataDir, "phones.json"); }
+function readPhoneFile(dataDir: string): Record<string, string> {
+  try {
+    const file = phoneFile(dataDir);
+    if (!existsSync(file)) return {};
+    const parsed = JSON.parse(readFileSync(file, "utf8"));
+    return parsed && typeof parsed === "object" ? parsed as Record<string, string> : {};
+  } catch { return {}; }
+}
+function writePhoneFile(dataDir: string, email: string, phone: string) {
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    const prev = readPhoneFile(dataDir);
+    prev[email] = phone;
+    writeFileSync(phoneFile(dataDir), JSON.stringify(prev));
+  } catch { /* ignore */ }
+}
+async function phoneForEmail(db: Record<string, any> | undefined, dataDir: string, email: string): Promise<string> {
+  const saved = String(readPhoneFile(dataDir)[email] || "").trim();
+  const query = queryOf(db);
+  if (query) {
+    for (const sql of [
+      "SELECT phone FROM `user` WHERE LOWER(email) = ? LIMIT 1",
+      "SELECT phoneNumber AS phone FROM `user` WHERE LOWER(email) = ? LIMIT 1",
+      "SELECT mobile AS phone FROM `user` WHERE LOWER(email) = ? LIMIT 1",
+    ]) {
+      try {
+        const rows = rowsOf(await query(sql, [email]));
+        const phone = String(rows[0]?.phone || "").trim();
+        if (phone) return phone;
+      } catch { /* column missing */ }
+    }
+  }
+  return saved;
+}
+async function savePhone(db: Record<string, any> | undefined, dataDir: string, email: string, phone: string) {
+  writePhoneFile(dataDir, email, phone);
+  const query = queryOf(db);
+  if (!query) return;
+  for (const sql of [
+    "UPDATE `user` SET phone = ? WHERE LOWER(email) = ?",
+    "UPDATE `user` SET phoneNumber = ? WHERE LOWER(email) = ?",
+    "UPDATE user SET phone = ? WHERE LOWER(email) = ?",
+  ]) {
+    try {
+      const result = await query(sql, [phone, email]);
+      if (affectedOf(result) > 0) return;
+    } catch { /* next column */ }
+  }
 }
 
 async function hashPassword(password: string): Promise<string> {
@@ -275,14 +339,36 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
       res.status(404).json({ ok: false, error: "not_registered" });
       return;
     }
+    const phone = await phoneForEmail(opts?.db, dataDir, email);
+    if (!phone) {
+      res.status(400).json({ ok: false, error: "no_phone" });
+      return;
+    }
     const token = randomBytes(24).toString("hex");
-    rememberToken(dataDir, token, { email, at: Date.now(), used: false });
+    rememberToken(dataDir, token, { email, phone, at: Date.now(), used: false });
     const origin = appOrigin(req);
     const resetUrl = `${origin}/settings?forgot=${encodeURIComponent(token)}`;
     let sent = false;
     try { sent = await sendResetEmail(email, resetUrl); } catch (e) { console.error("[forgot-password] send", e); }
     console.log(`[forgot-password] ${email} sent=${sent}`);
-    res.json({ ok: true, sent, appToken: token });
+    res.json({ ok: true, sent, appToken: token, phoneMask: maskPhone(phone) });
+  });
+
+
+  app.post("/api/password/phone-bind", async (req: Request, res: Response) => {
+    const body = await readBody(req);
+    const email = normEmail(body.email);
+    const phone = String(body.phone || "").trim();
+    if (!validEmail(email) || digitsOf(phone).length < 8) {
+      res.status(400).json({ ok: false, error: "phone" });
+      return;
+    }
+    if (!(await emailRegistered(opts?.db, email))) {
+      res.status(404).json({ ok: false, error: "not_registered" });
+      return;
+    }
+    await savePhone(opts?.db, dataDir, email, phone);
+    res.json({ ok: true, phone });
   });
 
   app.get("/api/password/forgot/verify", (req: Request, res: Response) => {
@@ -318,6 +404,12 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
     }
     if (!(await emailRegistered(opts?.db, rec.email))) {
       res.status(404).json({ ok: false, error: "not_registered" });
+      return;
+    }
+    const givenPhone = String(body.phone || "");
+    const storedPhone = rec.phone || await phoneForEmail(opts?.db, dataDir, rec.email);
+    if (!storedPhone || !phonesMatch(storedPhone, givenPhone)) {
+      res.status(400).json({ ok: false, error: "phone_mismatch" });
       return;
     }
     const applied = await applyPassword(opts?.db, rec.email, password);
