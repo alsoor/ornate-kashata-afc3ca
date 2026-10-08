@@ -1477,7 +1477,15 @@ export default function LivePage() {
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         }}>
           <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
-          style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)', color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          style={{
+            position: 'absolute',
+            top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+            right: 14,
+            zIndex: 30,
+            width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
+            background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
+            color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+          }}>
           <Minimize2 size={16} strokeWidth={2.4} />
         </button>
         <button type="button" onClick={dismissLivePage} aria-label="خروج من البث"
@@ -1767,7 +1775,15 @@ export default function LivePage() {
           </button>
         )}
         <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
-          style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)', color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
+          style={{
+            position: 'absolute',
+            top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+            right: 14,
+            zIndex: 30,
+            width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
+            background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
+            color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+          }}>
           <Minimize2 size={16} strokeWidth={2.4} />
         </button>
         <button type="button" onClick={dismissLivePage} aria-label="خروج من البث"

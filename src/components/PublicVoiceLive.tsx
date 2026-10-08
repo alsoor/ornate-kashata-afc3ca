@@ -664,9 +664,10 @@ export default function PublicVoiceLive({
           aria-label="تصغير البث للتصفح"
           title="تصغير — الصوت يبقى"
           style={{
+            position: 'absolute', top: 44, right: 10, zIndex: 30,
             width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
             background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
-            color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
           }}
         >
           <Minimize2 size={13} />
