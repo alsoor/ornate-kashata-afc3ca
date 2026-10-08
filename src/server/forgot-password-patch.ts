@@ -22,6 +22,35 @@ function store(): Store {
   if (!g.__stooornaForgotPw) g.__stooornaForgotPw = new Map();
   return g.__stooornaForgotPw;
 }
+function tokenFile(dataDir: string) { return join(dataDir, "tokens.json"); }
+function rememberToken(dataDir: string, token: string, rec: ResetRec) {
+  rememberToken(dataDir, token || rec.email, rec);
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    const file = tokenFile(dataDir);
+    const prev = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
+    prev[token] = rec;
+    writeFileSync(file, JSON.stringify(prev));
+  } catch { /* ignore */ }
+}
+function findToken(dataDir: string, token: string, emailHint: string): ResetRec | undefined {
+  const mem = token ? store().get(token) : undefined;
+  if (mem) return mem;
+  try {
+    const file = tokenFile(dataDir);
+    if (!existsSync(file)) return emailHint ? undefined : undefined;
+    const prev = JSON.parse(readFileSync(file, "utf8")) as Record<string, ResetRec>;
+    if (token && prev[token]) { store().set(token, prev[token]); return prev[token]; }
+    if (emailHint) {
+      let best: ResetRec | undefined;
+      for (const rec of Object.values(prev)) {
+        if (rec.email === emailHint && !rec.used && (!best || rec.at > best.at)) best = rec;
+      }
+      return best;
+    }
+  } catch { /* ignore */ }
+  return undefined;
+}
 
 function normEmail(raw: unknown): string {
   return String(raw || "").trim().toLowerCase();
@@ -155,31 +184,39 @@ async function applyPassword(db: Record<string, any> | undefined, email: string,
   const query = queryOf(db);
   if (!query) return false;
   const hash = await hashPassword(password);
-  const updates = [
-    "UPDATE account a INNER JOIN `user` u ON u.id = a.userId SET a.password = ?, a.updatedAt = NOW() WHERE LOWER(u.email) = ? AND a.providerId IN ('credential','email')",
-    "UPDATE account a INNER JOIN `user` u ON u.id = a.userId SET a.password = ? WHERE LOWER(u.email) = ? AND a.providerId IN ('credential','email')",
-    "UPDATE account SET password = ? WHERE userId IN (SELECT id FROM `user` WHERE LOWER(email) = ?) AND providerId = 'credential'",
-    "UPDATE account SET password = ? WHERE userId IN (SELECT id FROM `user` WHERE LOWER(email) = ?)",
-  ];
-  let wrote = false;
-  for (const sql of updates) {
+  let userId = "";
+  for (const sql of [
+    "SELECT id FROM `user` WHERE LOWER(email) = ? LIMIT 1",
+    "SELECT id FROM user WHERE LOWER(email) = ? LIMIT 1",
+    "SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1",
+  ]) {
     try {
-      const result = await query(sql, [hash, email]);
-      if (affectedOf(result) > 0) { wrote = true; break; }
-    } catch { /* next shape */ }
+      const rows = rowsOf(await query(sql, [email]));
+      if (rows[0]?.id) { userId = String(rows[0].id); break; }
+    } catch { /* next table name */ }
   }
-  if (!wrote) return false;
+  if (!userId) return false;
+  const updates: Array<[string, unknown[]]> = [
+    ["UPDATE account SET password = ? WHERE userId = ? AND providerId = 'credential'", [hash, userId]],
+    ["UPDATE account SET password = ? WHERE userId = ?", [hash, userId]],
+    ["UPDATE account SET password = ? WHERE user_id = ? AND providerId = 'credential'", [hash, userId]],
+    ["UPDATE account SET password = ? WHERE user_id = ?", [hash, userId]],
+    ["UPDATE account SET password = ? WHERE accountId = ? AND providerId = 'credential'", [hash, userId]],
+    ["UPDATE `account` SET `password` = ? WHERE `userId` = ?", [hash, userId]],
+  ];
+  for (const [sql, params] of updates) {
+    try {
+      const result = await query(sql, params);
+      if (affectedOf(result) > 0) return true;
+    } catch { /* column/table shape differs */ }
+  }
+  // Row matched but MySQL reported 0 changed rows: read back and accept a credential hash we can verify.
   try {
-    const result = await query(
-      "SELECT a.password AS password FROM account a INNER JOIN `user` u ON u.id = a.userId WHERE LOWER(u.email) = ? AND a.password IS NOT NULL LIMIT 1",
-      [email],
-    );
-    const row = rowsOf(result)[0];
-    if (!row?.password) return false;
-    return await verifyPassword(String(row.password), password);
-  } catch {
-    return wrote;
-  }
+    const rows = rowsOf(await query("SELECT password FROM account WHERE userId = ? AND password IS NOT NULL LIMIT 1", [userId]));
+    const stored = String(rows[0]?.password || "");
+    if (stored && await verifyPassword(stored, password)) return true;
+  } catch { /* ignore */ }
+  return false;
 }
 
 function persistApplied(dataDir: string, email: string) {
@@ -239,7 +276,7 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
       return;
     }
     const token = randomBytes(24).toString("hex");
-    store().set(token, { email, at: Date.now(), used: false });
+    rememberToken(dataDir, token, { email, at: Date.now(), used: false });
     const origin = appOrigin(req);
     const resetUrl = `${origin}/settings?forgot=${encodeURIComponent(token)}`;
     let sent = false;
@@ -264,11 +301,12 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
     const password = String(body.password || "");
     const confirm = String(body.confirm || body.password2 || "");
     const emailHint = normEmail(body.email);
-    let rec = token ? store().get(token) : undefined;
+    let rec = findToken(dataDir, token, emailHint);
     if ((!rec || rec.used || Date.now() - rec.at > TTL_MS) && emailHint) {
       for (const item of store().values()) {
         if (item.email === emailHint && !item.used && Date.now() - item.at <= TTL_MS) rec = item;
       }
+      if (!rec || rec.used) rec = findToken(dataDir, "", emailHint);
     }
     if (!rec || rec.used || Date.now() - rec.at > TTL_MS) {
       res.status(400).json({ ok: false, error: "expired" });
