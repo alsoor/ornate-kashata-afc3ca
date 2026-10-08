@@ -2320,10 +2320,6 @@ export default function LiveCameraPage() {
           padding: 'max(env(safe-area-inset-top,0px),14px) 14px 8px',
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         }}>
-          <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
-            style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)', color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
-            <Minimize2 size={16} strokeWidth={2.4} />
-          </button>
           <button type="button" onClick={dismissLivePage} aria-label="Leave live"
             style={{
               width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
@@ -2331,6 +2327,18 @@ export default function LiveCameraPage() {
               color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
             }}>
             <LogOut size={17} strokeWidth={2.4} />
+          </button>
+          <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
+            style={{
+              position: 'absolute',
+              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+              right: 14,
+              zIndex: 30,
+              width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
+              background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
+              color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+            }}>
+            <Minimize2 size={16} strokeWidth={2.4} />
           </button>
         </div>
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 18 }}>
@@ -2652,10 +2660,6 @@ export default function LiveCameraPage() {
               </span>
             )}
           </button>
-          <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
-            style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)', color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
-            <Minimize2 size={16} strokeWidth={2.4} />
-          </button>
           <button type="button" onClick={dismissLivePage} aria-label="Leave live"
             style={{
               width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
@@ -2663,6 +2667,18 @@ export default function LiveCameraPage() {
               color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
             }}>
             <LogOut size={17} strokeWidth={2.4} />
+          </button>
+          <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
+            style={{
+              position: 'absolute',
+              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+              right: 14,
+              zIndex: 30,
+              width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
+              background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
+              color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+            }}>
+            <Minimize2 size={16} strokeWidth={2.4} />
           </button>
         </div>
       </div>
