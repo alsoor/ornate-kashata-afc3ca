@@ -14947,8 +14947,7 @@ function SavedMessagesScreen({
               </span>
             </button>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '0 12px 8px' }}>
-            <button type="button" onClick={() => setInviteOpen(v => !v)} style={{ border: 'none', borderRadius: 999, background: '#00BCD4', color: '#041414', fontWeight: 800, padding: '8px 14px', cursor: 'pointer' }}>دعوة صديق</button>
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '0 12px 8px' }}>
             <button type="button" onClick={() => void (joinedOwner ? leaveRoom() : deleteRoom())} style={{ border: '1px solid #ef4444', borderRadius: 999, background: '#fff', color: '#ef4444', fontWeight: 800, padding: '8px 14px', cursor: 'pointer' }}>{joinedOwner ? 'خروج' : 'حذف الشات'}</button>
           </div>
           {roomMembers.length > 0 && (
@@ -14964,8 +14963,12 @@ function SavedMessagesScreen({
           )}
           {inviteOpen && (
             <div style={{ margin: '0 12px 8px', background: '#fff', border: '1px solid #ddd', borderRadius: 12, padding: 6 }}>
-              {(((window as any).__stooornaFriends || []) as Array<{ id: string; username?: string; name?: string }>).map(f => (
-                <button key={f.id} type="button" onClick={() => void inviteUser(String(f.username || f.name || ''), String(f.name || ''))} style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px', cursor: 'pointer' }}>@{f.username || f.name}</button>
+              {(((window as any).__stooornaFriends || []) as Array<{ id: string; username?: string; name?: string; avatarUrl?: string | null }>).map(f => (
+                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}>
+                  <img src={f.avatarUrl || ''} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4' }} />
+                  <span style={{ flex: 1, fontWeight: 700 }}>@{f.username || f.name}</span>
+                  <button type="button" onClick={() => void inviteUser(String(f.username || f.name || ''), String(f.name || ''))} style={{ border: 'none', borderRadius: 999, background: '#00BCD4', color: '#041414', fontWeight: 800, padding: '6px 10px', cursor: 'pointer' }}>Invite</button>
+                </div>
               ))}
             </div>
           )}
@@ -15227,6 +15230,7 @@ function SavedMessagesScreen({
                   { key: 'photo', label: 'Photo', icon: <ImageIcon size={18} strokeWidth={2.2} />, run: () => openPicker(photoRef) },
                   { key: 'file', label: 'File', icon: <FileText size={18} strokeWidth={2.2} />, run: () => openPicker(fileRefSm) },
                   { key: 'location', label: 'Location', icon: <MapPin size={18} strokeWidth={2.2} />, run: () => addLocation() },
+                  { key: 'invite', label: 'Invite Friend', icon: <Users size={18} strokeWidth={2.2} />, run: () => setInviteOpen(true) },
                 ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).map(it => (
                   <button
                     key={it.key}
@@ -25049,6 +25053,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [savedInvite, setSavedInvite] = useState<{ id: string; fromName: string; ownerId: string } | null>(null);
   const [savedJoinSpin, setSavedJoinSpin] = useState(false);
   useEffect(() => {
+    if (!savedJoinSpin) return;
+    const t = window.setTimeout(() => {
+      try { sessionStorage.setItem('stooorna_saved_open', '1'); } catch { /* */ }
+      setSavedJoinSpin(false);
+      setSavedOpen(true);
+      setChatOverlayOpen(true);
+    }, 3000);
+    return () => window.clearTimeout(t);
+  }, [savedJoinSpin]);
+  useEffect(() => {
     try { (window as any).__stooornaFriends = friends.map(f => ({ id: String(f.friendId), username: f.username, name: f.name })); } catch { /* */ }
   }, [friends]);
   useEffect(() => {
@@ -27524,7 +27538,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <b>@{savedInvite.fromName}</b>
               <div style={{ fontSize: 13, opacity: 0.8, margin: '8px 0 14px' }}>دعوة لشات المحفوظات</div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); setSavedJoinSpin(true); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); window.setTimeout(() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); } catch { /* */ } setSavedOpen(true); setChatOverlayOpen(true); setSavedJoinSpin(false); }, 3000); }} style={{ flex: 1, border: 'none', borderRadius: 999, background: '#22c55e', color: '#041414', fontWeight: 800, padding: '10px 12px', cursor: 'pointer' }}>Accept</button>
+                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 999, background: '#22c55e', color: '#041414', fontWeight: 800, padding: '10px 12px', cursor: 'pointer' }}>Accept</button>
                 <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ flex: 1, border: '1px solid #fff', borderRadius: 999, background: 'transparent', color: '#fff', fontWeight: 800, padding: '10px 12px', cursor: 'pointer' }}>Decline</button>
               </div>
             </div>
@@ -27532,7 +27546,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
         {savedJoinSpin && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 200001, background: '#041414', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: 72, height: 72, borderRadius: '50%', border: '4px solid rgba(0,188,212,0.25)', borderTopColor: '#00BCD4', animation: 'stooornaLiveSpin 0.9s linear infinite' }} />
+            <div style={{ width: 92, height: 92, borderRadius: '50%', border: '4px solid rgba(0,188,212,0.25)', borderTopColor: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'stooornaLiveSpin 0.9s linear infinite' }}>
+              <MessageCircle size={36} color="#00BCD4" />
+            </div>
           </div>
         )}
         {noticeTop && (
