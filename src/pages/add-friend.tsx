@@ -15129,13 +15129,13 @@ function SavedMessagesScreen({
                   style={{
                     marginBottom: 10,
                     maxWidth: '88%',
-                    ...((m.senderName && cleanUn(m.senderName) !== cleanUn(userUsername || userName)) ? { marginRight: 'auto' } : { marginLeft: 'auto' }),
-                    background: '#fff',
+                    marginRight: 'auto',
+                    background: (m.senderName && cleanUn(m.senderName) !== cleanUn(userUsername || userName)) ? '#fff' : '#bde0ff',
                     borderRadius: 14,
                     border: '1px solid rgba(0,0,0,0.06)',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                     padding: '10px 12px',
-                    direction: (m.senderName && cleanUn(m.senderName) !== cleanUn(userUsername || userName)) ? 'ltr' : 'rtl',
+                    direction: 'ltr',
                   }}
                 >
                   {m.kind === 'text' && (
