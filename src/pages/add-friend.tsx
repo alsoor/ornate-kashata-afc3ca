@@ -180,6 +180,20 @@ function announceStoryPageActive() {
     window.dispatchEvent(new CustomEvent('stooorna:story-page-active', { detail: { active: true } }));
   } catch { /* ignore */ }
 }
+
+/** إعادة تحميل واحدة بعد ما ترسم الواجهة — ما تتكرر وما تبلع النقرة. */
+function stooornaSoftReload() {
+  try {
+    const w = window as any;
+    if (w.__stooornaReloadQueued) return;
+    w.__stooornaReloadQueued = true;
+    const go = () => { try { window.location.reload(); } catch { w.__stooornaReloadQueued = false; } };
+    if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(go, { timeout: 700 });
+    else window.setTimeout(go, 450);
+  } catch {
+    try { window.location.reload(); } catch { /* */ }
+  }
+}
 announceStoryPageActive();
 startStoryLiveWatch();
 void refreshStoryLives();
@@ -7921,7 +7935,11 @@ async function stooornaAdMediaPut(id: string, dataUrl: string) {
   } catch { /* ignore */ }
 }
 
+const adMediaMem = new Map<string, string>();
 async function stooornaAdMediaGet(id: string): Promise<string | null> {
+  const key = String(id || '');
+  const hit = key ? adMediaMem.get(key) : '';
+  if (hit) return hit;
   try {
     const db = await openAdMediaDb();
     const val = await new Promise<string | null>((resolve, reject) => {
@@ -7931,11 +7949,24 @@ async function stooornaAdMediaGet(id: string): Promise<string | null> {
       r.onerror = () => reject(r.error);
     });
     db.close();
+    if (val && key) adMediaMem.set(key, val);
     return val;
   } catch { return null; }
 }
+function openFeedAdNow(ad: any, setViewer: (v: any) => void) {
+  const id = String(ad?.id || '');
+  const cached = id ? (adMediaMem.get(id) || '') : '';
+  const first = { ...ad, mediaUrl: ad?.mediaUrl || cached || '', pdfUrl: ad?.pdfUrl || (ad?.mediaType === 'pdf' ? cached : ad?.pdfUrl) || '' };
+  setViewer(first);
+  if (!id || first.mediaUrl || first.pdfUrl) return;
+  void stooornaAdMediaGet(id).then(m => {
+    if (!m) return;
+    setViewer((v: any) => (v && String(v.id) === id ? { ...v, mediaUrl: m, pdfUrl: v.mediaType === 'pdf' ? m : v.pdfUrl } : v));
+  });
+}
 
 async function stooornaAdMediaDelete(id: string) {
+  try { adMediaMem.delete(String(id || '')); } catch { /* */ }
   try {
     const db = await openAdMediaDb();
     await new Promise<void>((resolve, reject) => {
@@ -14784,8 +14815,7 @@ function SavedMessagesScreen({
       id: `sm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: Date.now(),
     };
-    const shared = partial.kind === 'image' || partial.kind === 'video';
-    if (!shared) persist([...loadSavedMessages(userId), row]);
+    persist([...loadSavedMessages(userId), row]);
     if (roomOwner && (partial.text || partial.mediaUrl)) {
       void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? `img:${partial.mediaUrl || ''}` : partial.kind === 'video' ? `vid:${partial.mediaUrl || ''}` : (partial.text || '') }) });
     }
@@ -14906,7 +14936,8 @@ function SavedMessagesScreen({
   };
 
   const handleClose = () => {
-    if (pickingRef.current || busy) return; // never kick out mid-pick
+    pickingRef.current = false;
+    setBusy(false);
     try { sessionStorage.setItem('stooorna_saved_open', '0'); } catch { /* */ }
     // Return to public live chat (not outside the app / blank home).
     try {
@@ -18529,7 +18560,7 @@ export function PublicLiveCommentsPanel({
         }
         if (blocked) cleaned.push(makeLiveChatBotNotice('text'));
         next = cleaned;
-        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${x.imageUrl || ''}:${x.voiceUrl || ''}`).join('|');
+        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${String(x.imageUrl || '').length}:${String(x.voiceUrl || '').slice(-18)}`).join('|');
         if (sig === liveSigRef.current) return;
         liveSigRef.current = sig;
         savePublicLiveComments(next);
@@ -18538,16 +18569,16 @@ export function PublicLiveCommentsPanel({
       finally { liveBusyRef.current = false; }
     };
     void pull();
-    // Lightweight realtime: poll only while tab visible; 1s cadence when chat is likely open.
+    // Lightweight realtime: poll only while tab visible. 4s keeps refresh without freezing taps.
     // setComments runs only when signature changes — no UI thrash, no story/feed side effects.
-    let iv = window.setInterval(pull, 1000);
+    let iv = window.setInterval(pull, 4000);
     const onVis = () => {
       if (document.visibilityState === 'hidden') {
         window.clearInterval(iv);
       } else {
         void pull();
         window.clearInterval(iv);
-        iv = window.setInterval(pull, 1000);
+        iv = window.setInterval(pull, 4000);
       }
     };
     document.addEventListener('visibilitychange', onVis);
@@ -22482,7 +22513,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       } catch { /* */ }
     };
     tick();
-    const id = window.setInterval(() => { if (document.visibilityState === 'visible') tick(); }, 1000);
+    // العدّاد كل ثانية فقط واللوحة مفتوحة. مغلق: نفس دورة إعادة النشر كل 15ث حتى ما يجمّد النقر.
+    const id = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (!adUiOpenRef.current && Date.now() % 15000 > 1000) return;
+      tick();
+    }, 1000);
     return () => window.clearInterval(id);
   }, []);
   // Restore media blobs from IndexedDB so video/image survive refresh
@@ -22495,6 +22531,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         const next = [];
         for (const a of list) {
           if ((a.mediaUrl || a.pdfUrl) || !a.id) { next.push(a); continue; }
+          if (a.mediaType === 'video') { next.push(a); continue; }
           const m = await stooornaAdMediaGet(String(a.id));
           if (m) {
             changed = true;
@@ -25140,7 +25177,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     };
 
     refreshTextPosts();
-    const intervalId = window.setInterval(refreshTextPosts, 2000);
+    const intervalId = window.setInterval(refreshTextPosts, 8000);
     return () => window.clearInterval(intervalId);
   }, [textPostsPageOpen, fetchPosts]);
 
@@ -31516,25 +31553,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     tabIndex={0}
                     className="stooorna-feed-ad-card"
                     onClick={() => {
-                      void (async () => {
-                        let full = { ...ad };
-                        if (!full.mediaUrl && !full.pdfUrl) {
-                          const m = await stooornaAdMediaGet(String(ad.id));
-                          if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
-                        }
-                        setFeedAdViewer(full);
-                      })();
+                      openFeedAdNow(ad, setFeedAdViewer);
                     }}
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
-                        void (async () => {
-                          let full = { ...ad };
-                          if (!full.mediaUrl && !full.pdfUrl) {
-                            const m = await stooornaAdMediaGet(String(ad.id));
-                            if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
-                          }
-                          setFeedAdViewer(full);
-                        })();
+                        openFeedAdNow(ad, setFeedAdViewer);
                       }
                     }}
                     style={{
@@ -34151,7 +34174,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               setPublicVoiceMini(false);
               setShowPublicVoice(false);
               try { sessionStorage.setItem('stooorna_story_refresh', '1'); } catch { /* */ }
-              window.setTimeout(() => { try { window.location.reload(); } catch { /* */ } }, 60);
+              window.setTimeout(() => { try { stooornaSoftReload(); } catch { /* */ } }, 60);
             }}
           /></React.Suspense>
         </>
@@ -34189,14 +34212,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             if (playFx) playFx(removeNow); else removeNow();
           }}
           onOpenAd={(ad: any) => {
-            void (async () => {
-              let full = { ...ad };
-              if (!full.mediaUrl && !full.pdfUrl) {
-                const m = await stooornaAdMediaGet(String(ad.id));
-                if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
-              }
-              setFeedAdViewer(full);
-            })();
+            openFeedAdNow(ad, setFeedAdViewer);
           }}
         />
       )}
