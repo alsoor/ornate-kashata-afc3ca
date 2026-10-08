@@ -537,6 +537,7 @@ export default function PublicVoiceLive({
     const text = chatText.trim();
     if (!text || !userId) return;
     setChatText('');
+    void fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'mention', text, fromUserId: userId, fromName: userUsername || userName, room: ROOM, messageId: `${userId}-${Date.now()}`, title: 'Public voice mention', href: '/?chat=1' }) }).catch(() => {});
     const msg: ChatMsg = {
       id: `${userId}-${Date.now()}`,
       userId,
@@ -658,7 +659,7 @@ export default function PublicVoiceLive({
             <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
               <input
                 value={chatText}
-                onChange={e => setChatText(e.target.value)}
+                onChange={e => { setChatText(e.target.value); try { window.dispatchEvent(new CustomEvent('stooorna:mention-query', { detail: { text: e.target.value, caret: e.target.selectionStart || e.target.value.length, room: 'public-voice' } })); } catch { /* */ } }}
                 onKeyDown={e => { if (e.key === 'Enter') void sendChat(); }}
                 placeholder="Message"
                 style={{

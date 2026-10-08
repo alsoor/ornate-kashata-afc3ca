@@ -1751,6 +1751,7 @@ export default function LiveCameraPage() {
     });
     publishLiveChat(channelName, payload);
     await sendDataPayload(payload);
+    void fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'mention', text: raw, fromUserId: myId, fromName: myUsername || myName, room: channelName, messageId: payload.id, title: 'Live mention', href: `/?chat=1&msg=${encodeURIComponent(payload.id)}` }) }).catch(() => {});
     try {
       liveChatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     } catch { /* ignore */ }
@@ -2953,7 +2954,7 @@ export default function LiveCameraPage() {
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
                   value={liveChatText}
-                  onChange={e => setLiveChatText(e.target.value.slice(0, 200))}
+                  onChange={e => { const v = e.target.value.slice(0, 200); setLiveChatText(v); try { window.dispatchEvent(new CustomEvent('stooorna:mention-query', { detail: { text: v, caret: e.target.selectionStart || v.length, room: 'live' } })); } catch { /* */ } }}
                   onKeyDown={e => {
                     if (e.key === 'Enter') {
                       e.preventDefault();

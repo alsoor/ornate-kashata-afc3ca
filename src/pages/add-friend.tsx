@@ -14600,6 +14600,15 @@ function SavedMessagesScreen({
 }) {
   const [items, setItems] = useState<SavedMsg[]>(() => (userId ? loadSavedMessages(userId) : []));
   const [text, setText] = useState('');
+  useEffect(() => {
+    const onPick = (e: Event) => {
+      const username = String((e as CustomEvent).detail?.username || '').replace(/^@/, '');
+      if (!username) return;
+      setText(prev => prev.replace(/(^|\s)@([a-zA-Z0-9_\u0600-\u06FF.]{0,32})$/, `$1@${username} `));
+    };
+    window.addEventListener('stooorna:mention-pick', onPick as EventListener);
+    return () => window.removeEventListener('stooorna:mention-pick', onPick as EventListener);
+  }, []);
   const [plusOpen, setPlusOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
@@ -18379,6 +18388,7 @@ function PublicLiveCommentsPanel({
     setPendingImage(null);
     setPendingVoice(null);
     setEmojiOpen(false);
+    void fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'mention', text: row.text, fromUserId: myId, fromName: myUsername || myName, room: LIVE_CHAT_ROOM, messageId: row.id, title: 'Mention in chat', href: `/?chat=1&msg=${encodeURIComponent(row.id)}` }) }).catch(() => {});
     void (async () => {
       let send = row;
       if (row.voiceUrl && row.voiceUrl.startsWith('data:')) {
@@ -19283,6 +19293,7 @@ function PublicLiveCommentsPanel({
           return (
             <div
               key={c.id}
+              data-msg-id={c.id}
               onPointerDown={e => {
                 replyDragRef.current = { id: c.id, x: e.clientX, dx: 0 };
                 if (canEdit) beginPress(c.id, e);
@@ -19746,6 +19757,7 @@ function PublicLiveCommentsPanel({
               onChange={e => {
                 const v = e.target.value.slice(0, 500);
                 setText(v);
+                try { window.dispatchEvent(new CustomEvent('stooorna:mention-query', { detail: { text: v, caret: e.target.selectionStart || v.length, room: 'public' } })); } catch { /* */ }
                 pingTyping(!!v.trim());
                 if (typingTimer.current) window.clearTimeout(typingTimer.current);
                 typingTimer.current = window.setTimeout(() => pingTyping(false), 2500);
@@ -24929,6 +24941,86 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [sending, setSending] = useState<string | null>(null);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
   const [friends, setFriends] = useState<Friend[]>(() => (user?.id && headerListsCache.uid === String(user.id) ? headerListsCache.friends as Friend[] : []));
+  const [mentionHits, setMentionHits] = useState<Array<{ id: string; username: string; name: string }>>([]);
+  const [noticeTop, setNoticeTop] = useState<{ id: string; title: string; body: string; messageId: string } | null>(null);
+  useEffect(() => {
+    try { (window as any).__stooornaFriends = friends.map(f => ({ id: String(f.friendId), username: f.username, name: f.name })); } catch { /* */ }
+  }, [friends]);
+  useEffect(() => {
+    const onQ = (e: Event) => {
+      const text = String((e as CustomEvent).detail?.text || '');
+      const caret = Number((e as CustomEvent).detail?.caret || text.length);
+      const m = text.slice(0, caret).match(/(^|\s)@([a-zA-Z0-9_\u0600-\u06FF.]{0,32})$/);
+      if (!m) { setMentionHits([]); return; }
+      const q = m[2].toLowerCase();
+      const people = ((window as any).__stooornaFriends || []) as Array<{ id: string; username?: string; name?: string }>;
+      setMentionHits(people.filter(p => {
+        const u = String(p.username || '').replace(/^@/, '').toLowerCase();
+        const n = String(p.name || '').toLowerCase();
+        return !q || u.startsWith(q) || n.startsWith(q);
+      }).slice(0, 8).map(p => ({ id: p.id, username: String(p.username || '').replace(/^@/, ''), name: String(p.name || '') })));
+    };
+    window.addEventListener('stooorna:mention-query', onQ as EventListener);
+    return () => window.removeEventListener('stooorna:mention-query', onQ as EventListener);
+  }, []);
+  useEffect(() => {
+    if (!user?.id) return;
+    let since = 0;
+    const seen = new Set<string>();
+    const pull = async () => {
+      try {
+        const username = String((user as any)?.username || '').replace(/^@/, '');
+        const r = await fetch(`/api/notifications?userId=${encodeURIComponent(String(user.id))}&username=${encodeURIComponent(username)}&since=${since}`, { credentials: 'include', cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        const rows = (d.notifications || []) as Array<any>;
+        for (const n of rows) {
+          if (!n?.id || seen.has(n.id)) continue;
+          seen.add(n.id);
+          since = Math.max(since, Number(n.at) || 0);
+          setNoticeTop({ id: n.id, title: n.title || 'Stooorna', body: n.body || '', messageId: n.messageId || '' });
+          if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
+            const sys = new Notification(n.title || 'Stooorna', { body: n.body || '', tag: n.id });
+            sys.onclick = () => {
+              try { window.focus(); } catch { /* */ }
+              try { sessionStorage.setItem('stooorna_flash_msg', String(n.messageId || '')); } catch { /* */ }
+              setChatOverlayOpen(true);
+            };
+          }
+          if (n.messageId) {
+            try { sessionStorage.setItem('stooorna_flash_msg', String(n.messageId)); } catch { /* */ }
+          }
+        }
+      } catch { /* */ }
+    };
+    void pull();
+    const id = window.setInterval(pull, 4000);
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') void Notification.requestPermission().catch(() => {});
+    return () => window.clearInterval(id);
+  }, [user?.id]);
+  useEffect(() => {
+    if (!profilePlusIncomingCallUi.ringing) return;
+    const title = 'Incoming call';
+    const body = profilePlusIncomingCallUi.callerLabel || 'Someone is calling';
+    setNoticeTop({ id: `call_${Date.now()}`, title, body, messageId: '' });
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      try { new Notification(title, { body, tag: 'stooorna-call' }); } catch { /* */ }
+    }
+    void fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'call', toUserId: user?.id, toUsername: (user as any)?.username, fromName: body, title, body, room: 'call' }) }).catch(() => {});
+  }, [profilePlusIncomingCallUi.ringing, profilePlusIncomingCallUi.callerLabel]);
+  useEffect(() => {
+    const flash = () => {
+      const id = sessionStorage.getItem('stooorna_flash_msg');
+      if (!id) return;
+      const el = document.querySelector(`[data-msg-id="${CSS.escape(id)}"]`) as HTMLElement | null;
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.animate([{ background: 'rgba(250,204,21,0.15)' }, { background: 'rgba(250,204,21,0.85)' }, { background: 'rgba(250,204,21,0.15)' }], { duration: 900, iterations: 3 });
+      sessionStorage.removeItem('stooorna_flash_msg');
+    };
+    const t = window.setInterval(flash, 700);
+    return () => window.clearInterval(t);
+  }, []);
   // ── Followers list (my own accepted friends) + the "hide my followers from others"
   // switch shown inside that modal. Persisted locally and best-effort synced to the
   // backend; degrades gracefully if the backend field doesn't exist yet. ──
@@ -27280,6 +27372,24 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {guestMode && <GuestHomeExtras lang={guestLang} />}
 
         {/* DockBubbleHost مستقل عن الدوك: لما تنفتح الإعدادات الدوك ينشال، ولازم الصفحة تبقى معروضة */}
+        {mentionHits.length > 0 && (
+          <div style={{ position: 'fixed', left: 12, right: 12, bottom: 92, zIndex: 12080, background: '#0c1c1f', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 14, padding: 6 }}>
+            {mentionHits.map(p => (
+              <button key={p.id} type="button" onClick={() => {
+                try { window.dispatchEvent(new CustomEvent('stooorna:mention-pick', { detail: { username: p.username } })); } catch { /* */ }
+                setMentionHits([]);
+              }} style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#fff', padding: '8px 10px', cursor: 'pointer', fontWeight: 700 }}>
+                @{p.username || p.name}
+              </button>
+            ))}
+          </div>
+        )}
+        {noticeTop && (
+          <button type="button" onClick={() => { if (noticeTop.messageId) { try { sessionStorage.setItem('stooorna_flash_msg', noticeTop.messageId); } catch { /* */ } setChatOverlayOpen(true); } setNoticeTop(null); }} style={{ position: 'fixed', top: 8, left: 12, right: 12, zIndex: 13000, background: '#111', color: '#fff', border: '1px solid #fff', borderRadius: 14, padding: '10px 12px', textAlign: 'left' }}>
+            <b>{noticeTop.title}</b>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>{noticeTop.body}</div>
+          </button>
+        )}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
         )}

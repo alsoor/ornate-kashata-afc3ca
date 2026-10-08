@@ -15,6 +15,7 @@ import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
 import { registerAppReleaseRoutes } from "./app-releases-routes.js"; // APP-RELEASES-PATCH
 import { registerTemplatesRoutes } from "./templates-routes.js"; // TEMPLATES-PATCH
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
+import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -562,6 +563,7 @@ app.post("/api/live-chat/voice", (req, res) => {
   res.json({ ok: true, id, url: `/api/live-chat/voice?id=${encodeURIComponent(id)}`, voiceUrl: `/api/live-chat/voice?id=${encodeURIComponent(id)}` });
 });
 registerChatImageRoutes(app);
+registerNotificationRoutes(app);
 app.post("/api/live-chat/media", (req, res) => {
   const body = (req.body || {}) as any;
   const dataUrl = String(body.image || body.video || body.media || body.file || "");
@@ -751,6 +753,14 @@ app.post("/api/live-chat", (req, res) => {
   list.push({ at, payload });
   mem.set(channel, list.slice(-400));
   persistLiveChat();
+  try {
+    notifyMentionsFromText(String(payload.text || ""), {
+      userId: String(payload.userId || ""),
+      name: String(payload.username || payload.name || ""),
+      room: channel,
+      messageId: String(payload.id || ""),
+    });
+  } catch { /* */ }
   const comments = (mem.get(channel) || []).map((m) => {
     const p = (m.payload || m) as any;
     return {
