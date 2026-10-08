@@ -425,15 +425,15 @@ export default function PublicVoiceLive({
             if (!raw) return;
             const msg = JSON.parse(raw);
             if (msg?.t === 'floor' || raw?.t === 'floor') {
-            const uid = String(msg.userId || raw?.userId || '');
-            const until = Number(msg.until || raw?.until || 0);
-            if (uid && until) {
-              (window as any).__stooornaFloorOwner = uid;
-              (window as any).__stooornaFloorUntil = until;
-              if (uid !== String(userId) && Date.now() < until) setFloorBusy(true);
+              const uid = String(msg.userId || raw?.userId || '');
+              const until = Number(msg.until || raw?.until || 0);
+              if (uid && until) {
+                (window as any).__stooornaFloorOwner = uid;
+                (window as any).__stooornaFloorUntil = until;
+                if (uid !== String(userId) && Date.now() < until) setFloorBusy(true);
+              }
+              return;
             }
-            continue;
-          }
           if (msg?.t === 'mic-sound' && msg.id) {
               if (String(msg.userId) !== String(userId) && !speakerOffRef.current) playMicSound(String(msg.id));
               return;
