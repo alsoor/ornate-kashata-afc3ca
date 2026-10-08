@@ -27547,31 +27547,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {user?.id ? (
                     <div style={{ width: '100%', maxWidth: 280, margin: '8px auto 2px' }}>
                       <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '0 8px 8px' }} />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = !(typeof window !== 'undefined' && (window as any).__stooornaPublicChatOn);
-                          try {
-                            localStorage.setItem('stooorna_public_chat_on', next ? '1' : '0');
-                            (window as any).__stooornaPublicChatOn = next;
-                            window.dispatchEvent(new CustomEvent('stooorna:public-chat-switch', { detail: { on: next } }));
-                          } catch { /* */ }
-                          setPublicChatSwitchOn(next);
-                        }}
-                        aria-label={publicChatSwitchOn ? 'إيقاف الشات العام' : 'تشغيل الشات العام'}
-                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
-                      >
-                        <span style={{
-                          minWidth: 62, height: 30, borderRadius: 999, border: '2px solid #000',
-                          background: publicChatSwitchOn ? '#22c55e' : '#ffffff',
-                          color: publicChatSwitchOn ? '#fff' : '#111',
-                          fontWeight: 800, fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 12px',
-                        }}>{publicChatSwitchOn ? 'ON' : 'OFF'}</span>
-                      </button>
-                      <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '8px 8px 0' }} />
-                    </div>
-                  ) : null}
-
                   {/* Five section buttons under the purple dots — black frame + slow silver shine */}
                   <style>{`
                     @keyframes stooornaPanelBarShine {
@@ -27582,7 +27557,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   <div style={{
                     position: 'relative', overflow: 'hidden',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap',
-                    marginTop: 8, padding: '12px 18px',
+                    margin: '0 8px', padding: '12px 18px',
                     borderRadius: 16,
                     border: '2px solid #111111',
                     background: '#fafafa',
@@ -27670,6 +27645,35 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       </button>
                     )}
                   </div>
+                      <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '8px 8px 0' }} />
+                    </div>
+                  ) : null}
+                  {/* مفتاح تشغيل الشات العام — تحت الإطار، بدون خطوط */}
+                  {user?.id ? (
+                    <div style={{ width: '100%', maxWidth: 280, margin: '10px auto 2px', display: 'flex', justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !(typeof window !== 'undefined' && (window as any).__stooornaPublicChatOn);
+                          try {
+                            localStorage.setItem('stooorna_public_chat_on', next ? '1' : '0');
+                            (window as any).__stooornaPublicChatOn = next;
+                            window.dispatchEvent(new CustomEvent('stooorna:public-chat-switch', { detail: { on: next } }));
+                          } catch { /* */ }
+                          setPublicChatSwitchOn(next);
+                        }}
+                        aria-label={publicChatSwitchOn ? 'إيقاف الشات العام' : 'تشغيل الشات العام'}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+                      >
+                        <span style={{
+                          minWidth: 62, height: 30, borderRadius: 999, border: '2px solid #000',
+                          background: publicChatSwitchOn ? '#22c55e' : '#ffffff',
+                          color: publicChatSwitchOn ? '#fff' : '#111',
+                          fontWeight: 800, fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 12px',
+                        }}>{publicChatSwitchOn ? 'ON' : 'OFF'}</span>
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </>,
