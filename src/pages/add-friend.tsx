@@ -14660,6 +14660,7 @@ function SavedMessagesScreen({
   const [roomMembers, setRoomMembers] = useState<Array<{ userId: string; username: string; name: string }>>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [memberMenu, setMemberMenu] = useState<{ username: string; name?: string; avatarUrl?: string | null; userId?: string } | null>(null);
+  const [savedProfile, setSavedProfile] = useState<{ username: string; name?: string; avatarUrl?: string | null; userId?: string } | null>(null);
   const [joinedOwner, setJoinedOwner] = useState('');
   const roomOwner = joinedOwner || userId;
   useEffect(() => {
@@ -14961,7 +14962,7 @@ function SavedMessagesScreen({
           {roomMembers.length > 0 && (
             <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap' }}>
               {roomMembers.map(m => (
-                <button key={m.username} type="button" onClick={() => setMemberMenu(m)} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer' }}>
+                <button key={m.username} type="button" onClick={() => { const f = (((window as any).__stooornaFriends || []) as any[]).find(x => String(x.username || '').replace(/^@/, '') === String(m.username || '').replace(/^@/, '')); setMemberMenu({ ...m, userId: (m as any).userId || f?.id || '', avatarUrl: (m as any).avatarUrl || f?.avatarUrl || null, name: (m as any).name || f?.name }); }} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer' }}>
                   <img src={(m as any).avatarUrl || ''} alt="" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4' }} />
                   @{m.username}
                 </button>
@@ -14969,13 +14970,24 @@ function SavedMessagesScreen({
             </div>
           )}
           {memberMenu && (
-            <div onClick={() => setMemberMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 80 }}>
-              <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', top: 108, left: 12, background: '#111', color: '#fff', borderRadius: 12, padding: 6, display: 'flex', flexDirection: 'column', gap: 4, width: 120 }}>
-                <button type="button" onClick={() => void kickUser(memberMenu.username)} style={{ border: 'none', borderRadius: 8, background: '#ef4444', color: '#fff', fontWeight: 800, padding: '6px 8px', fontSize: 12 }}>طرد</button>
-                <button type="button" onClick={() => { window.dispatchEvent(new CustomEvent('stooorna:open-friend-profile', { detail: memberMenu })); setMemberMenu(null); }} style={{ border: '1px solid #00BCD4', borderRadius: 8, background: 'transparent', color: '#00BCD4', fontWeight: 800, padding: '6px 8px', fontSize: 12 }}>البروفايل</button>
+            <div onClick={() => setMemberMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div onClick={e => e.stopPropagation()} style={{ width: 180, background: '#111', color: '#fff', borderRadius: 16, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button type="button" onClick={() => void kickUser(memberMenu.username)} style={{ border: 'none', borderRadius: 12, background: '#ef4444', color: '#fff', fontWeight: 800, padding: '10px' }}>طرد</button>
+                <button type="button" onClick={() => { setSavedProfile(memberMenu); setMemberMenu(null); }} style={{ border: '1px solid #00BCD4', borderRadius: 12, background: '#041414', color: '#00BCD4', fontWeight: 800, padding: '10px' }}>Profile</button>
               </div>
             </div>
           )}
+          {savedProfile ? (
+            <FriendStoryProfile
+              authorId={String(savedProfile.userId || '')}
+              authorName={savedProfile.name || savedProfile.username || 'User'}
+              authorUsername={savedProfile.username || null}
+              authorAvatarUrl={savedProfile.avatarUrl || null}
+              onClose={() => setSavedProfile(null)}
+              onOpenPost={() => {}}
+              sheetMode
+            />
+          ) : null}
           {inviteOpen && (
             <div style={{ margin: '0 12px 8px', background: '#fff', border: '1px solid #ddd', borderRadius: 12, padding: 6 }}>
               {(((window as any).__stooornaFriends || []) as Array<{ id: string; username?: string; name?: string; avatarUrl?: string | null }>).map(f => (
@@ -15043,7 +15055,7 @@ function SavedMessagesScreen({
                 >
                   {m.kind === 'text' && (
                     <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
-                      {m.senderName ? <img src={m.avatarUrl || ''} alt="" style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', background: '#123', flexShrink: 0 }} /> : null}
+                      {m.senderName ? <img src={m.avatarUrl || ''} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', background: '#123', flexShrink: 0 }} /> : null}
                       <span><b style={{ fontSize: '0.95rem' }}>{m.senderName ? `@${m.senderName}` : ''}</b>{m.senderName ? ' ' : ''}{m.text}</span>
                     </p>
                   )}
@@ -25132,7 +25144,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             try { sessionStorage.setItem('stooorna_missed_call', JSON.stringify({ title: n.title || 'كان عندك اتصال', body: n.body || '' })); } catch { /* */ }
           }
           setNoticeTop({ id: n.id, title: n.title || 'Stooorna', body: n.body || '', messageId: n.messageId || '', kind: n.type || '' });
-          if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
+          if (n.type !== 'invite' && typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
             const sys = new Notification(n.title || 'Stooorna', { body: n.body || '', tag: n.id });
             sys.onclick = () => {
               try { window.focus(); } catch { /* */ }
