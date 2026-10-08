@@ -14661,6 +14661,9 @@ function SavedMessagesScreen({
   const [inviteOpen, setInviteOpen] = useState(false);
   const [memberMenu, setMemberMenu] = useState<{ username: string; name?: string; avatarUrl?: string | null; userId?: string } | null>(null);
   const [savedProfile, setSavedProfile] = useState<{ username: string; name?: string; avatarUrl?: string | null; userId?: string } | null>(null);
+  const [savedEmojiOpen, setSavedEmojiOpen] = useState(false);
+  const [dotShake, setDotShake] = useState(false);
+  const [emojiBits, setEmojiBits] = useState<Array<{ id: string; em: string; x: number }>>([]);
   const [joinedOwner, setJoinedOwner] = useState('');
   const roomOwner = joinedOwner || userId;
   useEffect(() => {
@@ -14739,9 +14742,10 @@ function SavedMessagesScreen({
       id: `sm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: Date.now(),
     };
-    persist([...loadSavedMessages(userId), row]);
+    const shared = partial.kind === 'image' || partial.kind === 'video';
+    if (!shared) persist([...loadSavedMessages(userId), row]);
     if (roomOwner && (partial.text || partial.mediaUrl)) {
-      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? `img:${partial.mediaUrl || ''}` : partial.kind === 'video' ? `vid:${partial.mediaUrl || ''}` : (partial.text || partial.kind) }) });
+      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? `img:${partial.mediaUrl || ''}` : partial.kind === 'video' ? `vid:${partial.mediaUrl || ''}` : (partial.text || '') }) });
     }
   };
 
@@ -14770,7 +14774,7 @@ function SavedMessagesScreen({
       });
       let mediaUrl = dataUrl;
       if (kind === 'image' || kind === 'video') {
-        const r = await fetch('/api/chat-images', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dataUrl, userId }) });
+        const r = await fetch('/api/chat-images', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: dataUrl, media: dataUrl, video: kind === 'video' ? dataUrl : '', dataUrl, userId }) });
         const d = await r.json().catch(() => ({}));
         if (d?.url) mediaUrl = String(d.url);
       }
@@ -14956,14 +14960,29 @@ function SavedMessagesScreen({
               </span>
             </button>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '0 12px 8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, padding: '0 12px 8px' }}>
             <button type="button" onClick={() => void (joinedOwner ? leaveRoom() : deleteRoom())} style={{ border: '1px solid #ef4444', borderRadius: 999, background: '#fff', color: '#ef4444', fontWeight: 800, padding: '8px 14px', cursor: 'pointer' }}>{joinedOwner ? 'خروج' : 'حذف الشات'}</button>
+            <button type="button" aria-label="Big emoji" onClick={() => { setDotShake(true); window.setTimeout(() => setDotShake(false), 420); setSavedEmojiOpen(v => !v); }} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: dotShake ? 'stooornaDotShake 0.42s linear' : undefined }}>
+              <style>{'@keyframes stooornaDotShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-3px)}40%{transform:translateX(3px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}'}</style>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#22c55e', boxShadow: savedEmojiOpen ? '0 0 0 4px rgba(34,197,94,0.35)' : '0 0 8px #22c55e' }} />
+            </button>
           </div>
+          {savedEmojiOpen && (
+            <div style={{ margin: '0 16px 8px', background: '#06171a', borderRadius: 16, padding: 10, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4 }}>
+              {LIVE_EMOJI_PICKER.map(em => (
+                <button key={em} type="button" onClick={() => { pushItem({ kind: 'text', text: em + LIVE_BIG_EMOJI_MARK }); setEmojiBits(prev => [...prev, { id: String(Date.now()), em, x: 20 + Math.random() * 60 }]); setSavedEmojiOpen(false); }} style={{ background: 'none', border: 'none', fontSize: '2rem', cursor: 'pointer' }}>{em}</button>
+              ))}
+            </div>
+          )}
+          {emojiBits.map(bit => (
+            <span key={bit.id} style={{ position: 'fixed', left: `${bit.x}%`, bottom: 92, zIndex: 120000, fontSize: '2.4rem', pointerEvents: 'none', animation: 'stooornaEmojiFall 1.1s ease forwards' }}>{bit.em}</span>
+          ))}
+          <style>{'@keyframes stooornaEmojiFall{to{transform:translateY(70px) scale(1.4);opacity:0}}'}</style>
           {roomMembers.length > 0 && (
             <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap' }}>
               {roomMembers.map(m => (
                 <button key={m.username} type="button" onClick={() => { const f = (((window as any).__stooornaFriends || []) as any[]).find(x => String(x.username || '').replace(/^@/, '') === String(m.username || '').replace(/^@/, '')); setMemberMenu({ ...m, userId: (m as any).userId || f?.id || '', avatarUrl: (m as any).avatarUrl || f?.avatarUrl || null, name: (m as any).name || f?.name }); }} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer' }}>
-                  <img src={(m as any).avatarUrl || ''} alt="" style={{ width: 18, height: 18, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4' }} />
+                  <img src={(m as any).avatarUrl || ''} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', background: '#123' }} />
                   @{m.username}
                 </button>
               ))}
@@ -14971,9 +14990,9 @@ function SavedMessagesScreen({
           )}
           {memberMenu && (
             <div onClick={() => setMemberMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div onClick={e => e.stopPropagation()} style={{ width: 180, background: '#111', color: '#fff', borderRadius: 16, padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <button type="button" onClick={() => void kickUser(memberMenu.username)} style={{ border: 'none', borderRadius: 12, background: '#ef4444', color: '#fff', fontWeight: 800, padding: '10px' }}>طرد</button>
-                <button type="button" onClick={() => { setSavedProfile(memberMenu); setMemberMenu(null); }} style={{ border: '1px solid #00BCD4', borderRadius: 12, background: '#041414', color: '#00BCD4', fontWeight: 800, padding: '10px' }}>Profile</button>
+              <div onClick={e => e.stopPropagation()} style={{ width: 220, background: '#fff', color: '#111', borderRadius: 22, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 16px 40px rgba(0,0,0,0.2)' }}>
+                <button type="button" onClick={() => void kickUser(memberMenu.username)} style={{ border: 'none', borderRadius: 14, background: '#fff1f2', color: '#e11d48', fontWeight: 800, padding: '12px' }}>طرد</button>
+                <button type="button" onClick={() => { setSavedProfile(memberMenu); setMemberMenu(null); }} style={{ border: 'none', borderRadius: 14, background: '#ecfeff', color: '#0e7490', fontWeight: 800, padding: '12px' }}>Profile</button>
               </div>
             </div>
           )}
@@ -15056,7 +15075,7 @@ function SavedMessagesScreen({
                   {m.kind === 'text' && (
                     <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                       {m.senderName ? <img src={m.avatarUrl || ''} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', background: '#123', flexShrink: 0 }} /> : null}
-                      <span><b style={{ fontSize: '0.95rem' }}>{m.senderName ? `@${m.senderName}` : ''}</b>{m.senderName ? ' ' : ''}{m.text}</span>
+                      {isLiveBigEmoji(m.text || '') ? <span style={{ fontSize: '3.4rem', lineHeight: 1 }}>{stripLiveBigEmojiMark(m.text || '')}</span> : <span><b style={{ fontSize: '0.95rem' }}>{m.senderName ? `@${m.senderName}` : ''}</b>{m.senderName ? ' ' : ''}{m.text}</span>}
                     </p>
                   )}
                   {m.kind === 'image' && m.mediaUrl && (
@@ -15186,6 +15205,7 @@ function SavedMessagesScreen({
                   autoPlay
                   playsInline
                   controls={false}
+                  poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                   disablePictureInPicture
                   controlsList="nodownload nofullscreen noremoteplayback"
                   onClick={e => { e.stopPropagation(); setMediaView(null); }}
