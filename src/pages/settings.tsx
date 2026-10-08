@@ -22,33 +22,6 @@ import { LiveVipDock } from '@/components/LiveVipDock';
 import { WalletSheet } from '@/components/LiveCoinsDock';
 
 /** Owner gift: credits spendable Coins immediately and queues the gifts-box notice. */
-
-function OwnerLiveIconsPrivateToggle() {
-  const [on, setOn] = useState(false);
-  useEffect(() => {
-    try { setOn(localStorage.getItem('stooorna_owner_live_icons_private') === '1'); } catch { /* */ }
-  }, []);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        const next = !on;
-        setOn(next);
-        try { localStorage.setItem('stooorna_owner_live_icons_private', next ? '1' : '0'); } catch { /* */ }
-        try { window.dispatchEvent(new Event('stooorna:owner-live-icons')); } catch { /* */ }
-      }}
-      style={{
-        width: '100%', textAlign: 'left', padding: '14px 16px', borderRadius: 14, cursor: 'pointer',
-        background: on ? 'rgba(250,204,21,0.12)' : 'rgba(255,255,255,0.04)',
-        border: `1px solid ${on ? 'rgba(250,204,21,0.45)' : 'rgba(255,255,255,0.12)'}`,
-        color: on ? '#facc15' : 'rgba(220,220,220,0.9)', fontWeight: 800, fontSize: '0.84rem',
-      }}
-    >
-      {on ? 'زر البث الخاص: شغّال — الشحن والهدايا تظهر لك فقط في بث الحسابات' : 'زر البث الخاص: متوقف — أزرار الإخفاء السابقة تبقى كما هي'}
-    </button>
-  );
-}
-
 function grantAppCoins(targetUserId: string, coins: number): { ok: boolean; error?: string; id?: string } {
   const uid = String(targetUserId || '').trim();
   const n = Math.floor(Number(coins) || 0);
@@ -3729,6 +3702,17 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [companyPendingMsg, setCompanyPendingMsg] = useState('');
+  const [forgotStep, setForgotStep] = useState<'hidden' | 'email' | 'sent' | 'reset'>('hidden');
+  const [forgotToken, setForgotToken] = useState('');
+  const [forgotMsg, setForgotMsg] = useState('');
+  const [forgotPw1, setForgotPw1] = useState('');
+  const [forgotPw2, setForgotPw2] = useState('');
+  useEffect(() => {
+    try {
+      const token = new URLSearchParams(window.location.search).get('forgot');
+      if (token) { setForgotToken(token); setForgotStep('reset'); }
+    } catch { /* */ }
+  }, []);
 
   function resetFormErrors() {
     setError('');
@@ -4944,6 +4928,61 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
           {loading ? '...' : (isRegister ? L.submitCreate : L.submitLogin)}
         </button>
       </form>
+
+      {!isRegister && forgotStep === 'hidden' && (
+        <button type="button" onClick={() => { setForgotStep('email'); setForgotMsg(''); setError(''); }}
+          style={{ marginTop: 12, background: 'none', border: 'none', color: T.primary, fontSize: 13, fontWeight: 800, cursor: 'pointer', width: '100%' }}>
+          {isEn ? 'Forgot password' : 'نسيت كلمة المرور'}
+        </button>
+      )}
+      {!isRegister && forgotStep !== 'hidden' && (
+        <div style={{ marginTop: 14, padding: 12, borderRadius: 12, border: `1px solid ${T.surfaceBorder}`, background: 'rgba(0,188,212,0.06)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <p style={{ margin: 0, color: T.text, fontWeight: 800, fontSize: 13 }}>{isEn ? 'Forgot password' : 'نسيت كلمة المرور'}</p>
+          {forgotStep === 'email' && (
+            <>
+              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={isEn ? 'Email' : 'البريد الإلكتروني'} dir="ltr" style={fieldCss()} />
+              <button type="button" disabled={loading} onClick={async () => {
+                setLoading(true); setForgotMsg('');
+                try {
+                  const r = await fetch('/api/auth/forgot-password', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }) });
+                  const d = await r.json().catch(() => ({} as any));
+                  if (!r.ok) { setForgotMsg(isEn ? 'Enter a valid email' : 'اكتب بريداً صحيحاً'); }
+                  else {
+                    setForgotStep('sent');
+                    setForgotMsg(d.sent ? (isEn ? 'Check your email for the Stooorna link' : 'وصل الإيميل — افتح رابط Stooorna') : (isEn ? 'Request saved. Open the link if email is not configured yet.' : 'تم الطلب. إذا الإيميل غير مفعّل بعد، افتح الرابط التجريبي.'));
+                    if (d.devLink) setForgotMsg(prev => prev + '\n' + d.devLink);
+                  }
+                } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
+                setLoading(false);
+              }} style={{ padding: 10, borderRadius: 10, border: 'none', background: T.primary, color: '#041018', fontWeight: 800, cursor: 'pointer' }}>
+                {loading ? '...' : (isEn ? 'Send email' : 'إرسال الإيميل')}
+              </button>
+            </>
+          )}
+          {forgotStep === 'sent' && <p style={{ margin: 0, color: T.textMuted, fontSize: 12, whiteSpace: 'pre-wrap' }}>{forgotMsg}</p>}
+          {forgotStep === 'reset' && (
+            <>
+              <input type={showPw ? 'text' : 'password'} value={forgotPw1} onChange={e => setForgotPw1(e.target.value)} placeholder={isEn ? 'New password' : 'كلمة المرور الجديدة'} dir="ltr" style={fieldCss()} />
+              <input type={showConfirmPw ? 'text' : 'password'} value={forgotPw2} onChange={e => setForgotPw2(e.target.value)} placeholder={isEn ? 'Repeat password' : 'إعادة كلمة المرور'} dir="ltr" style={fieldCss()} />
+              <button type="button" disabled={loading} onClick={async () => {
+                if (forgotPw1.length < 6 || forgotPw1 !== forgotPw2) { setForgotMsg(isEn ? 'Passwords must match (min 6)' : 'كلمتا المرور غير متطابقتين (٦ أحرف على الأقل)'); return; }
+                setLoading(true); setForgotMsg('');
+                try {
+                  const r = await fetch('/api/auth/forgot-password/confirm', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: forgotToken, password: forgotPw1, confirm: forgotPw2 }) });
+                  const d = await r.json().catch(() => ({} as any));
+                  if (!r.ok) setForgotMsg(isEn ? 'Link expired. Request a new email.' : 'الرابط انتهى. اطلب إيميلاً جديداً');
+                  else { setForgotMsg(isEn ? 'Password changed. You can log in.' : 'تم تغيير كلمة المرور. تقدر تسجّل الدخول.'); setForgotStep('hidden'); setPassword(''); }
+                } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
+                setLoading(false);
+              }} style={{ padding: 10, borderRadius: 10, border: 'none', background: T.primary, color: '#041018', fontWeight: 800, cursor: 'pointer' }}>
+                {loading ? '...' : (isEn ? 'Change password' : 'تغيير كلمة المرور')}
+              </button>
+            </>
+          )}
+          {forgotMsg && forgotStep !== 'sent' ? <p style={{ margin: 0, color: '#eab308', fontSize: 12, whiteSpace: 'pre-wrap' }}>{forgotMsg}</p> : null}
+          <button type="button" onClick={() => setForgotStep('hidden')} style={{ background: 'none', border: 'none', color: T.textMuted, fontSize: 12, cursor: 'pointer' }}>{isEn ? 'Back to login' : 'رجوع لتسجيل الدخول'}</button>
+        </div>
+      )}
 
       <div style={{ marginTop: 20, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
         <span style={{ color: T.primaryDim, fontSize: 13 }}>
@@ -9719,8 +9758,6 @@ export default function SettingsPage() {
 
                 {/* App Upload (Android / iOS boxes + live icons switch) — right under User Control */}
                 <AppUploadSection T={T} />
-
-                <OwnerLiveIconsPrivateToggle />
 
                 <motion.button
                   whileTap={{ scale: 0.98 }}

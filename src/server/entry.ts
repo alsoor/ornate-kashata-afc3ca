@@ -17,6 +17,7 @@ import { registerTemplatesRoutes } from "./templates-routes.js"; // TEMPLATES-PA
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
 import { registerSavedRoomRoutes } from "./saved-room-patch.js";
+import { registerForgotPasswordRoutes } from "./forgot-password-patch.js"; // FORGOT-PASSWORD-PATCH
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -2104,6 +2105,7 @@ app.post("/api/business/directory", business_directory_post_169);
 
 
 // ── OTP (email / phone) ─────────────────────────────────────────────────────
+registerForgotPasswordRoutes(app, { db: dbClientModule as unknown as Record<string, any> }); // FORGOT-PASSWORD-PATCH
 // Demo-safe store: codes live in memory + optional console log.
 // Production: set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM (SMS)
 // and SMTP_* or RESEND_API_KEY for email. Without them, OTP is returned in
