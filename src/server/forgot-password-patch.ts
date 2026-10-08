@@ -1,8 +1,8 @@
 /**
  * FORGOT-PASSWORD-PATCH
- * نسيت كلمة المرور — يطلب البريد، يرسل إيميل Stooorna، والرابط يفتح صفحة داخل التطبيق لتغيير الباسورد مرتين.
+ * نسيت كلمة المرور — من داخل التطبيق: إرسال الطلب يفتح أيقونة، والضغط عليها يفتح تعيين الباسورد مرتين.
  * يُربَط من server/entry.ts عبر registerForgotPasswordRoutes(app).
- * الإرسال يستخدم RESEND_API_KEY (نفس مسار OTP). بدون مفتاح يبقى الطلب مقبولاً ويُرجع devLink للتجربة.
+ * لا يُعرض رابط للمستخدم. appToken داخلي فقط لتأكيد التغيير على السيرفر.
  */
 import type { Express, Request, Response } from "express";
 import { randomBytes, scrypt as scryptCb } from "node:crypto";
@@ -175,7 +175,7 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
     let sent = false;
     try { sent = await sendResetEmail(email, resetUrl); } catch (e) { console.error("[forgot-password] send", e); }
     console.log(`[forgot-password] ${email} sent=${sent}`);
-    res.json({ ok: true, sent, devLink: sent ? undefined : resetUrl });
+    res.json({ ok: true, sent, appToken: token });
   });
 
   app.get("/api/password/forgot/verify", (req: Request, res: Response) => {
@@ -193,7 +193,13 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
     const token = String(body.token || req.query.token || "");
     const password = String(body.password || "");
     const confirm = String(body.confirm || body.password2 || "");
-    const rec = store().get(token);
+    const emailHint = normEmail(body.email);
+    let rec = token ? store().get(token) : undefined;
+    if ((!rec || rec.used || Date.now() - rec.at > TTL_MS) && emailHint) {
+      for (const item of store().values()) {
+        if (item.email === emailHint && !item.used && Date.now() - item.at <= TTL_MS) rec = item;
+      }
+    }
     if (!rec || rec.used || Date.now() - rec.at > TTL_MS) {
       res.status(400).json({ ok: false, error: "expired" });
       return;

@@ -3744,7 +3744,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [companyPendingMsg, setCompanyPendingMsg] = useState('');
-  const [forgotStep, setForgotStep] = useState<'hidden' | 'email' | 'sent' | 'reset'>('hidden');
+  const [forgotStep, setForgotStep] = useState<'hidden' | 'email' | 'icon' | 'reset' | 'done'>('hidden');
   const [forgotToken, setForgotToken] = useState('');
   const [forgotMsg, setForgotMsg] = useState('');
   const [forgotPw1, setForgotPw1] = useState('');
@@ -3755,6 +3755,17 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
       if (token) { setForgotToken(token); setForgotStep('reset'); }
     } catch { /* */ }
   }, []);
+  useEffect(() => {
+    if (forgotStep !== 'done') return;
+    const t = window.setTimeout(() => {
+      setForgotStep('hidden');
+      setForgotMsg('');
+      setForgotPw1('');
+      setForgotPw2('');
+      setForgotToken('');
+    }, 1600);
+    return () => window.clearTimeout(t);
+  }, [forgotStep]);
 
   function resetFormErrors() {
     setError('');
@@ -4971,59 +4982,105 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
         </button>
       </form>
 
-      {!isRegister && forgotStep === 'hidden' && (
-        <button type="button" onClick={() => { setForgotStep('email'); setForgotMsg(''); setError(''); }}
+      {!isRegister && (forgotStep === 'hidden' || forgotStep === 'email') && (
+        <button type="button" onClick={() => { setForgotStep(forgotStep === 'email' ? 'hidden' : 'email'); setForgotMsg(''); setError(''); }}
           style={{ marginTop: 12, background: 'none', border: 'none', color: T.primary, fontSize: 13, fontWeight: 800, cursor: 'pointer', width: '100%' }}>
           {isEn ? 'Forgot password' : 'نسيت كلمة المرور'}
         </button>
       )}
-      {!isRegister && forgotStep !== 'hidden' && (
+      {!isRegister && forgotStep === 'email' && (
         <div style={{ marginTop: 14, padding: 12, borderRadius: 12, border: `1px solid ${T.surfaceBorder}`, background: 'rgba(0,188,212,0.06)', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <p style={{ margin: 0, color: T.text, fontWeight: 800, fontSize: 13 }}>{isEn ? 'Forgot password' : 'نسيت كلمة المرور'}</p>
-          {forgotStep === 'email' && (
-            <>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={isEn ? 'Email' : 'البريد الإلكتروني'} dir="ltr" style={fieldCss()} />
-              <button type="button" disabled={loading} onClick={async () => {
-                setLoading(true); setForgotMsg('');
-                try {
-                  const r = await fetch('/api/password/forgot', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }) });
-                  const d = await r.json().catch(() => ({} as any));
-                  if (!r.ok) { setForgotMsg(r.status === 404 ? (isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط') : (isEn ? 'Could not send. Check the email.' : 'تعذر الإرسال. تأكد من البريد.')); }
-                  else {
-                    setForgotStep('sent');
-                    setForgotMsg(d.sent ? (isEn ? 'Check your email for the Stooorna link' : 'وصل الإيميل — افتح رابط Stooorna') : (isEn ? 'Request saved. Open the link if email is not configured yet.' : 'تم الطلب. إذا الإيميل غير مفعّل بعد، افتح الرابط التجريبي.'));
-                    if (d.devLink) setForgotMsg(prev => prev + '\n' + d.devLink);
-                  }
-                } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
-                setLoading(false);
-              }} style={{ padding: 10, borderRadius: 10, border: 'none', background: T.primary, color: '#041018', fontWeight: 800, cursor: 'pointer' }}>
-                {loading ? '...' : (isEn ? 'Send email' : 'إرسال الإيميل')}
-              </button>
-            </>
-          )}
-          {forgotStep === 'sent' && <p style={{ margin: 0, color: T.textMuted, fontSize: 12, whiteSpace: 'pre-wrap' }}>{forgotMsg}</p>}
-          {forgotStep === 'reset' && (
-            <>
-              <input type={showPw ? 'text' : 'password'} value={forgotPw1} onChange={e => setForgotPw1(e.target.value)} placeholder={isEn ? 'New password' : 'كلمة المرور الجديدة'} dir="ltr" style={fieldCss()} />
-              <input type={showConfirmPw ? 'text' : 'password'} value={forgotPw2} onChange={e => setForgotPw2(e.target.value)} placeholder={isEn ? 'Repeat password' : 'إعادة كلمة المرور'} dir="ltr" style={fieldCss()} />
-              <button type="button" disabled={loading} onClick={async () => {
-                if (forgotPw1.length < 6 || forgotPw1 !== forgotPw2) { setForgotMsg(isEn ? 'Passwords must match (min 6)' : 'كلمتا المرور غير متطابقتين (٦ أحرف على الأقل)'); return; }
-                setLoading(true); setForgotMsg('');
-                try {
-                  const r = await fetch('/api/password/forgot/confirm', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: forgotToken, password: forgotPw1, confirm: forgotPw2 }) });
-                  const d = await r.json().catch(() => ({} as any));
-                  if (!r.ok) setForgotMsg(isEn ? 'Link expired. Request a new email.' : 'الرابط انتهى. اطلب إيميلاً جديداً');
-                  else { setForgotMsg(isEn ? 'Password changed. You can log in.' : 'تم تغيير كلمة المرور. تقدر تسجّل الدخول.'); setForgotStep('hidden'); setPassword(''); }
-                } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
-                setLoading(false);
-              }} style={{ padding: 10, borderRadius: 10, border: 'none', background: T.primary, color: '#041018', fontWeight: 800, cursor: 'pointer' }}>
-                {loading ? '...' : (isEn ? 'Change password' : 'تغيير كلمة المرور')}
-              </button>
-            </>
-          )}
-          {forgotMsg && forgotStep !== 'sent' ? <p style={{ margin: 0, color: '#eab308', fontSize: 12, whiteSpace: 'pre-wrap' }}>{forgotMsg}</p> : null}
-          <button type="button" onClick={() => setForgotStep('hidden')} style={{ background: 'none', border: 'none', color: T.textMuted, fontSize: 12, cursor: 'pointer' }}>{isEn ? 'Back to login' : 'رجوع لتسجيل الدخول'}</button>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={isEn ? 'Email' : 'البريد الإلكتروني'} dir="ltr" style={fieldCss()} />
+          <button type="button" disabled={loading} onClick={async () => {
+            const em = email.trim();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) { setForgotMsg(isEn ? 'Enter a valid email' : 'أدخل بريداً صحيحاً'); return; }
+            setLoading(true); setForgotMsg('');
+            try {
+              const r = await fetch('/api/password/forgot', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em }) });
+              const d = await r.json().catch(() => ({} as any));
+              if (!r.ok) { setForgotMsg(r.status === 404 ? (isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط') : (isEn ? 'Could not start reset. Check the email.' : 'تعذر بدء الاستعادة. تأكد من البريد.')); }
+              else {
+                const fromLink = String(d.devLink || '').split('forgot=')[1] || '';
+                const tok = String(d.appToken || fromLink || '').trim();
+                setForgotToken(tok);
+                setForgotPw1(''); setForgotPw2('');
+                setForgotStep('icon');
+              }
+            } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
+            setLoading(false);
+          }} style={{ padding: 10, borderRadius: 10, border: 'none', background: T.primary, color: '#041018', fontWeight: 800, cursor: 'pointer' }}>
+            {loading ? '...' : (isEn ? 'Send' : 'إرسال الإيميل')}
+          </button>
+          {forgotMsg ? <p style={{ margin: 0, color: '#eab308', fontSize: 12 }}>{forgotMsg}</p> : null}
         </div>
+      )}
+      {!isRegister && (forgotStep === 'icon' || forgotStep === 'reset' || forgotStep === 'done') && typeof document !== 'undefined' && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => { if (forgotStep === 'icon') { setForgotStep('email'); setForgotMsg(''); } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 14000, background: 'rgba(2,10,12,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: 'min(92vw, 360px)', background: 'linear-gradient(180deg,#0e2c30,#071416)', border: '1px solid rgba(0,188,212,0.4)', borderRadius: 20, padding: '22px 18px 18px', boxShadow: '0 18px 50px rgba(0,0,0,0.45)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}
+          >
+            {forgotStep === 'icon' && (
+              <>
+                <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, fontSize: 16, textAlign: 'center' }}>{isEn ? 'Reset password' : 'استعادة كلمة المرور'}</p>
+                <p style={{ margin: 0, color: 'rgba(190,220,220,0.75)', fontSize: 13, textAlign: 'center', lineHeight: 1.55 }}>
+                  {isEn ? 'Tap the icon to set a new password inside the app.' : 'اضغط الأيقونة لتعيين كلمة المرور من داخل التطبيق.'}
+                </p>
+                <button
+                  type="button"
+                  aria-label={isEn ? 'Open password reset' : 'فتح تعيين كلمة المرور'}
+                  onClick={() => { setForgotMsg(''); setForgotStep('reset'); }}
+                  style={{ width: 92, height: 92, borderRadius: '50%', border: '1px solid rgba(0,188,212,0.55)', background: 'rgba(0,188,212,0.14)', color: '#00BCD4', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <Lock size={40} />
+                </button>
+                <button type="button" onClick={() => { setForgotStep('email'); setForgotMsg(''); }} style={{ background: 'none', border: 'none', color: 'rgba(190,220,220,0.65)', fontSize: 12, cursor: 'pointer' }}>
+                  {isEn ? 'Back' : 'رجوع'}
+                </button>
+              </>
+            )}
+            {forgotStep === 'reset' && (
+              <>
+                <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, fontSize: 16, textAlign: 'center' }}>{isEn ? 'New password' : 'كلمة المرور الجديدة'}</p>
+                <input type={showPw ? 'text' : 'password'} value={forgotPw1} onChange={e => setForgotPw1(e.target.value)} placeholder={isEn ? 'New password' : 'كلمة المرور الجديدة'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />
+                <input type={showConfirmPw ? 'text' : 'password'} value={forgotPw2} onChange={e => setForgotPw2(e.target.value)} placeholder={isEn ? 'Repeat password' : 'أعد كتابة كلمة المرور'} dir="ltr" style={{ ...fieldCss(), width: '100%' }} />
+                <button type="button" disabled={loading} onClick={async () => {
+                  if (forgotPw1.length < 6 || forgotPw1 !== forgotPw2) { setForgotMsg(isEn ? 'Passwords must match (min 6)' : 'كلمتا المرور غير متطابقتين (٦ أحرف على الأقل)'); return; }
+                  setLoading(true); setForgotMsg('');
+                  try {
+                    const r = await fetch('/api/password/forgot/confirm', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: forgotToken, email: email.trim(), password: forgotPw1, confirm: forgotPw2 }) });
+                    const d = await r.json().catch(() => ({} as any));
+                    if (!r.ok || d.ok === false) setForgotMsg(isEn ? 'Could not change the password. Send again.' : 'تعذر تغيير كلمة المرور. أعد الإرسال.');
+                    else { setPassword(''); setForgotMsg(isEn ? 'Password changed successfully' : 'تم تغيير كلمة المرور بنجاح'); setForgotStep('done'); }
+                  } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
+                  setLoading(false);
+                }} style={{ width: '100%', padding: 12, borderRadius: 12, border: 'none', background: '#00BCD4', color: '#041018', fontWeight: 900, cursor: 'pointer' }}>
+                  {loading ? '...' : (isEn ? 'Save password' : 'حفظ كلمة المرور')}
+                </button>
+                {forgotMsg ? <p style={{ margin: 0, color: '#eab308', fontSize: 12, textAlign: 'center' }}>{forgotMsg}</p> : null}
+                <button type="button" onClick={() => setForgotStep('icon')} style={{ background: 'none', border: 'none', color: 'rgba(190,220,220,0.65)', fontSize: 12, cursor: 'pointer' }}>
+                  {isEn ? 'Back' : 'رجوع'}
+                </button>
+              </>
+            )}
+            {forgotStep === 'done' && (
+              <>
+                <div style={{ width: 74, height: 74, borderRadius: '50%', background: 'rgba(34,197,94,0.14)', border: '1px solid rgba(34,197,94,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <CheckCircle size={36} color="#86efac" />
+                </div>
+                <p style={{ margin: 0, color: '#86efac', fontWeight: 900, fontSize: 16, textAlign: 'center' }}>{isEn ? 'Password changed successfully' : 'تم تغيير كلمة المرور بنجاح'}</p>
+                <p style={{ margin: 0, color: 'rgba(190,220,220,0.75)', fontSize: 13, textAlign: 'center' }}>{isEn ? 'You can log in with the new password.' : 'تقدر تدخل الآن بكلمة المرور الجديدة.'}</p>
+              </>
+            )}
+          </div>
+        </div>,
+        document.body,
       )}
 
       <div style={{ marginTop: 20, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
