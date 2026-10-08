@@ -5194,8 +5194,10 @@ function GlobalBottomNavigation() {
       // navBarHidden (auto-hide on scroll in the profile/story page) intentionally
       // excluded — the "+" button lives on this bar and must always stay reachable
       // there, so the bar now stays fixed instead of sliding down on scroll.
-      textPostsOpen
-      || liveMapOpen
+      // textPostsOpen intentionally excluded too: the public text-posts page is no longer rendered
+      // (add-friend.tsx has it behind `false &&`), but its flag is still switched on by a stale
+      // sessionStorage 'stooorna_return_text_posts', ?openTextPosts=1, or for guests — that slid the bar away for no visible reason.
+      liveMapOpen
       || isConversation
       || secretChatOpen
       || friendChatOpen
