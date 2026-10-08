@@ -22,6 +22,33 @@ import { LiveVipDock } from '@/components/LiveVipDock';
 import { WalletSheet } from '@/components/LiveCoinsDock';
 
 /** Owner gift: credits spendable Coins immediately and queues the gifts-box notice. */
+
+function OwnerLiveIconsPrivateToggle() {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    try { setOn(localStorage.getItem('stooorna_owner_live_icons_private') === '1'); } catch { /* */ }
+  }, []);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        const next = !on;
+        setOn(next);
+        try { localStorage.setItem('stooorna_owner_live_icons_private', next ? '1' : '0'); } catch { /* */ }
+        try { window.dispatchEvent(new Event('stooorna:owner-live-icons')); } catch { /* */ }
+      }}
+      style={{
+        width: '100%', textAlign: 'left', padding: '14px 16px', borderRadius: 14, cursor: 'pointer',
+        background: on ? 'rgba(250,204,21,0.12)' : 'rgba(255,255,255,0.04)',
+        border: `1px solid ${on ? 'rgba(250,204,21,0.45)' : 'rgba(255,255,255,0.12)'}`,
+        color: on ? '#facc15' : 'rgba(220,220,220,0.9)', fontWeight: 800, fontSize: '0.84rem',
+      }}
+    >
+      {on ? 'زر البث الخاص: شغّال — الشحن والهدايا تظهر لك فقط في بث الحسابات' : 'زر البث الخاص: متوقف — أزرار الإخفاء السابقة تبقى كما هي'}
+    </button>
+  );
+}
+
 function grantAppCoins(targetUserId: string, coins: number): { ok: boolean; error?: string; id?: string } {
   const uid = String(targetUserId || '').trim();
   const n = Math.floor(Number(coins) || 0);
@@ -9692,6 +9719,8 @@ export default function SettingsPage() {
 
                 {/* App Upload (Android / iOS boxes + live icons switch) — right under User Control */}
                 <AppUploadSection T={T} />
+
+                <OwnerLiveIconsPrivateToggle />
 
                 <motion.button
                   whileTap={{ scale: 0.98 }}

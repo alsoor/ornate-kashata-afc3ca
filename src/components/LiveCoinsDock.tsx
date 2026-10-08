@@ -19,6 +19,30 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign } from 'lucide-react';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
 import { useLiveSwitches } from '@/lib/liveIconsVisibility';
+import { useSession } from '@/lib/auth/auth-client';
+
+const OWNER_LIVE_ICONS_KEY = 'stooorna_owner_live_icons_private';
+function readOwnerLiveIconsPrivate(): boolean {
+  try { return localStorage.getItem(OWNER_LIVE_ICONS_KEY) === '1'; } catch { return false; }
+}
+function useOwnerLiveIconsPrivate(): boolean {
+  const [on, setOn] = useState(readOwnerLiveIconsPrivate);
+  useEffect(() => {
+    const sync = () => setOn(readOwnerLiveIconsPrivate());
+    window.addEventListener('storage', sync);
+    window.addEventListener('stooorna:owner-live-icons', sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener('stooorna:owner-live-icons', sync);
+    };
+  }, []);
+  return on;
+}
+function sessionIsOwner(user: { email?: string | null; username?: string | null; name?: string | null } | null | undefined): boolean {
+  const email = String(user?.email || '').trim().toLowerCase();
+  const username = String(user?.username || user?.name || '').replace(/^@/, '').trim().toLowerCase();
+  return email === 'stooorna@mail.com' || username === 'stooorna';
+}
 import type { GiftDefinition } from '@/lib/types';
 import { supportSpend } from '@/lib/supportCoinsPatch';
 import { deductGiftSupport, giftBalanceOrLocked } from '@/lib/giftDeductPatch';
@@ -604,6 +628,11 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   useEffect(() => { void getGooglePlayService(); }, []);
   // Owner switches (Settings → App Upload): when off, the Coins ($) icon / Gifts icon are hidden for everyone in video + voice LIVE.
   const liveSw = useLiveSwitches();
+  const sessionResult = useSession();
+  const sessionUser = (sessionResult as any)?.data?.user ?? (sessionResult as any)?.user ?? (sessionResult as any)?.session?.user ?? null;
+  const ownerPrivateIcons = useOwnerLiveIconsPrivate() && sessionIsOwner(sessionUser) && !!hostId;
+  const showCoinsIcon = liveSw.coins || ownerPrivateIcons;
+  const showGiftsIcon = liveSw.gifts || ownerPrivateIcons;
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
@@ -617,8 +646,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   const [giftMsg, setGiftMsg] = useState('');
   const [customText, setCustomText] = useState('');
   const [tap, setTap] = useState<{ id: string; n: number } | null>(null);
-  useEffect(() => { if (!liveSw.coins) setCoinsOpen(false); }, [liveSw.coins]);
-  useEffect(() => { if (!liveSw.gifts) setGiftsOpen(false); }, [liveSw.gifts]);
+  useEffect(() => { if (!showCoinsIcon) setCoinsOpen(false); }, [showCoinsIcon]);
+  useEffect(() => { if (!showGiftsIcon) setGiftsOpen(false); }, [showGiftsIcon]);
 
   // تكرار الهدية + طابور التشغيل
   const tapRef = useRef<{ id: string; n: number } | null>(null);
@@ -1082,8 +1111,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
 
   return (
     <>
-      {liveSw.coins && dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
-      {liveSw.gifts && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
+      {showCoinsIcon && dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
+      {showGiftsIcon && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
         setCoinsOpen(false);
         if (appGiftNotice) {
           try { localStorage.removeItem(giftNoticeKey(uid)); } catch { /* ignore */ }
