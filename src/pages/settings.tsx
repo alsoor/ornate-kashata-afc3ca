@@ -4356,8 +4356,10 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               const fullPhone = `${signupDial}${signupPhone.replace(/\D/g, '')}`;
               localStorage.setItem(`stooorna_phone_${em}`, fullPhone);
               try {
+                const bind = await fetch('/api/password/phone-bind', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em, phone: fullPhone }) });
+                const bindData = await bind.json().catch(() => ({} as any));
+                if (bindData.error === 'phone_taken') { setError('This mobile number is already used'); return; }
                 await fetch('/api/users/me/phone', { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: fullPhone }) });
-                await fetch('/api/password/phone-bind', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em, phone: fullPhone }) });
               } catch { /* phone retry stays in settings if the route is late */ }
             }
             if (usedPhone) rememberPhoneAuth(rawId, em);
@@ -7208,25 +7210,25 @@ export default function SettingsPage() {
     setPhoneLoading(true);
     setPhoneMsg('');
     try {
+      const bind = await fetch('/api/password/phone-bind', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user?.email || '', phone: phoneInput }) });
+      const bindData = await bind.json().catch(() => ({} as any));
+      if (bindData.error === 'phone_taken') {
+        setPhoneMsg('هذا الرقم مستخدم على حساب آخر');
+        setPhoneLoading(false);
+        return;
+      }
       const r = await fetch('/api/users/me/phone', {
         method: 'PATCH',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          phone: phoneInput
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneInput })
       });
-      try {
-        await fetch('/api/password/phone-bind', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user?.email || '', phone: phoneInput }) });
-        if (user?.email) localStorage.setItem(`stooorna_phone_${String(user.email).toLowerCase()}`, phoneInput);
-      } catch { /* */ }
-      const d = await r.json();
-      if (r.ok) {
+      if (user?.email) localStorage.setItem(`stooorna_phone_${String(user.email).toLowerCase()}`, phoneInput);
+      const d = await r.json().catch(() => ({} as any));
+      if (r.ok || bind.ok) {
         setPhoneMsg('Saved!');
         setEditingPhone(false);
-        setProfilePhone(d.phone ?? '');
+        setProfilePhone(d.phone || phoneInput);
       } else setPhoneMsg(d.error || 'Failed');
     } catch {
       setPhoneMsg('Network error');
@@ -13186,13 +13188,17 @@ export default function SettingsPage() {
               <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, textAlign: 'center' }}>رقم الموبايل مطلوب</p>
               <p style={{ margin: 0, color: 'rgba(190,220,220,0.75)', fontSize: 13, textAlign: 'center' }}>لا يمكن استخدام الحساب بدون رقم موبايل. اختر المفتاح ثم أدخل الرقم.</p>
               <div style={{ display: 'flex', gap: 8 }}>
-                <select value={phoneInput.startsWith('+') ? (DIAL_CODES.find(c => phoneInput.startsWith(c.dial))?.dial || '+965') : '+965'} onChange={e => setPhoneInput(prev => e.target.value + prev.replace(/^\+\d+/, '').replace(/\D/g, ''))} style={{ width: 110, borderRadius: 10, background: '#062024', color: '#d7eeee', border: '1px solid rgba(0,188,212,0.35)', padding: 8 }}>
-                  {DIAL_CODES.map(c => <option key={c.iso + c.dial} value={c.dial}>{c.iso} {c.dial}</option>)}
+                <select value={(DIAL_CODES.slice().sort((a,b) => b.dial.length - a.dial.length).find(c => phoneInput.startsWith(c.dial))?.dial || '+965')} onChange={e => {
+                  const dial = (DIAL_CODES.slice().sort((a,b) => b.dial.length - a.dial.length).find(c => phoneInput.startsWith(c.dial))?.dial || '+965');
+                  const national = phoneInput.startsWith(dial) ? phoneInput.slice(dial.length) : '';
+                  setPhoneInput(e.target.value + national);
+                }} style={{ width: 92, borderRadius: 10, background: '#062024', color: '#d7eeee', border: '1px solid rgba(0,188,212,0.35)', padding: 8 }}>
+                  {DIAL_CODES.map(c => <option key={c.iso + c.dial} value={c.dial}>{c.dial}</option>)}
                 </select>
-                <input value={phoneInput.replace(/^\+\d+/, '')} onChange={e => {
-                  const dial = (DIAL_CODES.find(c => phoneInput.startsWith(c.dial))?.dial || '+965');
-                  setPhoneInput(dial + e.target.value.replace(/\D/g, '').slice(0, 15));
-                }} placeholder="Mobile" dir="ltr" style={{ flex: 1, borderRadius: 10, background: '#062024', color: '#d7eeee', border: '1px solid rgba(0,188,212,0.35)', padding: 10 }} />
+                <input value={(() => { const dial = (DIAL_CODES.slice().sort((a,b) => b.dial.length - a.dial.length).find(c => phoneInput.startsWith(c.dial))?.dial || '+965'); return phoneInput.startsWith(dial) ? phoneInput.slice(dial.length) : ''; })()} onChange={e => {
+                  const dial = (DIAL_CODES.slice().sort((a,b) => b.dial.length - a.dial.length).find(c => phoneInput.startsWith(c.dial))?.dial || '+965');
+                  setPhoneInput(dial + e.target.value.replace(/\D/g, '').slice(0, 12));
+                }} inputMode="numeric" placeholder="Mobile" dir="ltr" style={{ flex: 1, borderRadius: 10, background: '#062024', color: '#d7eeee', border: '1px solid rgba(0,188,212,0.35)', padding: 10 }} />
               </div>
               <button type="button" disabled={phoneLoading} onClick={() => { void savePhone(); }} style={{ padding: 12, borderRadius: 12, border: 'none', background: '#00BCD4', color: '#041018', fontWeight: 900, cursor: 'pointer' }}>{phoneLoading ? '...' : 'حفظ الرقم'}</button>
               {phoneMsg ? <p style={{ margin: 0, color: '#eab308', fontSize: 12, textAlign: 'center' }}>{phoneMsg}</p> : null}

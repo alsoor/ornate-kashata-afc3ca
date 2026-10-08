@@ -380,6 +380,12 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
       res.status(404).json({ ok: false, error: "not_registered" });
       return;
     }
+    const wanted = digitsOf(phone);
+    const taken = Object.entries(readPhoneFile(dataDir)).find(([em, ph]) => em !== email && digitsOf(String(ph)) === wanted);
+    if (taken) {
+      res.status(409).json({ ok: false, error: "phone_taken" });
+      return;
+    }
     await savePhone(opts?.db, dataDir, email, phone);
     res.json({ ok: true, phone });
   });
