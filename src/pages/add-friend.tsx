@@ -24995,7 +24995,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     } catch { /* ignore */ }
   }, [headerOpen]);
 
-  // أيقونة الشات العائمة (RootLayout) تختفي لما الهيدر يُرفع (headerOpen=true) وتظهر لما ينزل
+  // أيقونة الشات العائمة (RootLayout): تظهر لما الهيدر في حالة headerOpen=true وتختفي لما يكون false
   useEffect(() => {
     try {
       (window as any).__stooornaHeaderLifted = !!headerOpen;
@@ -25003,9 +25003,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     } catch { /* ignore */ }
   }, [headerOpen]);
   useEffect(() => () => {
+    // خرجنا من الصفحة: نرجّع الحالة "غير معروفة" فتظهر الأيقونة في بقية الصفحات
     try {
-      (window as any).__stooornaHeaderLifted = false;
-      window.dispatchEvent(new CustomEvent('stooorna:header-lifted', { detail: { lifted: false } }));
+      (window as any).__stooornaHeaderLifted = null;
+      window.dispatchEvent(new CustomEvent('stooorna:header-lifted', { detail: { lifted: null } }));
     } catch { /* ignore */ }
   }, []);
 

@@ -5327,12 +5327,18 @@ function GlobalPublicChatHost({ user }: { user: any }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   // موضع زر الشات العائم: يتحرك بالإصبع لأي مكان (فوق/تحت/يمين/يسار) ويتذكر مكانه
-  // الهيدر مرفوع (نقر الخط) → الأيقونة تختفي، ينزل الهيدر → تظهر. مفتاح التشغيل الأساسي ما يتغير.
-  const [headerLifted, setHeaderLifted] = useState<boolean>(() => {
-    try { return (window as any).__stooornaHeaderLifted === true; } catch { return false; }
+  // حالة الهيدر من صفحة الستوري: true = تظهر الأيقونة، false = تختفي، null (خارج الصفحة) = تظهر. مفتاح التشغيل الأساسي ما يتغير.
+  const [headerLifted, setHeaderLifted] = useState<boolean | null>(() => {
+    try {
+      const v = (window as any).__stooornaHeaderLifted;
+      return typeof v === 'boolean' ? v : null;
+    } catch { return null; }
   });
   useEffect(() => {
-    const on = (e: Event) => setHeaderLifted(!!(e as CustomEvent).detail?.lifted);
+    const on = (e: Event) => {
+      const v = (e as CustomEvent).detail?.lifted;
+      setHeaderLifted(typeof v === 'boolean' ? v : null);
+    };
     window.addEventListener('stooorna:header-lifted', on as EventListener);
     return () => window.removeEventListener('stooorna:header-lifted', on as EventListener);
   }, []);
@@ -5368,7 +5374,7 @@ function GlobalPublicChatHost({ user }: { user: any }) {
   if (!user?.id || !on) return null;
   return (
     <>
-      {!open && !headerLifted ? (
+      {!open && headerLifted !== false ? (
         <button
           type="button"
           onClick={() => { if (fabMovedRef.current) { fabMovedRef.current = false; return; } setOpen(true); }}
