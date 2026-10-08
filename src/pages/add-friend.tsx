@@ -14659,6 +14659,18 @@ function SavedMessagesScreen({
   };
   const [roomMembers, setRoomMembers] = useState<Array<{ userId: string; username: string; name: string }>>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
+  // SAVED-INVITE-WAITING-PATCH: invited friends stay "Waiting..." until they accept
+  const pendingKey = `stooorna_saved_pending_${userId}`;
+  const [pendingInvites, setPendingInvites] = useState<Array<{ username: string; name?: string; avatarUrl?: string | null }>>(() => {
+    try { const raw = JSON.parse(localStorage.getItem(`stooorna_saved_pending_${userId}`) || '[]'); return Array.isArray(raw) ? raw : []; } catch { return []; }
+  });
+  const savePending = (next: Array<{ username: string; name?: string; avatarUrl?: string | null }>) => {
+    setPendingInvites(next);
+    try { localStorage.setItem(pendingKey, JSON.stringify(next)); } catch { /* */ }
+  };
+  const cleanUn = (s: any) => String(s || '').replace(/^@/, '').trim().toLowerCase();
+  const pendingRef = useRef(pendingInvites);
+  pendingRef.current = pendingInvites;
   const [memberMenu, setMemberMenu] = useState<{ username: string; name?: string; avatarUrl?: string | null; userId?: string } | null>(null);
   const [savedProfile, setSavedProfile] = useState<{ username: string; name?: string; avatarUrl?: string | null; userId?: string } | null>(null);
   const [savedEmojiOpen, setSavedEmojiOpen] = useState(false);
@@ -14677,6 +14689,11 @@ function SavedMessagesScreen({
         if (!room) { setRoomMembers([]); setJoinedOwner(''); return; }
         setJoinedOwner(d.joined ? String(room.ownerId) : '');
         setRoomMembers(room.members || []);
+        try {
+          const spoke = new Set<string>((room.messages || []).map((m: any) => cleanUn(m.name)));
+          const still = pendingRef.current.filter(p => !spoke.has(cleanUn(p.username)));
+          if (still.length !== pendingRef.current.length) savePending(still);
+        } catch { /* */ }
         const extra = (room.messages || []).map((m: any) => {
           const raw = String(m.text || '');
           const isImg = raw.startsWith('img:');
@@ -14714,8 +14731,9 @@ function SavedMessagesScreen({
     const friend = (((window as any).__stooornaFriends || []) as any[]).find(f => String(f.username || '').replace(/^@/, '') === username.replace(/^@/, ''));
     await fetch('/api/saved-room/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId, ownerName: userName || userUsername, ownerAvatar: userAvatar, username, name, avatarUrl: friend?.avatarUrl || friend?.image || null }) });
     await fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'invite', usernames: [username], fromUserId: userId, fromName: userName || userUsername, fromAvatar: userAvatar || '', title: 'دعوة شات محفوظات', body: 'يدعوك للانضمام الى الشات الخاص به', room: `saved:${userId}`, href: '/?saved=1' }) });
-    setInviteOpen(false);
-    setToast(`تمت دعوة @${username}`);
+    const exists = pendingRef.current.some(p => cleanUn(p.username) === cleanUn(username));
+    if (!exists) savePending([...pendingRef.current, { username: username.replace(/^@/, ''), name, avatarUrl: friend?.avatarUrl || (friend as any)?.image || null }]);
+    setToast(`Invite sent to @${username.replace(/^@/, '')}`);
   };
   const leaveRoom = async () => {
     await fetch('/api/saved-room/leave', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, username: userUsername }) });
@@ -14932,7 +14950,14 @@ function SavedMessagesScreen({
                 WebkitTapHighlightColor: 'transparent',
               }}
             >
-              <span style={{
+              <span
+                onClick={joinedOwner ? (ev) => {
+                  ev.stopPropagation();
+                  let on = ''; let oa = '';
+                  try { on = sessionStorage.getItem('stooorna_saved_owner_name') || ''; oa = sessionStorage.getItem('stooorna_saved_owner_avatar') || ''; } catch { /* */ }
+                  setSavedProfile({ username: on, name: on, avatarUrl: oa || null, userId: joinedOwner });
+                } : undefined}
+                style={{
                 width: 34, height: 34, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: '#00BCD4',
@@ -14978,17 +15003,40 @@ function SavedMessagesScreen({
             <span key={bit.id} style={{ position: 'fixed', left: `${bit.x}%`, bottom: 92, zIndex: 120000, fontSize: '2.4rem', pointerEvents: 'none', animation: 'stooornaEmojiFall 1.1s ease forwards' }}>{bit.em}</span>
           ))}
           <style>{'@keyframes stooornaEmojiFall{to{transform:translateY(70px) scale(1.4);opacity:0}}'}</style>
-          {roomMembers.length > 0 && (
+          {/* SAVED-INVITE-WAITING-PATCH: pending invitees (owner only) */}
+          <style>{'@keyframes stooornaWaitPulse{0%,100%{box-shadow:0 0 0 0 rgba(250,204,21,0.55)}50%{box-shadow:0 0 0 7px rgba(250,204,21,0)}}@keyframes stooornaWaitDot{0%,100%{opacity:0.25}50%{opacity:1}}'}</style>
+          {!joinedOwner && pendingInvites.length > 0 && (
+            <div style={{ display: 'flex', gap: 14, padding: '0 14px 8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              {pendingInvites.map(p => (
+                <button key={p.username} type="button" onClick={() => setMemberMenu({ username: p.username, name: p.name, avatarUrl: p.avatarUrl || null, userId: String((((window as any).__stooornaFriends || []) as any[]).find(x => cleanUn(x.username) === cleanUn(p.username))?.id || '') })} style={{ background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 52, height: 52, borderRadius: '50%', overflow: 'hidden', border: '2px solid #facc15', background: '#123', animation: 'stooornaWaitPulse 1.4s ease-in-out infinite', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800 }}>
+                    {p.avatarUrl ? <img src={p.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (p.name || p.username || '?')[0]}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: '#111', maxWidth: 70, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{p.username}</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#a16207' }}>
+                    Waiting
+                    <span style={{ animation: 'stooornaWaitDot 1.2s infinite' }}>.</span>
+                    <span style={{ animation: 'stooornaWaitDot 1.2s infinite 0.2s' }}>.</span>
+                    <span style={{ animation: 'stooornaWaitDot 1.2s infinite 0.4s' }}>.</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+          {roomMembers.filter(m => !pendingInvites.some(p => cleanUn(p.username) === cleanUn(m.username))).length > 0 && (
             <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap' }}>
-              {roomMembers.map(m => (
-                <button key={m.username} type="button" onClick={() => { const f = (((window as any).__stooornaFriends || []) as any[]).find(x => String(x.username || '').replace(/^@/, '') === String(m.username || '').replace(/^@/, '')); setMemberMenu({ ...m, userId: (m as any).userId || f?.id || '', avatarUrl: (m as any).avatarUrl || f?.avatarUrl || null, name: (m as any).name || f?.name }); }} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: 'pointer' }}>
-                  <img src={(m as any).avatarUrl || ''} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', background: '#123' }} />
+              {roomMembers.filter(m => !pendingInvites.some(p => cleanUn(p.username) === cleanUn(m.username))).map(m => (
+                <button key={m.username} type="button" disabled={!!joinedOwner} onClick={() => { if (joinedOwner) return; const f = (((window as any).__stooornaFriends || []) as any[]).find(x => String(x.username || '').replace(/^@/, '') === String(m.username || '').replace(/^@/, '')); setMemberMenu({ ...m, userId: (m as any).userId || f?.id || '', avatarUrl: (m as any).avatarUrl || f?.avatarUrl || null, name: (m as any).name || f?.name }); }} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6, border: 'none', cursor: joinedOwner ? 'default' : 'pointer' }}>
+                  <span style={{ position: 'relative', display: 'inline-flex' }}>
+                    <img src={(m as any).avatarUrl || ''} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', background: '#123' }} />
+                    <span style={{ position: 'absolute', right: 0, bottom: 0, width: 10, height: 10, borderRadius: '50%', background: '#22c55e', border: '2px solid #111' }} />
+                  </span>
                   @{m.username}
                 </button>
               ))}
             </div>
           )}
-          {memberMenu && (
+          {memberMenu && !joinedOwner && (
             <div onClick={() => setMemberMenu(null)} style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div onClick={e => e.stopPropagation()} style={{ width: 220, background: '#fff', color: '#111', borderRadius: 22, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, boxShadow: '0 16px 40px rgba(0,0,0,0.2)' }}>
                 <button type="button" onClick={() => void kickUser(memberMenu.username)} style={{ border: 'none', borderRadius: 14, background: '#fff1f2', color: '#e11d48', fontWeight: 800, padding: '12px' }}>طرد</button>
@@ -15008,14 +15056,32 @@ function SavedMessagesScreen({
             />
           ) : null}
           {inviteOpen && (
-            <div style={{ margin: '0 12px 8px', background: '#fff', border: '1px solid #ddd', borderRadius: 12, padding: 6 }}>
-              {(((window as any).__stooornaFriends || []) as Array<{ id: string; username?: string; name?: string; avatarUrl?: string | null }>).map(f => (
-                <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px' }}>
-                  <img src={f.avatarUrl || ''} alt="" style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4' }} />
-                  <span style={{ flex: 1, fontWeight: 700 }}>@{f.username || f.name}</span>
-                  <button type="button" onClick={() => void inviteUser(String(f.username || f.name || ''), String(f.name || ''))} style={{ border: 'none', borderRadius: 999, background: '#00BCD4', color: '#041414', fontWeight: 800, padding: '6px 10px', cursor: 'pointer' }}>Invite</button>
+            <div onClick={() => setInviteOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 95, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}>
+              <style>{'@keyframes stooornaInvPop{from{transform:scale(0.86);opacity:0}to{transform:scale(1);opacity:1}}'}</style>
+              <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 380, maxHeight: '78dvh', display: 'flex', flexDirection: 'column', background: '#ffffff', color: '#111', borderRadius: 28, boxShadow: '0 22px 60px rgba(0,0,0,0.35)', overflow: 'hidden', animation: 'stooornaInvPop 0.2s ease-out' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 18px 10px' }}>
+                  <span style={{ fontWeight: 900, fontSize: '1.05rem' }}>Invite Friends</span>
+                  <button type="button" aria-label="Close" onClick={() => setInviteOpen(false)} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: '#f1f5f9', color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}><X size={18} /></button>
                 </div>
-              ))}
+                <div style={{ overflowY: 'auto', padding: '4px 12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(((window as any).__stooornaFriends || []) as Array<{ id: string; username?: string; name?: string; avatarUrl?: string | null }>).map(f => {
+                    const un = String(f.username || f.name || '');
+                    const invited = pendingInvites.some(p => cleanUn(p.username) === cleanUn(un));
+                    const joined = !invited && roomMembers.some(m => cleanUn(m.username) === cleanUn(un));
+                    return (
+                      <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 20, background: invited ? 'rgba(250,204,21,0.14)' : '#f8fafc', border: invited ? '1px solid rgba(250,204,21,0.7)' : '1px solid #e5e7eb' }}>
+                        {f.avatarUrl ? <img src={f.avatarUrl} alt="" style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover', background: '#00BCD4', flexShrink: 0 }} /> : <span style={{ width: 52, height: 52, borderRadius: '50%', background: '#00BCD4', color: '#041414', fontWeight: 900, fontSize: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{(f.name || f.username || '?')[0]}</span>}
+                        <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontWeight: 800, fontSize: '0.95rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username}</span>
+                          <span style={{ fontWeight: 600, fontSize: '0.78rem', color: 'rgba(0,0,0,0.5)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>@{f.username || f.name}</span>
+                        </span>
+                        <button type="button" disabled={invited || joined} onClick={() => void inviteUser(un, String(f.name || ''))} style={{ border: 'none', borderRadius: 999, background: invited ? '#facc15' : joined ? '#22c55e' : '#00BCD4', color: '#041414', fontWeight: 900, fontSize: '0.85rem', padding: '10px 18px', minWidth: 84, cursor: invited || joined ? 'default' : 'pointer', flexShrink: 0 }}>{invited ? 'Invited' : joined ? 'Joined' : 'Invite'}</button>
+                      </div>
+                    );
+                  })}
+                  {(((window as any).__stooornaFriends || []) as any[]).length === 0 ? <p style={{ margin: '18px 0', textAlign: 'center', color: 'rgba(0,0,0,0.45)', fontWeight: 600 }}>No friends yet</p> : null}
+                </div>
+              </div>
             </div>
           )}
 
@@ -15063,13 +15129,13 @@ function SavedMessagesScreen({
                   style={{
                     marginBottom: 10,
                     maxWidth: '88%',
-                    marginLeft: 'auto',
+                    ...((m.senderName && cleanUn(m.senderName) !== cleanUn(userUsername || userName)) ? { marginRight: 'auto' } : { marginLeft: 'auto' }),
                     background: '#fff',
                     borderRadius: 14,
                     border: '1px solid rgba(0,0,0,0.06)',
                     boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
                     padding: '10px 12px',
-                    direction: 'rtl',
+                    direction: (m.senderName && cleanUn(m.senderName) !== cleanUn(userUsername || userName)) ? 'ltr' : 'rtl',
                   }}
                 >
                   {m.kind === 'text' && (
@@ -27599,15 +27665,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
         {savedInvite && (
           <div style={{ position: 'fixed', inset: 0, zIndex: 200000, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-            <div style={{ width: '100%', maxWidth: 340, background: '#101816', color: '#fff', border: '1px solid rgba(250,204,21,0.55)', borderRadius: 28, padding: '22px 16px 16px', textAlign: 'center', boxShadow: '0 0 0 1px rgba(250,204,21,0.25)' }}>
-              <div style={{ width: 84, height: 84, margin: '0 auto 12px', borderRadius: '50%', border: '3px solid #facc15', overflow: 'hidden', background: '#0b3a3a' }}>
+            <div style={{ width: '100%', maxWidth: 270, background: '#101816', color: '#fff', border: '1px solid rgba(250,204,21,0.55)', borderRadius: 24, padding: '16px 14px 14px', textAlign: 'center', boxShadow: '0 0 0 1px rgba(250,204,21,0.25), 0 14px 40px rgba(0,0,0,0.45)' }}>
+              <div style={{ width: 64, height: 64, margin: '0 auto 8px', borderRadius: '50%', border: '3px solid #facc15', overflow: 'hidden', background: '#0b3a3a' }}>
                 {savedInvite.fromAvatar ? <img src={savedInvite.fromAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 28 }}>{(savedInvite.fromName || '?')[0]}</div>}
               </div>
-              <div style={{ fontWeight: 900, fontSize: 22 }}>{savedInvite.fromName}</div>
-              <div style={{ fontSize: 15, opacity: 0.85, margin: '14px 0 18px' }}>يدعوك للانضمام الى الشات الخاص به</div>
+              <div style={{ fontWeight: 900, fontSize: 17, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{savedInvite.fromName}</div>
+              <div style={{ fontSize: 13, opacity: 0.85, margin: '8px 0 14px', lineHeight: 1.4 }}>يدعوك للانضمام الى الشات الخاص به</div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); sessionStorage.setItem('stooorna_saved_owner_avatar', inv.fromAvatar || ''); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 16, background: '#22c55e', color: '#041414', fontWeight: 900, padding: '14px 12px', cursor: 'pointer' }}>Accept ✓</button>
-                <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ flex: 1, border: '1px solid #ef4444', borderRadius: 16, background: 'rgba(80,20,20,0.45)', color: '#fca5a5', fontWeight: 900, padding: '14px 12px', cursor: 'pointer' }}>Decline ✕</button>
+                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); sessionStorage.setItem('stooorna_saved_owner_avatar', inv.fromAvatar || ''); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 16, background: '#22c55e', color: '#041414', fontWeight: 900, fontSize: 14, padding: '10px 8px', cursor: 'pointer' }}>Accept ✓</button>
+                <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ flex: 1, border: '1px solid #ef4444', borderRadius: 16, background: 'rgba(80,20,20,0.45)', color: '#fca5a5', fontWeight: 900, fontSize: 14, padding: '10px 8px', cursor: 'pointer' }}>Decline ✕</button>
               </div>
             </div>
           </div>
