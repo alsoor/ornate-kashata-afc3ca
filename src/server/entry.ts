@@ -385,6 +385,7 @@ app.get('/api/status/comment-likes', getStatusCommentLikes);
 // ── IP tracking: lightweight — stored via /api/me/update-ip ─────────────────
 
 // <api-registrations>
+registerForgotPasswordRoutes(app, { db: dbClientModule as unknown as Record<string, any> }); // FORGOT-PASSWORD-PATCH before auth catch-all
 app.get("/api/auth/:action", auth_action_get_0);
 app.post("/api/auth/:action", auth_action_post_1);
 app.get("/api/auth/:action/:detail", auth_action_detail_get_2);

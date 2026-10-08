@@ -4944,9 +4944,9 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               <button type="button" disabled={loading} onClick={async () => {
                 setLoading(true); setForgotMsg('');
                 try {
-                  const r = await fetch('/api/auth/forgot-password', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }) });
+                  const r = await fetch('/api/password/forgot', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email.trim() }) });
                   const d = await r.json().catch(() => ({} as any));
-                  if (!r.ok) { setForgotMsg(isEn ? 'Enter a valid email' : 'اكتب بريداً صحيحاً'); }
+                  if (!r.ok) { setForgotMsg(r.status === 404 ? (isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط') : (isEn ? 'Could not send. Check the email.' : 'تعذر الإرسال. تأكد من البريد.')); }
                   else {
                     setForgotStep('sent');
                     setForgotMsg(d.sent ? (isEn ? 'Check your email for the Stooorna link' : 'وصل الإيميل — افتح رابط Stooorna') : (isEn ? 'Request saved. Open the link if email is not configured yet.' : 'تم الطلب. إذا الإيميل غير مفعّل بعد، افتح الرابط التجريبي.'));
@@ -4968,7 +4968,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                 if (forgotPw1.length < 6 || forgotPw1 !== forgotPw2) { setForgotMsg(isEn ? 'Passwords must match (min 6)' : 'كلمتا المرور غير متطابقتين (٦ أحرف على الأقل)'); return; }
                 setLoading(true); setForgotMsg('');
                 try {
-                  const r = await fetch('/api/auth/forgot-password/confirm', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: forgotToken, password: forgotPw1, confirm: forgotPw2 }) });
+                  const r = await fetch('/api/password/forgot/confirm', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: forgotToken, password: forgotPw1, confirm: forgotPw2 }) });
                   const d = await r.json().catch(() => ({} as any));
                   if (!r.ok) setForgotMsg(isEn ? 'Link expired. Request a new email.' : 'الرابط انتهى. اطلب إيميلاً جديداً');
                   else { setForgotMsg(isEn ? 'Password changed. You can log in.' : 'تم تغيير كلمة المرور. تقدر تسجّل الدخول.'); setForgotStep('hidden'); setPassword(''); }

@@ -127,10 +127,26 @@ function persistApplied(dataDir: string, email: string) {
   } catch { /* ignore */ }
 }
 
+async function readBody(req: Request): Promise<Record<string, unknown>> {
+  if (req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body)) return req.body as Record<string, unknown>;
+  const raw = await new Promise<string>((resolve) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    req.on("error", () => resolve(""));
+  });
+  if (!raw) return {};
+  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return { email: raw }; }
+}
+
 export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<string, any>; dataDir?: string }) {
+  const g = globalThis as typeof globalThis & { __stooornaForgotPwRoutes?: boolean };
+  if (g.__stooornaForgotPwRoutes) return;
+  g.__stooornaForgotPwRoutes = true;
   const dataDir = opts?.dataDir || join(process.cwd(), "data", "forgot-password");
-  app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
-    const email = normEmail(req.body?.email);
+  app.post("/api/password/forgot", async (req: Request, res: Response) => {
+    const body = await readBody(req);
+    const email = normEmail(body.email || req.query.email);
     if (!validEmail(email)) {
       res.status(400).json({ error: "invalid_email" });
       return;
@@ -145,7 +161,7 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
     res.json({ ok: true, sent, devLink: sent ? undefined : resetUrl });
   });
 
-  app.get("/api/auth/forgot-password/verify", (req: Request, res: Response) => {
+  app.get("/api/password/forgot/verify", (req: Request, res: Response) => {
     const token = String(req.query.token || "");
     const rec = store().get(token);
     if (!rec || rec.used || Date.now() - rec.at > TTL_MS) {
@@ -155,10 +171,11 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
     res.json({ ok: true, email: rec.email });
   });
 
-  app.post("/api/auth/forgot-password/confirm", async (req: Request, res: Response) => {
-    const token = String(req.body?.token || "");
-    const password = String(req.body?.password || "");
-    const confirm = String(req.body?.confirm || req.body?.password2 || "");
+  app.post("/api/password/forgot/confirm", async (req: Request, res: Response) => {
+    const body = await readBody(req);
+    const token = String(body.token || req.query.token || "");
+    const password = String(body.password || "");
+    const confirm = String(body.confirm || body.password2 || "");
     const rec = store().get(token);
     if (!rec || rec.used || Date.now() - rec.at > TTL_MS) {
       res.status(400).json({ ok: false, error: "expired" });
