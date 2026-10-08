@@ -180,19 +180,14 @@ function announceStoryPageActive() {
     window.dispatchEvent(new CustomEvent('stooorna:story-page-active', { detail: { active: true } }));
   } catch { /* ignore */ }
 }
-
-/** إعادة تحميل واحدة بعد ما ترسم الواجهة — ما تتكرر وما تبلع النقرة. */
 function stooornaSoftReload() {
   try {
     const w = window as any;
     if (w.__stooornaReloadQueued) return;
     w.__stooornaReloadQueued = true;
     const go = () => { try { window.location.reload(); } catch { w.__stooornaReloadQueued = false; } };
-    if (typeof w.requestIdleCallback === 'function') w.requestIdleCallback(go, { timeout: 700 });
-    else window.setTimeout(go, 450);
-  } catch {
-    try { window.location.reload(); } catch { /* */ }
-  }
+    window.setTimeout(go, 450);
+  } catch { try { window.location.reload(); } catch { /* */ } }
 }
 announceStoryPageActive();
 startStoryLiveWatch();
@@ -3207,6 +3202,16 @@ function HeaderStoryCircle({
             ) : (
               <VipAvatarFrame userId={userId} size={42}>
                 <UserAvatar name={name ?? ''} avatarUrl={avatarUrl} size={42} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                {(() => {
+                  const shot = items.find(it => it.mediaUrl && !/video/i.test(String(it.mediaType || '')) && !/\.(mp4|webm|mov|m4v)(\?|$)/i.test(it.mediaUrl));
+                  const vid = !shot ? items.find(it => it.mediaUrl) : null;
+                  const url = resolveMediaUrl((shot || vid)?.mediaUrl || '') || (shot || vid)?.mediaUrl || '';
+                  if (!url) return null;
+                  if (vid) {
+                    return <video className="stooorna-story-shot" src={url} muted playsInline preload="metadata" controls={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', pointerEvents: 'none', background: 'transparent' }} />;
+                  }
+                  return <img src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />;
+                })()}
               </VipAvatarFrame>
             )}
           </div>
@@ -18569,7 +18574,7 @@ export function PublicLiveCommentsPanel({
       finally { liveBusyRef.current = false; }
     };
     void pull();
-    // Lightweight realtime: poll only while tab visible. 4s keeps refresh without freezing taps.
+    // Lightweight realtime: poll only while tab visible; 1s cadence when chat is likely open.
     // setComments runs only when signature changes — no UI thrash, no story/feed side effects.
     let iv = window.setInterval(pull, 4000);
     const onVis = () => {
@@ -18578,7 +18583,7 @@ export function PublicLiveCommentsPanel({
       } else {
         void pull();
         window.clearInterval(iv);
-        iv = window.setInterval(pull, 4000);
+        iv = window.setInterval(pull, 1000);
       }
     };
     document.addEventListener('visibilitychange', onVis);
@@ -22304,6 +22309,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       knownStoryItemIdsRef.current = new Set(fresh.flatMap(g => g.items.map(it => it.id)));
       if (user?.id) { if (headerListsCache.uid !== String(user.id)) { headerListsCache.friends = []; } headerListsCache.uid = String(user.id); }
       headerListsCache.stories = fresh as any[];
+      const sig = fresh.map(g => `${g.userId}:${g.avatarUrl || ''}:${g.items.map(it => it.id + ':' + (it.seen ? 1 : 0)).join(',')}`).join('|');
+      const w = window as any;
+      if (w.__stooornaStorySig === sig) return;
+      w.__stooornaStorySig = sig;
       setStoryGroups(fresh);
     } catch {/* silent */}
   }, []);
@@ -22338,7 +22347,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const interval = setInterval(() => {
       if (document.hidden || storyUploading) return;
       fetchStories();
-    }, 2000);
+    }, 6000);
     return () => clearInterval(interval);
   }, [fetchStories, storyUploading]);
 
@@ -22513,12 +22522,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       } catch { /* */ }
     };
     tick();
-    // العدّاد كل ثانية فقط واللوحة مفتوحة. مغلق: نفس دورة إعادة النشر كل 15ث حتى ما يجمّد النقر.
-    const id = window.setInterval(() => {
-      if (document.visibilityState !== 'visible') return;
-      if (!adUiOpenRef.current && Date.now() % 15000 > 1000) return;
-      tick();
-    }, 1000);
+    const id = window.setInterval(() => { if (document.visibilityState !== 'visible') return; if (!adUiOpenRef.current && Date.now() % 15000 > 1000) return; tick(); }, 1000);
     return () => window.clearInterval(id);
   }, []);
   // Restore media blobs from IndexedDB so video/image survive refresh
@@ -27445,8 +27449,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
                   justifyContent: 'flex-start',
                   padding: storyPullProgress > 0
-                    ? `${8 + Math.round(storyPullProgress * 14)}px 14px ${10 + Math.round(storyPullProgress * 10)}px`
-                    : '4px 14px 10px',
+                    ? `${8 + Math.round(storyPullProgress * 14)}px 14px ${10 + Math.round(storyPullProgress * 10)}px 42px`
+                    : '4px 14px 10px 42px',
                   alignItems: 'center',
                 }}
               >
