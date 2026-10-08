@@ -421,10 +421,58 @@ app.post("/api/live/recordings/upload", live_recordings_upload_post_33);
 app.delete("/api/live/recordings/:id", live_recordings_id_delete_34);
 app.get("/api/live/status", live_status_get_35);
 
+const LIVE_CHAT_CLEAR_MS = 24 * 60 * 60 * 1000;
+const LIVE_CHAT_CLEAR_OFFSET_MS = 3 * 60 * 60 * 1000;
+const liveChatCycleStart = (now = Date.now()) =>
+  Math.floor((now + LIVE_CHAT_CLEAR_OFFSET_MS) / LIVE_CHAT_CLEAR_MS) * LIVE_CHAT_CLEAR_MS - LIVE_CHAT_CLEAR_OFFSET_MS;
+const LIVE_CHAT_DIR = join(dirname(fileURLToPath(import.meta.url)), "data");
+const LIVE_CHAT_FILE = join(LIVE_CHAT_DIR, "live-chat.json");
+const LIVE_CHAT_MEDIA_DIR = join(LIVE_CHAT_DIR, "live-chat-media");
+const ensureLiveChatDirs = () => {
+  try { mkdirSync(LIVE_CHAT_MEDIA_DIR, { recursive: true }); } catch { /* */ }
+};
 const liveChatMem = () => {
-  const g = globalThis as typeof globalThis & { __stooornaLiveChat?: Map<string, Array<{ at: number; payload: any }>> };
+  const g = globalThis as typeof globalThis & { __stooornaLiveChat?: Map<string, Array<{ at: number; payload: any }>>; __stooornaLiveChatLoaded?: boolean };
   if (!g.__stooornaLiveChat) g.__stooornaLiveChat = new Map();
+  if (!g.__stooornaLiveChatLoaded) {
+    g.__stooornaLiveChatLoaded = true;
+    try {
+      if (existsSync(LIVE_CHAT_FILE)) {
+        const parsed = JSON.parse(readFileSync(LIVE_CHAT_FILE, "utf8"));
+        const start = liveChatCycleStart();
+        for (const [ch, rows] of Object.entries(parsed || {})) {
+          const list = (Array.isArray(rows) ? rows : []).filter((m: any) => Number(m?.payload?.createdAt || m?.at || 0) >= start);
+          if (list.length) g.__stooornaLiveChat.set(String(ch), list.slice(-400));
+        }
+      }
+    } catch { /* */ }
+  }
   return g.__stooornaLiveChat;
+};
+const persistLiveChat = () => {
+  try {
+    ensureLiveChatDirs();
+    const start = liveChatCycleStart();
+    const out: Record<string, any[]> = {};
+    for (const [ch, rows] of liveChatMem().entries()) {
+      out[ch] = rows.filter((m) => Number(m?.payload?.createdAt || m?.at || 0) >= start).slice(-400);
+    }
+    writeFileSync(LIVE_CHAT_FILE, JSON.stringify(out));
+  } catch { /* */ }
+};
+const saveLiveChatMedia = (id: string, dataUrl: string) => {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return null;
+  const meta = dataUrl.slice(5, comma);
+  const mime = (meta.split(";")[0] || "application/octet-stream").toLowerCase();
+  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : mime.includes("gif") ? "gif" : mime.includes("mp4") ? "mp4" : mime.includes("webm") ? "webm" : "jpg";
+  const buf = Buffer.from(dataUrl.slice(comma + 1), "base64");
+  if (!buf.length) return null;
+  ensureLiveChatDirs();
+  const safe = String(id).replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || `m_${Date.now()}`;
+  const name = `${safe}.${ext}`;
+  writeFileSync(join(LIVE_CHAT_MEDIA_DIR, name), buf);
+  return { url: `/api/live-chat/media?id=${encodeURIComponent(name)}`, mime, name };
 };
 const liveChatVoiceMem = () => {
   const g = globalThis as typeof globalThis & { __stooornaLiveChatVoice?: Map<string, { mime: string; buf: Buffer; duration: number }> };
@@ -469,7 +517,8 @@ const liveChatRow = (m: { at: number; payload: any }) => {
 app.get("/api/live-chat", (req, res) => {
   const channel = String(req.query.channel || req.query.room || "stooorna-live-chat");
   const since = Number(req.query.since || 0);
-  const raw = (liveChatMem().get(channel) || []).filter((m) => m.at > since).slice(-400);
+  const cycle = liveChatCycleStart();
+  const raw = (liveChatMem().get(channel) || []).filter((m) => m.at > since && Number(m?.payload?.createdAt || m?.at || 0) >= cycle).slice(-400);
   // Dedupe by id: later entries (edit/delete) overwrite earlier ones
   const byId = new Map<string, ReturnType<typeof liveChatRow>>();
   for (const m of raw) {
@@ -494,6 +543,7 @@ app.delete("/api/live-chat", (req, res) => {
     if (g.__stooornaLiveChat) g.__stooornaLiveChat.set(channel, []);
   } catch { /* */ }
   res.setHeader("Cache-Control", "no-store");
+  persistLiveChat();
   res.json({ ok: true, cleared: "live-chat-only" });
 });
 
@@ -509,6 +559,25 @@ app.post("/api/live-chat/voice", (req, res) => {
   liveChatVoiceMem().set(id, { mime, buf, duration: Number(body.duration || body.voiceDuration) || 1 });
   trimLiveVoiceMem(); // MEM-PATCH
   res.json({ ok: true, id, url: `/api/live-chat/voice?id=${encodeURIComponent(id)}`, voiceUrl: `/api/live-chat/voice?id=${encodeURIComponent(id)}` });
+});
+app.post("/api/live-chat/media", (req, res) => {
+  const body = (req.body || {}) as any;
+  const dataUrl = String(body.image || body.video || body.media || body.file || "");
+  if (!dataUrl.startsWith("data:")) return res.status(400).json({ error: "no-media" });
+  const saved = saveLiveChatMedia(String(body.id || `m_${Date.now()}`), dataUrl);
+  if (!saved) return res.status(400).json({ error: "bad-media" });
+  res.json({ ok: true, url: saved.url, mediaUrl: saved.url, fileUrl: saved.url });
+});
+app.get("/api/live-chat/media", (req, res) => {
+  const id = String(req.query.id || "").replace(/[^a-zA-Z0-9_.-]/g, "");
+  if (!id) return res.status(400).end();
+  const file = join(LIVE_CHAT_MEDIA_DIR, id);
+  if (!existsSync(file)) return res.status(404).end();
+  const ext = extname(file).toLowerCase();
+  const mime = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".gif" ? "image/gif" : ext === ".mp4" ? "video/mp4" : ext === ".webm" ? "video/webm" : "image/jpeg";
+  res.setHeader("Content-Type", mime);
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(readFileSync(file));
 });
 app.get("/api/live-chat/voice", (req, res) => {
   const id = String(req.query.id || "");
@@ -669,10 +738,16 @@ app.post("/api/live-chat", (req, res) => {
     liveChatVoiceMem().set(String(payload.id), { mime, buf, duration: Number(payload.voiceDuration) || 1 });
     payload.voiceUrl = `/api/live-chat/voice?id=${encodeURIComponent(String(payload.id))}`;
   }
+  if (typeof payload.imageUrl === "string" && payload.imageUrl.startsWith("data:")) {
+    const saved = saveLiveChatMedia(String(payload.id), payload.imageUrl);
+    if (saved) payload.imageUrl = saved.url;
+  }
   const mem = liveChatMem();
-  const list = mem.get(channel) || [];
+  const start = liveChatCycleStart();
+  const list = (mem.get(channel) || []).filter((m) => Number(m?.payload?.createdAt || m?.at || 0) >= start);
   list.push({ at, payload });
   mem.set(channel, list.slice(-400));
+  persistLiveChat();
   const comments = (mem.get(channel) || []).map((m) => {
     const p = (m.payload || m) as any;
     return {

@@ -55,6 +55,7 @@ export default function PublicVoiceLive({
 }) {
   const [peers, setPeers] = useState<Peer[]>([]);
   const [talking, setTalking] = useState(false);
+  const [floorBusy, setFloorBusy] = useState(false);
   const [leftMs, setLeftMs] = useState(0);
   const [coolMs, setCoolMs] = useState(0);
   const [mutedIds, setMutedIds] = useState<Set<string>>(new Set());
@@ -272,10 +273,32 @@ export default function PublicVoiceLive({
     }).catch(() => {});
   }, [userId]);
 
+  const playBusyTone = () => {
+    try {
+      const Ctx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new Ctx();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'square';
+      o.frequency.value = 220;
+      g.gain.value = 0.05;
+      o.connect(g); g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.18);
+      window.setTimeout(() => { try { ctx.close(); } catch { /* */ } }, 400);
+    } catch { /* */ }
+  };
   const startMic = useCallback(async () => {
     if (coolMs > 0 || talkingRef.current || !userId) return;
     const mic = micRef.current;
     if (!mic) return;
+    const otherOnMic = peersRef.current.some(p => p.id && p.id !== userId && p.talking);
+    if (otherOnMic) {
+      setFloorBusy(true);
+      playBusyTone();
+      window.setTimeout(() => setFloorBusy(false), 1600);
+      return;
+    }
     // Play the chime right now, inside the user's tap (Android WebView blocks sound after an await)
     const chimeId = `ms-${userId}-${Date.now()}`;
     if (!chimeOffRef.current) playMicSound(chimeId);
@@ -693,9 +716,9 @@ export default function PublicVoiceLive({
               width: 46,
               height: 46,
               borderRadius: '50%',
-              border: talking ? '2px solid #ef4444' : '1px solid rgba(0,188,212,0.35)',
-              background: talking ? 'rgba(239,68,68,0.22)' : 'rgba(0,188,212,0.1)',
-              color: talking ? '#ef4444' : coolMs > 0 ? '#6b7280' : '#00BCD4',
+              border: talking ? '2px solid #ef4444' : (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? '2px solid #f97316' : '1px solid rgba(0,188,212,0.35)',
+              background: talking ? 'rgba(239,68,68,0.22)' : (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? 'rgba(249,115,22,0.28)' : 'rgba(0,188,212,0.1)',
+              color: talking ? '#ef4444' : (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? '#f97316' : coolMs > 0 ? '#6b7280' : '#00BCD4',
               cursor: coolMs > 0 ? 'default' : 'pointer',
               overflow: 'hidden',
               touchAction: 'none',
@@ -747,8 +770,8 @@ export default function PublicVoiceLive({
           {speakerMuted ? 'Unmute' : 'Mute'}
         </button>
       </div>
-      <p style={{ margin: '0 0 6px', fontSize: 10, color: 'rgba(150,200,200,0.45)', textAlign: 'center' }}>
-        {talking ? `${secs}s` : coolMs > 0 ? `Wait ${cool}s` : '30s turns'}
+      <p style={{ margin: '0 0 6px', fontSize: 10, color: (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? '#f97316' : 'rgba(150,200,200,0.45)', textAlign: 'center', fontWeight: (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? 800 : 400 }}>
+        {talking ? `${secs}s` : (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? 'مشغول' : coolMs > 0 ? `Wait ${cool}s` : '30s turns'}
       </p>
 
       {membersOpen && (

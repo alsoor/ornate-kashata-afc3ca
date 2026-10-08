@@ -15240,7 +15240,11 @@ type PublicLiveComment = {
 
 function loadPublicLiveComments(): PublicLiveComment[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
+    let raw = JSON.parse(localStorage.getItem(PUBLIC_LIVE_COMMENTS_KEY) || '[]');
+    try {
+      const bak = JSON.parse(localStorage.getItem('stooorna_live_chat_store_v2') || '[]');
+      if (Array.isArray(bak) && bak.length) raw = Array.isArray(raw) ? [...raw, ...bak] : bak;
+    } catch { /* */ }
     if (!Array.isArray(raw)) return [];
     const tplIds = liveTplIdSet(raw);
     return liveCapRows(raw
@@ -15269,7 +15273,9 @@ function loadPublicLiveComments(): PublicLiveComment[] {
 
 function savePublicLiveComments(list: PublicLiveComment[]) {
   try {
-    localStorage.setItem(PUBLIC_LIVE_COMMENTS_KEY, JSON.stringify(liveCapRows(list)));
+    const packed = JSON.stringify(liveCapRows(list));
+    localStorage.setItem(PUBLIC_LIVE_COMMENTS_KEY, packed);
+    try { localStorage.setItem('stooorna_live_chat_store_v2', packed); } catch { /* */ }
     window.dispatchEvent(new CustomEvent(PUBLIC_LIVE_COMMENTS_EVT, { detail: { list } }));
     try {
       const bc = (window as any).__stooornaPublicLiveBc as BroadcastChannel | undefined;
@@ -15576,9 +15582,27 @@ async function postLiveChatToServer(row: PublicLiveComment): Promise<void> {
   for (const fn of attempts) {
     try {
       const r = await fn();
-      if (r.ok) return;
+      if (r.ok) break;
     } catch { /* next */ }
   }
+  // Mirror text / emoji / http image so every client sees it even if live-chat store drops the row.
+  try {
+    const img = String(row.imageUrl || '');
+    const shareImg = img && !/^(blob:|data:)/i.test(img) ? img : null;
+    await fetch('/api/room/signal', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        roomId: LIVE_CHAT_ROOM,
+        t: 'live-chat',
+        data: {
+          id: row.id, userId: row.userId, name: row.name, username: row.username, avatarUrl: row.avatarUrl,
+          text: row.text, imageUrl: shareImg, voiceUrl: row.voiceUrl && !String(row.voiceUrl).startsWith('data:') ? row.voiceUrl : null,
+          voiceDuration: row.voiceDuration ?? null, createdAt: row.createdAt, editCount: row.editCount || 0,
+          likes: row.likes || [],
+        },
+      }),
+    });
+  } catch { /* */ }
 }
 
 /** Sends an edited message to the server (same id, new text + edit counter). */
@@ -16579,13 +16603,17 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError, onReco
             <video
               muted
               playsInline
+              autoPlay
               controls={false}
               preload="none"
+              poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
               ref={el => {
                 if (el && streamRef.current && el.srcObject !== streamRef.current) { el.srcObject = streamRef.current; void el.play().catch(() => { /* */ }); }
               }}
-              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: 'block' }}
+              onPlaying={e => { e.currentTarget.style.opacity = '1'; }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)', display: 'block', opacity: 0, background: '#000', pointerEvents: 'none' }}
             />
+            <style>{'video::-webkit-media-controls-start-playback-button,video::-webkit-media-controls-overlay-play-button{display:none!important;opacity:0!important;-webkit-appearance:none}'}</style>
           </div>
           <svg width={pvSize + 16} height={pvSize + 16} viewBox={`0 0 ${pvSize + 16} ${pvSize + 16}`} style={{ position: 'absolute', left: -8, top: -8, pointerEvents: 'none', transform: 'rotate(-90deg)' }}>
             <circle cx={(pvSize + 16) / 2} cy={(pvSize + 16) / 2} r={RR} fill="none" stroke="#ef4444" strokeWidth={4} strokeLinecap="round" strokeDasharray={CIRC} strokeDashoffset={CIRC * (1 - Math.min(1, sec / maxS))} />
@@ -18214,7 +18242,26 @@ function PublicLiveCommentsPanel({
       try {
         const remote = await fetchLiveChatFromServer();
         const local = loadPublicLiveComments();
-        let next = remote ? mergeLiveChatLists(local, remote) : local;
+        let signaled: PublicLiveComment[] = [];
+        try {
+          const since = Number((window as any).__stooornaLiveChatSince || 0);
+          const sr = await fetch(`/api/room/signal?roomId=${encodeURIComponent(LIVE_CHAT_ROOM)}&since=${since}`, { credentials: 'include', cache: 'no-store' });
+          if (sr.ok) {
+            const sd = await sr.json();
+            const items = (sd.items || sd.signals || []) as any[];
+            for (const raw of items) {
+              const at = Number(raw?.at || raw?.data?.createdAt || Date.now());
+              if (at > since) (window as any).__stooornaLiveChatSince = at;
+              const msg = raw?.data || raw;
+              if (msg?.t === 'live-chat' || raw?.t === 'live-chat') {
+                const row = msg?.t === 'live-chat' ? (msg.data || msg) : msg;
+                const norm = normalizeLiveChatRows([row]);
+                if (norm.length) signaled.push(norm[0]);
+              }
+            }
+          }
+        } catch { /* */ }
+        let next = mergeLiveChatLists(local, [...(remote || []), ...signaled]);
         { const tplIds = liveTplIdSet(next); next = next.filter(x => liveRowInCycle(x, tplIds)); }
         const cleaned: PublicLiveComment[] = [];
         let blocked = false;
@@ -33570,7 +33617,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             userName={(user as any)?.name || (user as any)?.username || 'Me'}
             userUsername={(user as any)?.username || null}
             userAvatar={(user as any)?.avatarUrl || (user as any)?.image || null}
-            onClose={() => setShowPublicVoice(false)}
+            onClose={() => {
+              setShowPublicVoice(false);
+              try { sessionStorage.setItem('stooorna_story_refresh', '1'); } catch { /* */ }
+              window.setTimeout(() => { try { window.location.reload(); } catch { /* */ } }, 60);
+            }}
           /></React.Suspense>
         </>
       )}
