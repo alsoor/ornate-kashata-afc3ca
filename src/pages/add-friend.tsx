@@ -180,15 +180,6 @@ function announceStoryPageActive() {
     window.dispatchEvent(new CustomEvent('stooorna:story-page-active', { detail: { active: true } }));
   } catch { /* ignore */ }
 }
-function stooornaSoftReload() {
-  try {
-    const w = window as any;
-    if (w.__stooornaReloadQueued) return;
-    w.__stooornaReloadQueued = true;
-    const go = () => { try { window.location.reload(); } catch { w.__stooornaReloadQueued = false; } };
-    window.setTimeout(go, 450);
-  } catch { try { window.location.reload(); } catch { /* */ } }
-}
 announceStoryPageActive();
 startStoryLiveWatch();
 void refreshStoryLives();
@@ -3202,16 +3193,6 @@ function HeaderStoryCircle({
             ) : (
               <VipAvatarFrame userId={userId} size={42}>
                 <UserAvatar name={name ?? ''} avatarUrl={avatarUrl} size={42} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
-                {(() => {
-                  const shot = items.find(it => it.mediaUrl && !/video/i.test(String(it.mediaType || '')) && !/\.(mp4|webm|mov|m4v)(\?|$)/i.test(it.mediaUrl));
-                  const vid = !shot ? items.find(it => it.mediaUrl) : null;
-                  const url = resolveMediaUrl((shot || vid)?.mediaUrl || '') || (shot || vid)?.mediaUrl || '';
-                  if (!url) return null;
-                  if (vid) {
-                    return <video className="stooorna-story-shot" src={url} muted playsInline preload="metadata" controls={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', pointerEvents: 'none', background: 'transparent' }} />;
-                  }
-                  return <img src={url} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%', display: 'block' }} />;
-                })()}
               </VipAvatarFrame>
             )}
           </div>
@@ -7940,11 +7921,7 @@ async function stooornaAdMediaPut(id: string, dataUrl: string) {
   } catch { /* ignore */ }
 }
 
-const adMediaMem = new Map<string, string>();
 async function stooornaAdMediaGet(id: string): Promise<string | null> {
-  const key = String(id || '');
-  const hit = key ? adMediaMem.get(key) : '';
-  if (hit) return hit;
   try {
     const db = await openAdMediaDb();
     const val = await new Promise<string | null>((resolve, reject) => {
@@ -7954,24 +7931,11 @@ async function stooornaAdMediaGet(id: string): Promise<string | null> {
       r.onerror = () => reject(r.error);
     });
     db.close();
-    if (val && key) adMediaMem.set(key, val);
     return val;
   } catch { return null; }
 }
-function openFeedAdNow(ad: any, setViewer: (v: any) => void) {
-  const id = String(ad?.id || '');
-  const cached = id ? (adMediaMem.get(id) || '') : '';
-  const first = { ...ad, mediaUrl: ad?.mediaUrl || cached || '', pdfUrl: ad?.pdfUrl || (ad?.mediaType === 'pdf' ? cached : ad?.pdfUrl) || '' };
-  setViewer(first);
-  if (!id || first.mediaUrl || first.pdfUrl) return;
-  void stooornaAdMediaGet(id).then(m => {
-    if (!m) return;
-    setViewer((v: any) => (v && String(v.id) === id ? { ...v, mediaUrl: m, pdfUrl: v.mediaType === 'pdf' ? m : v.pdfUrl } : v));
-  });
-}
 
 async function stooornaAdMediaDelete(id: string) {
-  try { adMediaMem.delete(String(id || '')); } catch { /* */ }
   try {
     const db = await openAdMediaDb();
     await new Promise<void>((resolve, reject) => {
@@ -14666,6 +14630,7 @@ function SavedMessagesScreen({
   const [text, setText] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [toast, setToast] = useState('');
   /** Full-screen media: first tap opens, second tap closes. kind image | video */
   const [mediaView, setMediaView] = useState<{ kind: 'image' | 'video'; url: string } | null>(null);
@@ -14820,7 +14785,8 @@ function SavedMessagesScreen({
       id: `sm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: Date.now(),
     };
-    persist([...loadSavedMessages(userId), row]);
+    const shared = partial.kind === 'image' || partial.kind === 'video';
+    if (!shared) persist([...loadSavedMessages(userId), row]);
     if (roomOwner && (partial.text || partial.mediaUrl)) {
       void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? `img:${partial.mediaUrl || ''}` : partial.kind === 'video' ? `vid:${partial.mediaUrl || ''}` : (partial.text || '') }) });
     }
@@ -14838,22 +14804,47 @@ function SavedMessagesScreen({
     setText('');
   };
 
-  /** Prefer blob: for large media (avoids OOM / tab crash). Persist dataURL only when small enough for localStorage. */
+  /** صورة/فيديو: المستطيل يتملى أصفر 0→100 ثم تنزل الوسائط. الملف يظهر فوراً بعد الاكتمال. */
   const ingestFile = async (file: File, kind: 'image' | 'video' | 'file') => {
     if (!userId || !file) return;
+    pickingRef.current = false;
+    const paint = kind === 'image' || kind === 'video';
+    if (paint) setUploadPct(1);
     setBusy(true);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('read failed'));
-        reader.onerror = () => reject(reader.error || new Error('read failed'));
-        reader.readAsDataURL(file);
-      });
-      let mediaUrl = dataUrl;
-      if (kind === 'image' || kind === 'video') {
-        const r = await fetch('/api/chat-images', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: dataUrl, media: dataUrl, video: kind === 'video' ? dataUrl : '', dataUrl, userId }) });
-        const d = await r.json().catch(() => ({}));
-        if (d?.url) mediaUrl = String(d.url);
+      const blobUrl = URL.createObjectURL(file);
+      if (paint) {
+        await new Promise<void>((resolve) => {
+          const started = Date.now();
+          const tick = () => {
+            const elapsed = Date.now() - started;
+            const n = Math.min(92, Math.round((elapsed / 900) * 92));
+            setUploadPct(n);
+            if (n >= 92) resolve();
+            else window.setTimeout(tick, 50);
+          };
+          tick();
+        });
+      }
+      let mediaUrl = blobUrl;
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('type', kind);
+        const ctrl = new AbortController();
+        const timer = window.setTimeout(() => ctrl.abort(), 20000);
+        let r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
+        if (!r.ok) r = await fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
+        window.clearTimeout(timer);
+        if (r.ok) {
+          const d = await r.json().catch(() => ({} as any));
+          const permanent = d?.url || d?.mediaUrl || d?.path;
+          if (permanent && typeof permanent === 'string' && !permanent.startsWith('blob:')) mediaUrl = permanent;
+        }
+      } catch { /* keep blob */ }
+      if (paint) {
+        setUploadPct(100);
+        await new Promise(r => window.setTimeout(r, 220));
       }
       pushItem({
         kind,
@@ -14862,10 +14853,11 @@ function SavedMessagesScreen({
         fileSize: file.size,
         text: kind === 'file' ? file.name : null,
       });
-    } catch (err) {
+    } catch {
       setToast('تعذر إرفاق الملف');
     } finally {
       setBusy(false);
+      setUploadPct(null);
       pickingRef.current = false;
     }
   };
@@ -14943,6 +14935,7 @@ function SavedMessagesScreen({
   const handleClose = () => {
     pickingRef.current = false;
     setBusy(false);
+    setUploadPct(null);
     try { sessionStorage.setItem('stooorna_saved_open', '0'); } catch { /* */ }
     // Return to public live chat (not outside the app / blank home).
     try {
@@ -15429,8 +15422,14 @@ function SavedMessagesScreen({
               <div style={{
                 flex: 1, minWidth: 0, display: 'flex', alignItems: 'center',
                 border: '1px solid #3a3a3a', borderRadius: 999, padding: '4px 8px 4px 14px',
-                minHeight: 38, background: '#000000',
+                minHeight: 38, background: '#000000', position: 'relative', overflow: 'hidden',
               }}>
+                {uploadPct != null && (
+                  <div aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${uploadPct}%`, background: '#eab308', transition: 'width 80ms linear', pointerEvents: 'none' }} />
+                )}
+                {uploadPct != null && (
+                  <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: '#111', fontWeight: 800, fontSize: '0.72rem', zIndex: 2, pointerEvents: 'none' }}>{uploadPct}%</span>
+                )}
                 <input
                   ref={inputRef}
                   value={text}
@@ -18203,6 +18202,7 @@ export function PublicLiveCommentsPanel({
   }, [savedOpen]);
   const [emojiCat, setEmojiCat] = useState(0);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
+  const [imgFill, setImgFill] = useState<number | null>(null);
   const [pendingVoice, setPendingVoice] = useState<{ url: string; duration: number } | null>(null);
   const [recording, setRecording] = useState(false);
   const [chatLift, setChatLift] = useState(0);
@@ -18565,7 +18565,7 @@ export function PublicLiveCommentsPanel({
         }
         if (blocked) cleaned.push(makeLiveChatBotNotice('text'));
         next = cleaned;
-        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${String(x.imageUrl || '').length}:${String(x.voiceUrl || '').slice(-18)}`).join('|');
+        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${x.imageUrl || ''}:${x.voiceUrl || ''}`).join('|');
         if (sig === liveSigRef.current) return;
         liveSigRef.current = sig;
         savePublicLiveComments(next);
@@ -18576,7 +18576,7 @@ export function PublicLiveCommentsPanel({
     void pull();
     // Lightweight realtime: poll only while tab visible; 1s cadence when chat is likely open.
     // setComments runs only when signature changes — no UI thrash, no story/feed side effects.
-    let iv = window.setInterval(pull, 4000);
+    let iv = window.setInterval(pull, 1000);
     const onVis = () => {
       if (document.visibilityState === 'hidden') {
         window.clearInterval(iv);
@@ -20025,7 +20025,15 @@ export function PublicLiveCommentsPanel({
             padding: '4px 8px 4px 12px',
             minHeight: 38,
             background: '#000000',
+            position: 'relative',
+            overflow: 'hidden',
           }}>
+            {imgFill != null && (
+              <div aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${imgFill}%`, background: '#eab308', transition: 'width 70ms linear', pointerEvents: 'none', zIndex: 1 }} />
+            )}
+            {imgFill != null && (
+              <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#111', fontWeight: 800, fontSize: '0.72rem', zIndex: 2, pointerEvents: 'none' }}>{imgFill}%</span>
+            )}
             <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
             {chatLift === 0 && liveTypers.length > 0 && !text.trim() ? (
               <div style={{
@@ -20117,10 +20125,31 @@ export function PublicLiveCommentsPanel({
                 const file = e.target.files?.[0];
                 e.target.value = '';
                 if (!file) return;
+                if (file.type.startsWith('video/')) {
+                  stooornaExtendMediaHold(45000);
+                  pendingImageFileRef.current = file;
+                  setPendingImage(URL.createObjectURL(file));
+                  return;
+                }
                 stooornaExtendMediaHold(45000);
                 pendingImageFileRef.current = file;
                 const url = URL.createObjectURL(file);
-                setPendingImage(url);
+                setImgFill(1);
+                const started = Date.now();
+                const tick = () => {
+                  const n = Math.min(100, Math.round(((Date.now() - started) / 800) * 100));
+                  setImgFill(n);
+                  if (n >= 100) {
+                    window.setTimeout(() => {
+                      setPendingImage(url);
+                      setImgFill(null);
+                      pushComment('', url);
+                    }, 160);
+                    return;
+                  }
+                  window.setTimeout(tick, 40);
+                };
+                tick();
               }}
             />
             {/* Circular record button: hold = record, tap = cycle voice → once-video → video, slide up = lock, slide left = cancel */}
@@ -22309,10 +22338,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       knownStoryItemIdsRef.current = new Set(fresh.flatMap(g => g.items.map(it => it.id)));
       if (user?.id) { if (headerListsCache.uid !== String(user.id)) { headerListsCache.friends = []; } headerListsCache.uid = String(user.id); }
       headerListsCache.stories = fresh as any[];
-      const sig = fresh.map(g => `${g.userId}:${g.avatarUrl || ''}:${g.items.map(it => it.id + ':' + (it.seen ? 1 : 0)).join(',')}`).join('|');
-      const w = window as any;
-      if (w.__stooornaStorySig === sig) return;
-      w.__stooornaStorySig = sig;
       setStoryGroups(fresh);
     } catch {/* silent */}
   }, []);
@@ -22347,7 +22372,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     const interval = setInterval(() => {
       if (document.hidden || storyUploading) return;
       fetchStories();
-    }, 6000);
+    }, 2000);
     return () => clearInterval(interval);
   }, [fetchStories, storyUploading]);
 
@@ -22522,7 +22547,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       } catch { /* */ }
     };
     tick();
-    const id = window.setInterval(() => { if (document.visibilityState !== 'visible') return; if (!adUiOpenRef.current && Date.now() % 15000 > 1000) return; tick(); }, 1000);
+    const id = window.setInterval(() => { if (document.visibilityState === 'visible') tick(); }, 1000);
     return () => window.clearInterval(id);
   }, []);
   // Restore media blobs from IndexedDB so video/image survive refresh
@@ -22535,7 +22560,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         const next = [];
         for (const a of list) {
           if ((a.mediaUrl || a.pdfUrl) || !a.id) { next.push(a); continue; }
-          if (a.mediaType === 'video') { next.push(a); continue; }
           const m = await stooornaAdMediaGet(String(a.id));
           if (m) {
             changed = true;
@@ -25181,7 +25205,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     };
 
     refreshTextPosts();
-    const intervalId = window.setInterval(refreshTextPosts, 8000);
+    const intervalId = window.setInterval(refreshTextPosts, 2000);
     return () => window.clearInterval(intervalId);
   }, [textPostsPageOpen, fetchPosts]);
 
@@ -27449,8 +27473,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch',
                   justifyContent: 'flex-start',
                   padding: storyPullProgress > 0
-                    ? `${8 + Math.round(storyPullProgress * 14)}px 14px ${10 + Math.round(storyPullProgress * 10)}px 42px`
-                    : '4px 14px 10px 42px',
+                    ? `${8 + Math.round(storyPullProgress * 14)}px 14px ${10 + Math.round(storyPullProgress * 10)}px`
+                    : '4px 14px 10px',
                   alignItems: 'center',
                 }}
               >
@@ -31557,11 +31581,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     tabIndex={0}
                     className="stooorna-feed-ad-card"
                     onClick={() => {
-                      openFeedAdNow(ad, setFeedAdViewer);
+                      void (async () => {
+                        let full = { ...ad };
+                        if (!full.mediaUrl && !full.pdfUrl) {
+                          const m = await stooornaAdMediaGet(String(ad.id));
+                          if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                        }
+                        setFeedAdViewer(full);
+                      })();
                     }}
                     onKeyDown={e => {
                       if (e.key === 'Enter') {
-                        openFeedAdNow(ad, setFeedAdViewer);
+                        void (async () => {
+                          let full = { ...ad };
+                          if (!full.mediaUrl && !full.pdfUrl) {
+                            const m = await stooornaAdMediaGet(String(ad.id));
+                            if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+                          }
+                          setFeedAdViewer(full);
+                        })();
                       }
                     }}
                     style={{
@@ -34178,7 +34216,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               setPublicVoiceMini(false);
               setShowPublicVoice(false);
               try { sessionStorage.setItem('stooorna_story_refresh', '1'); } catch { /* */ }
-              window.setTimeout(() => { try { stooornaSoftReload(); } catch { /* */ } }, 60);
+              window.setTimeout(() => { try { window.location.reload(); } catch { /* */ } }, 60);
             }}
           /></React.Suspense>
         </>
@@ -34216,7 +34254,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             if (playFx) playFx(removeNow); else removeNow();
           }}
           onOpenAd={(ad: any) => {
-            openFeedAdNow(ad, setFeedAdViewer);
+            void (async () => {
+              let full = { ...ad };
+              if (!full.mediaUrl && !full.pdfUrl) {
+                const m = await stooornaAdMediaGet(String(ad.id));
+                if (m) full = { ...full, mediaUrl: m, pdfUrl: full.mediaType === 'pdf' ? m : full.pdfUrl };
+              }
+              setFeedAdViewer(full);
+            })();
           }}
         />
       )}
