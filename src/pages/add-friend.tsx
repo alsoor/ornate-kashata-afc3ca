@@ -19024,6 +19024,34 @@ export function PublicLiveCommentsPanel({
       if ((window as any).__stooornaGrabberLift) (window as any).__stooornaGrabberLift = false;
     } catch { /* */ }
   }, [headerOpen]);
+  // تحريك الشات بالإصبع (يمين/يسار/فوق/تحت) أثناء ما يكون الشات مفتوح
+  const [chatDragPos, setChatDragPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const chatDragRef = useRef<{ sx: number; sy: number; ox: number; oy: number; id: number } | null>(null);
+  const chatDragPosRef = useRef({ x: 0, y: 0 });
+  chatDragPosRef.current = chatDragPos;
+  useEffect(() => {
+    if (!overlayOpen && chatLift !== 1) setChatDragPos({ x: 0, y: 0 });
+  }, [overlayOpen, chatLift]);
+  const chatDragStart = (e: React.PointerEvent<HTMLElement>) => {
+    chatDragRef.current = { sx: e.clientX, sy: e.clientY, ox: chatDragPosRef.current.x, oy: chatDragPosRef.current.y, id: e.pointerId };
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* */ }
+  };
+  const chatDragMove = (e: React.PointerEvent<HTMLElement>) => {
+    const d = chatDragRef.current;
+    if (!d || d.id !== e.pointerId) return;
+    const maxX = window.innerWidth - 60;
+    const maxY = window.innerHeight - 120;
+    setChatDragPos({
+      x: Math.max(-maxX, Math.min(maxX, d.ox + (e.clientX - d.sx))),
+      y: Math.max(-maxY, Math.min(maxY, d.oy + (e.clientY - d.sy))),
+    });
+  };
+  const chatDragEnd = (e: React.PointerEvent<HTMLElement>) => {
+    if (chatDragRef.current && chatDragRef.current.id === e.pointerId) {
+      chatDragRef.current = null;
+      try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* */ }
+    }
+  };
   /** النقر على هيد توقيت تنظيف الشات: ينزّل الشات بانميشن الهبوط ثم يفتح الشيت = رجوع لصفحة القصة */
   const dropChatToStory = () => {
     if (chatClosing) return;
@@ -19403,15 +19431,22 @@ export function PublicLiveCommentsPanel({
         color: '#111',
         touchAction: 'pan-y',
         pointerEvents: 'none',
+        transform: (chatDragPos.x || chatDragPos.y) ? `translate(${chatDragPos.x}px, ${chatDragPos.y}px)` : undefined,
       }}
     >
-      {chatLift === 1 ? <LiveChatClearCountdown onDotClick={() => setBigEmojiOpen(v => !v)} dotActive={bigEmojiOpen} onTap={dropChatToStory} /> : null}
-      {overlayOpen ? (
-        <button type="button" onClick={dropChatToStory} aria-label="تصغير الشات العام"
-          style={{ position: 'absolute', left: '50%', bottom: 'max(18px, calc(env(safe-area-inset-bottom, 0px) + 14px))', transform: 'translateX(-50%)', zIndex: 30, pointerEvents: 'auto', width: 46, height: 46, borderRadius: '50%', border: '2px solid #fff', background: '#ef4444', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 8px 20px rgba(0,0,0,0.35)' }}>
-          <ChevronsDown size={22} strokeWidth={2.6} />
-        </button>
+      {chatLift === 1 ? (
+        <div
+          role="button"
+          aria-label="تحريك الشات"
+          onPointerDown={chatDragStart}
+          onPointerMove={chatDragMove}
+          onPointerUp={chatDragEnd}
+          onPointerCancel={chatDragEnd}
+          style={{ position: 'absolute', left: 10, top: 'calc(max(8px, env(safe-area-inset-top)) + 8px)', zIndex: 31, pointerEvents: 'auto', width: 40, height: 40, borderRadius: '50%', background: 'rgba(6,23,26,0.9)', border: '1px solid rgba(0,188,212,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none', cursor: 'grab', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20" /></svg>
+        </div>
       ) : null}
+      {chatLift === 1 ? <LiveChatClearCountdown onDotClick={() => setBigEmojiOpen(v => !v)} dotActive={bigEmojiOpen} onTap={dropChatToStory} /> : null}
       {chatLift === 1 && bigEmojiOpen ? (
         <>
           <div
@@ -19763,7 +19798,12 @@ export function PublicLiveCommentsPanel({
         </div>
       </div>
 
-      <div style={{
+      <div
+        onPointerDown={e => { if (chatLift === 1 && e.target === e.currentTarget) chatDragStart(e); }}
+        onPointerMove={chatDragMove}
+        onPointerUp={chatDragEnd}
+        onPointerCancel={chatDragEnd}
+        style={{
         pointerEvents: chatClosing ? 'none' : 'auto',
         position: 'relative',
         zIndex: 2,
@@ -20137,6 +20177,22 @@ export function PublicLiveCommentsPanel({
               )}
             </div>
           </div>
+          {(overlayOpen || chatLift === 1) && !(text.trim() || pendingImage || pendingVoice || editingId) ? (
+            <button
+              type="button"
+              onClick={dropChatToStory}
+              aria-label="تصغير الشات العام"
+              style={{
+                width: 34, height: 34, borderRadius: '50%', flexShrink: 0,
+                border: '2px solid #fff', background: '#ef4444', color: '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', marginLeft: 2, padding: 0,
+              }}
+            >
+              <ChevronsDown size={18} strokeWidth={2.6} />
+            </button>
+          ) : null}
+          {(text.trim() || pendingImage || pendingVoice || editingId) ? (
           <button
             type="button"
             onClick={() => {
@@ -20163,6 +20219,7 @@ export function PublicLiveCommentsPanel({
               ? <Send size={16} strokeWidth={2.4} color="#fff" />
               : (chatLift === 1 ? <Minimize2 size={16} strokeWidth={2.4} color="#fff" /> : <Maximize2 size={16} strokeWidth={2.4} color="#fff" />)}
           </button>
+          ) : null}
         </div>
         {composerDock === 'emoji' && (
           <div style={{ height: 'min(42vh, 340px)', display: 'flex', flexDirection: 'column', borderTop: '1px solid #ececec', background: '#f4f4f5' }}>
