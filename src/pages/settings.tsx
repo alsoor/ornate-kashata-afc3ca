@@ -5059,19 +5059,16 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             try {
               const r = await fetch('/api/password/forgot', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em }) });
               const d = await r.json().catch(() => ({} as any));
-              if (!r.ok || d.ok === false || d.error === 'not_registered' || d.error === 'no_phone') {
-                if (d.error === 'not_registered') setForgotMsg(isEn ? 'This email is not registered' : 'هذا البريد غير مسجّل في التطبيق');
-                else if (d.error === 'no_phone') setForgotMsg(isEn ? 'No mobile is saved on this account yet' : 'ما لقينا رقم موبايل محفوظ على هذا الحساب');
-                else if (r.status === 404) setForgotMsg(isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط');
-                else setForgotMsg(isEn ? 'Could not start reset. Check the email.' : 'تعذر بدء الاستعادة. تأكد من البريد.');
-              }
-              else {
+              if (d.error === 'not_registered') {
+                setForgotMsg(isEn ? 'This email is not registered' : 'هذا البريد غير مسجّل في التطبيق');
+              } else {
                 const fromLink = String(d.devLink || '').split('forgot=')[1] || '';
                 const tok = String(d.appToken || fromLink || '').trim();
                 setForgotToken(tok);
                 setForgotPhoneMask(String(d.phoneMask || ''));
                 setForgotPhoneInput('');
                 setForgotPw1(''); setForgotPw2('');
+                setForgotMsg('');
                 setForgotStep('icon');
               }
             } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
