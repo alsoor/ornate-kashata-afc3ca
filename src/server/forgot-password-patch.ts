@@ -319,15 +319,47 @@ function liveHideStore(): { hide: LiveHide } {
   if (!g.__stooornaLiveHide) g.__stooornaLiveHide = { hide: { coins: false, gifts: false, deposit: false } };
   return g.__stooornaLiveHide;
 }
+function readLiveSwitches(): { gifts: boolean; coins: boolean; deposit: boolean } {
+  const g = globalThis as typeof globalThis & { __stooornaAppSwitches?: { gifts: boolean; coins: boolean; deposit: boolean } };
+  if (!g.__stooornaAppSwitches) g.__stooornaAppSwitches = { gifts: true, coins: true, deposit: true };
+  return g.__stooornaAppSwitches;
+}
+function saveLiveSwitches(sw: { gifts: boolean; coins: boolean; deposit: boolean }) {
+  const g = globalThis as typeof globalThis & { __stooornaAppSwitches?: { gifts: boolean; coins: boolean; deposit: boolean } };
+  g.__stooornaAppSwitches = sw;
+  const hide = { gifts: !sw.gifts, coins: !sw.coins, deposit: !sw.deposit };
+  liveHideStore().hide = hide;
+  for (const file of [join(process.cwd(), "assets", "stooorna-app-settings.json"), join(process.cwd(), "data", "stooorna-app-settings.json")]) {
+    try { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, JSON.stringify({ ...sw, updatedAt: Date.now() })); } catch { /* ignore */ }
+  }
+}
 export function registerLiveIconRoutes(app: Express) {
-  app.get("/api/live-icons", (_req, res) => { res.json(liveHideStore()); });
-  app.post("/api/live-icons", async (req, res) => {
-    const body = await readBody(req);
-    const hide = (body.hide || body) as Partial<LiveHide>;
-    const cur = liveHideStore();
-    cur.hide = { coins: !!hide.coins, gifts: !!hide.gifts, deposit: !!hide.deposit };
-    res.json(cur);
-  });
+  const send = (_req: Request, res: Response) => {
+    const sw = readLiveSwitches();
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true, ...sw, hide: { gifts: !sw.gifts, coins: !sw.coins, deposit: !sw.deposit } });
+  };
+  const save = async (req: Request, res: Response) => {
+    try {
+      const body = await readBody(req);
+      const sw = { ...readLiveSwitches() };
+      const hide = (body.hide && typeof body.hide === "object" ? body.hide : null) as Partial<LiveHide> | null;
+      for (const k of ["gifts", "coins", "deposit"] as const) {
+        if (hide && typeof hide[k] === "boolean") sw[k] = !hide[k];
+        else if (typeof body[k] === "boolean") sw[k] = body[k] as boolean;
+      }
+      saveLiveSwitches(sw);
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ ok: true, ...sw, hide: { gifts: !sw.gifts, coins: !sw.coins, deposit: !sw.deposit } });
+    } catch (e) {
+      console.error("[live-icons]", e);
+      res.json({ ok: true, ...readLiveSwitches() });
+    }
+  };
+  app.get("/api/live-icons", send);
+  app.post("/api/live-icons", save);
+  app.get("/api/app-settings/live-icons", send);
+  app.post("/api/app-settings/live-icons", save);
 }
 
 export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<string, any>; dataDir?: string }) {
