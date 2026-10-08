@@ -1,5 +1,5 @@
 import { Helmet } from '@dr.pogodin/react-helmet';
-import { type ReactElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactElement, lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
 
 // True on the profile/story tab of /add-friend (the "+" lives inline there, so the bottom nav bar must never show).
@@ -14,6 +14,7 @@ function isStoryProfileRoute(pathname: string, search: string): boolean {
   return !(tab === 'search' || tab === 'requests');
 }
 import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, MoreVertical, Clock } from 'lucide-react';
+const PublicLiveCommentsPanel = lazy(() => import('@/pages/add-friend').then(m => ({ default: m.PublicLiveCommentsPanel })));
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
 import LiveKindPicker from '@/components/LiveKindPicker';
@@ -5318,6 +5319,61 @@ function GlobalBottomNavigation() {
 
   );
 }
+
+function GlobalPublicChatHost({ user }: { user: any }) {
+  const [on, setOn] = useState(() => {
+    try { return localStorage.getItem('stooorna_public_chat_on') === '1'; } catch { return false; }
+  });
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const sync = (e?: Event) => {
+      const detail = (e as CustomEvent | undefined)?.detail as { on?: boolean } | undefined;
+      if (detail && typeof detail.on === 'boolean') { setOn(detail.on); if (!detail.on) setOpen(false); return; }
+      try { setOn(localStorage.getItem('stooorna_public_chat_on') === '1'); } catch { /* */ }
+    };
+    window.addEventListener('stooorna:public-chat-switch', sync as EventListener);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener('stooorna:public-chat-switch', sync as EventListener);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+  if (!user?.id || !on) return null;
+  return (
+    <>
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-label="فتح الشات العام"
+          style={{
+            position: 'fixed', right: 16, bottom: 'max(92px, calc(env(safe-area-inset-bottom, 0px) + 78px))',
+            zIndex: 23000, width: 52, height: 52, borderRadius: '50%', cursor: 'pointer',
+            border: '1.5px solid #ffffff', background: 'rgba(6,16,18,0.94)',
+            color: busy ? '#3b82f6' : '#ffffff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: busy ? '0 0 16px rgba(59,130,246,0.55)' : '0 8px 20px rgba(0,0,0,0.35)',
+            animation: 'stooornaPublicChatFloat 1.35s ease-in-out infinite',
+          }}
+        >
+          <MessageCircle size={24} strokeWidth={2.2} />
+        </button>
+      ) : null}
+      <Suspense fallback={null}>
+        <PublicLiveCommentsPanel
+          user={user}
+          headerOpen={!open}
+          overlayOpen={open}
+          onOverlayClose={() => setOpen(false)}
+          onBusyChange={setBusy}
+        />
+      </Suspense>
+      <style>{`@keyframes stooornaPublicChatFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }`}</style>
+    </>
+  );
+}
+
 export default function RootLayout({
   children
 }: RootLayoutProps) {
@@ -5618,6 +5674,7 @@ export default function RootLayout({
         ) : children}
       </div>
       <LiveJoinBanner />
+      <GlobalPublicChatHost user={session?.user} />
       <PwaInstallBanner onEnablePush={async () => { await subscribe(); }} />
       <OwnerControlDock />
       <GlobalBottomNavigation />

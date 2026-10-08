@@ -121,7 +121,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Menu, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ZoomIn } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Menu, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ChevronsDown, ZoomIn } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -18077,7 +18077,7 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
   );
 }
 
-function PublicLiveCommentsPanel({
+export function PublicLiveCommentsPanel({
   user,
   headerOpen,
   onToggleHeader,
@@ -19394,7 +19394,7 @@ function PublicLiveCommentsPanel({
         right: 0,
         bottom: 0,
         top: 0,
-        zIndex: overlayOpen ? 10700 : (chatLift === 1 ? 40 : 15),
+        zIndex: overlayOpen ? 22000 : (chatLift === 1 ? 40 : 15),
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'flex-end',
@@ -19406,6 +19406,12 @@ function PublicLiveCommentsPanel({
       }}
     >
       {chatLift === 1 ? <LiveChatClearCountdown onDotClick={() => setBigEmojiOpen(v => !v)} dotActive={bigEmojiOpen} onTap={dropChatToStory} /> : null}
+      {overlayOpen ? (
+        <button type="button" onClick={dropChatToStory} aria-label="تصغير الشات العام"
+          style={{ position: 'absolute', left: '50%', bottom: 'max(18px, calc(env(safe-area-inset-bottom, 0px) + 14px))', transform: 'translateX(-50%)', zIndex: 30, pointerEvents: 'auto', width: 46, height: 46, borderRadius: '50%', border: '2px solid #fff', background: '#ef4444', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: '0 8px 20px rgba(0,0,0,0.35)' }}>
+          <ChevronsDown size={22} strokeWidth={2.6} />
+        </button>
+      ) : null}
       {chatLift === 1 && bigEmojiOpen ? (
         <>
           <div
@@ -24715,6 +24721,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [, setProfilePlusOpen] = useState(false);
   // ── Dock bubble: tapping Call / LIVE / Settings opens a speech-bubble panel above the dock, with a tail pointing at the tapped icon ──
   const [showPublicVoice, setShowPublicVoice] = useState(false);
+  const [publicChatSwitchOn, setPublicChatSwitchOn] = useState(() => {
+    try { return localStorage.getItem('stooorna_public_chat_on') === '1'; } catch { return false; }
+  });
+  useEffect(() => {
+    try { (window as any).__stooornaPublicChatOn = publicChatSwitchOn; } catch { /* */ }
+    const onSw = (e: Event) => setPublicChatSwitchOn(!!(e as CustomEvent).detail?.on);
+    window.addEventListener('stooorna:public-chat-switch', onSw as EventListener);
+    return () => window.removeEventListener('stooorna:public-chat-switch', onSw as EventListener);
+  }, [publicChatSwitchOn]);
   const [publicVoiceMini, setPublicVoiceMini] = useState(false);
   // PERF: bubble state lives in an external store (dockSet/dockGet) — this page does NOT subscribe to it,
   // so opening/closing the bubble no longer re-renders this ~12k-line component.
@@ -27472,6 +27487,34 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <p style={{ margin: 0, fontSize: '0.82rem', color: '#999', textAlign: 'center' }}>No bio</p>
                   )}
 
+                  {user?.id ? (
+                    <div style={{ width: '100%', maxWidth: 280, margin: '8px auto 2px' }}>
+                      <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '0 8px 8px' }} />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !(typeof window !== 'undefined' && (window as any).__stooornaPublicChatOn);
+                          try {
+                            localStorage.setItem('stooorna_public_chat_on', next ? '1' : '0');
+                            (window as any).__stooornaPublicChatOn = next;
+                            window.dispatchEvent(new CustomEvent('stooorna:public-chat-switch', { detail: { on: next } }));
+                          } catch { /* */ }
+                          setPublicChatSwitchOn(next);
+                        }}
+                        aria-label={publicChatSwitchOn ? 'إيقاف الشات العام' : 'تشغيل الشات العام'}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}
+                      >
+                        <span style={{
+                          minWidth: 62, height: 30, borderRadius: 999, border: '2px solid #000',
+                          background: publicChatSwitchOn ? '#22c55e' : '#ffffff',
+                          color: publicChatSwitchOn ? '#fff' : '#111',
+                          fontWeight: 800, fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 12px',
+                        }}>{publicChatSwitchOn ? 'ON' : 'OFF'}</span>
+                      </button>
+                      <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '8px 8px 0' }} />
+                    </div>
+                  ) : null}
+
                   {/* Five section buttons under the purple dots — black frame + slow silver shine */}
                   <style>{`
                     @keyframes stooornaPanelBarShine {
@@ -27823,29 +27866,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 </div>
                   )}
 
-                  {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
-<button
-                      type="button"
-                      onClick={() => {
-                        dockSet(null);
-                        setChatOverlayOpen(true);
-                      }}
-                      aria-label="Chat"
-                      style={{
-                        width: 44, height: 44, borderRadius: '50%',
-                        border: '1.5px solid #ffffff',
-                        background: 'transparent',
-                        color: liveChatBusy ? '#3b82f6' : '#ffffff',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: 'none',
-                      }}
-                    >
-                      <MessageCircle size={22} strokeWidth={2.2} />
-                    </button>
-</div>
-                  )}
 
                   {user?.id && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
@@ -34099,9 +34119,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           navigate('/settings');
         }}
       />
-      {pageTab === 'profile' && !isFriendManagement && !guestMode && (
-        <PublicLiveCommentsPanel user={user as any} headerOpen={panelHeaderOpen} onToggleHeader={toggleHeaderOpen} onBusyChange={setLiveChatBusy} overlayOpen={chatOverlayOpen} onOverlayClose={() => setChatOverlayOpen(false)} />
-      )}
+      {/* الشات العام صار من مفتاح البروفايل ويُرسم فوق كل الصفحات من RootLayout */}
       {GuestModal}
     </>;
 }
