@@ -2,6 +2,30 @@ import { add_friend } from 'virtual:content';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import React from 'react';
+
+if (typeof document !== 'undefined' && !document.getElementById('stooorna-media-fix')) {
+  const fix = document.createElement('style');
+  fix.id = 'stooorna-media-fix';
+  fix.textContent = `
+    html, body, #root, #app { background: #04120f !important; }
+    video {
+      background: #000 !important;
+      background-image: none !important;
+    }
+    video::-webkit-media-controls-start-playback-button,
+    video::-webkit-media-controls-overlay-play-button,
+    video::-webkit-media-controls-overlay-enclosure {
+      display: none !important;
+      -webkit-appearance: none !important;
+      opacity: 0 !important;
+      width: 0 !important;
+      height: 0 !important;
+      pointer-events: none !important;
+    }
+  `;
+  document.head.appendChild(fix);
+  try { document.documentElement.style.background = '#04120f'; document.body.style.background = '#04120f'; } catch { /* ignore */ }
+}
 // Full Settings page, rendered directly inside the dock bubble (no route change → no slide-in sheet, no red close X).
 const importEmbeddedSettings = () => import('./settings');
 const importEmbeddedPrivacy = () => import('./privacy');
@@ -1317,7 +1341,7 @@ function ScVideoNote({ url, once, isMe, viewedKey, secs, onDelete }: {
         style={{ position: 'relative', width: SIZE, height: SIZE, borderRadius: '50%', overflow: 'hidden', background: '#000', cursor: 'pointer', boxShadow: '0 0 0 2px rgba(0,188,212,0.35)' }}
       >
         <video
-          ref={vidRef} src={`${url}#t=0.1`} muted loop autoPlay playsInline preload="auto"
+          ref={vidRef} src={url} muted loop autoPlay playsInline preload="auto"
           onPlay={() => setPaused(false)}
           onPause={() => setPaused(true)}
           onTimeUpdate={e => { const v = e.currentTarget; if (!v.muted && v.duration) setProg(v.currentTime / v.duration); }}
@@ -16151,7 +16175,7 @@ function LiveRoundBubble({ url, mode, duration, isMe, seen, seenCount, uploading
           {!once ? (
             <video
               ref={vidRef}
-              src={url.startsWith('blob:') ? url : `${url}#t=0.1`}
+              src={url}
               preload="metadata"
               playsInline
               disablePictureInPicture
@@ -16555,6 +16579,8 @@ function LiveRecordButton({ disabled, onTouch, onVoice, onRound, onError, onReco
             <video
               muted
               playsInline
+              controls={false}
+              preload="none"
               ref={el => {
                 if (el && streamRef.current && el.srcObject !== streamRef.current) { el.srcObject = streamRef.current; void el.play().catch(() => { /* */ }); }
               }}
@@ -16963,7 +16989,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
       >
         {isVideo ? (
           near
-            ? <video ref={ref} src={(c.imageUrl || '') + ((c.imageUrl || '').indexOf('#') < 0 ? '#t=0.1' : '')} poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" autoPlay loop muted playsInline controls={false} disablePictureInPicture disableRemotePlayback preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: 'transparent' }} />
+            ? <video ref={ref} src={c.imageUrl || ''} autoPlay loop muted playsInline controls={false} disablePictureInPicture disableRemotePlayback preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: 'transparent' }} />
             : <div aria-hidden="true" style={{ width: '100%', height: '100%', background: 'linear-gradient(160deg, #10201c 0%, #0b1512 100%)' }} />
         ) : (
           <img src={c.imageUrl || ''} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
@@ -20402,17 +20428,12 @@ function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean
           <div style={{ position: 'relative', width: 42, height: 42, borderRadius: 12, overflow: 'hidden', flexShrink: 0, border: '1px solid rgba(234,179,8,0.55)', background: 'rgba(234,179,8,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {ad.mediaType === 'image' && thumb ? (
               <img src={thumb} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : ad.mediaType === 'video' && thumb ? (
-              <video src={thumb} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : ad.mediaType === 'video' ? (
+              <span style={{ width: '100%', height: '100%', background: '#000' }} />
             ) : isPdf ? (
               <FileText size={20} color="#eab308" />
             ) : (
               <ImageIcon size={20} color="#eab308" />
-            )}
-            {ad.mediaType === 'video' && (
-              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.25)' }}>
-                <Play size={16} color="#fff" fill="#fff" />
-              </span>
             )}
           </div>
           {onDelete && (
