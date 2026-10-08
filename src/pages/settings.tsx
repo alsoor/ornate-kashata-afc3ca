@@ -4999,7 +4999,11 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             try {
               const r = await fetch('/api/password/forgot', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em }) });
               const d = await r.json().catch(() => ({} as any));
-              if (!r.ok) { setForgotMsg(r.status === 404 ? (isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط') : (isEn ? 'Could not start reset. Check the email.' : 'تعذر بدء الاستعادة. تأكد من البريد.')); }
+              if (!r.ok || d.ok === false || d.error === 'not_registered') {
+                if (d.error === 'not_registered') setForgotMsg(isEn ? 'This email is not registered' : 'هذا البريد غير مسجّل في التطبيق');
+                else if (r.status === 404 && !d.error) setForgotMsg(isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط');
+                else setForgotMsg(isEn ? 'Could not start reset. Check the email.' : 'تعذر بدء الاستعادة. تأكد من البريد.');
+              }
               else {
                 const fromLink = String(d.devLink || '').split('forgot=')[1] || '';
                 const tok = String(d.appToken || fromLink || '').trim();
@@ -5056,7 +5060,7 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
                   try {
                     const r = await fetch('/api/password/forgot/confirm', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: forgotToken, email: email.trim(), password: forgotPw1, confirm: forgotPw2 }) });
                     const d = await r.json().catch(() => ({} as any));
-                    if (!r.ok || d.ok === false) setForgotMsg(isEn ? 'Could not change the password. Send again.' : 'تعذر تغيير كلمة المرور. أعد الإرسال.');
+                    if (!r.ok || d.ok === false || d.applied !== true) setForgotMsg(d.error === 'not_registered' ? (isEn ? 'This email is not registered' : 'هذا البريد غير مسجّل في التطبيق') : (isEn ? 'Password was not saved. Try again.' : 'ما انحفظت كلمة المرور. حاول مرة ثانية.'));
                     else { setPassword(''); setForgotMsg(isEn ? 'Password changed successfully' : 'تم تغيير كلمة المرور بنجاح'); setForgotStep('done'); }
                   } catch { setForgotMsg(isEn ? 'Network error' : 'خطأ في الشبكة'); }
                   setLoading(false);

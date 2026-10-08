@@ -88,33 +88,98 @@ async function sendResetEmail(to: string, resetUrl: string): Promise<boolean> {
 }
 
 async function hashPassword(password: string): Promise<string> {
-  try {
-    const mod = await import("@better-auth/utils/password").catch(() => null) as { hashPassword?: (p: string) => Promise<string> } | null;
-    if (mod && typeof mod.hashPassword === "function") return await mod.hashPassword(password);
-  } catch { /* fall through */ }
+  const normalized = password.normalize("NFKC");
+  for (const spec of ["better-auth/crypto", "@better-auth/utils/password"]) {
+    try {
+      const mod = await import(spec).catch(() => null) as { hashPassword?: (p: string) => Promise<string> } | null;
+      if (mod && typeof mod.hashPassword === "function") return await mod.hashPassword(normalized);
+    } catch { /* fall through to the same scrypt format Better Auth verifies */ }
+  }
+  // Better Auth credential hash: saltHex:keyHex, scrypt N=16384 r=16 p=1 dkLen=64
   const salt = randomBytes(16).toString("hex");
-  const key = (await scrypt(password.normalize("NFKC"), salt, 64)) as Buffer;
+  const key = (await scrypt(normalized, salt, 64, { N: 16384, r: 16, p: 1, maxmem: 64 * 1024 * 1024 })) as Buffer;
   return `${salt}:${key.toString("hex")}`;
 }
 
-async function applyPassword(db: Record<string, any> | undefined, email: string, password: string): Promise<boolean> {
-  const hash = await hashPassword(password);
-  const pool = db?.pool || db?.mysqlPool || db?.connection || db?.client || db?.default;
-  const query = pool?.query ? pool.query.bind(pool) : pool?.execute ? pool.execute.bind(pool) : null;
+async function verifyPassword(hash: string, password: string): Promise<boolean> {
+  const normalized = password.normalize("NFKC");
+  for (const spec of ["better-auth/crypto", "@better-auth/utils/password"]) {
+    try {
+      const mod = await import(spec).catch(() => null) as { verifyPassword?: (h: string, p: string) => Promise<boolean> } | null;
+      if (mod && typeof mod.verifyPassword === "function") return await mod.verifyPassword(hash, normalized);
+    } catch { /* */ }
+  }
+  const [salt, keyHex] = String(hash || "").split(":");
+  if (!salt || !keyHex) return false;
+  const key = (await scrypt(normalized, salt, 64, { N: 16384, r: 16, p: 1, maxmem: 64 * 1024 * 1024 })) as Buffer;
+  return key.toString("hex") === keyHex;
+}
+
+function queryOf(db: Record<string, any> | undefined): ((sql: string, params?: unknown[]) => Promise<any>) | null {
+  const pool = db?.pool || db?.mysqlPool || db?.connection || db?.client;
+  if (pool?.query) return pool.query.bind(pool);
+  if (pool?.execute) return pool.execute.bind(pool);
+  return null;
+}
+
+function rowsOf(result: any): any[] {
+  if (Array.isArray(result?.[0])) return result[0];
+  if (Array.isArray(result) && result[0] && typeof result[0] === "object" && !("affectedRows" in result[0])) return result;
+  return [];
+}
+
+function affectedOf(result: any): number {
+  const pkt = result && result.affectedRows != null ? result : Array.isArray(result) ? result[0] : null;
+  return Number(pkt?.affectedRows ?? 0);
+}
+
+async function emailRegistered(db: Record<string, any> | undefined, email: string): Promise<boolean> {
+  const query = queryOf(db);
   if (!query) return false;
   const tries = [
-    "UPDATE account SET password = ? WHERE userId IN (SELECT id FROM user WHERE LOWER(email) = ?)",
-    "UPDATE account SET password = ? WHERE accountId IN (SELECT id FROM user WHERE LOWER(email) = ?)",
-    "UPDATE users SET password = ? WHERE LOWER(email) = ?",
+    "SELECT id FROM `user` WHERE LOWER(email) = ? LIMIT 1",
+    "SELECT id FROM user WHERE LOWER(email) = ? LIMIT 1",
+    "SELECT id FROM users WHERE LOWER(email) = ? LIMIT 1",
   ];
   for (const sql of tries) {
     try {
-      const result = await query(sql, [hash, email]);
-      const affected = Number(result?.affectedRows ?? result?.[0]?.affectedRows ?? 0);
-      if (affected > 0) return true;
+      const result = await query(sql, [email]);
+      const rows = rowsOf(result);
+      if (rows.length > 0) return true;
     } catch { /* table shape differs */ }
   }
   return false;
+}
+
+async function applyPassword(db: Record<string, any> | undefined, email: string, password: string): Promise<boolean> {
+  const query = queryOf(db);
+  if (!query) return false;
+  const hash = await hashPassword(password);
+  const updates = [
+    "UPDATE account a INNER JOIN `user` u ON u.id = a.userId SET a.password = ?, a.updatedAt = NOW() WHERE LOWER(u.email) = ? AND a.providerId IN ('credential','email')",
+    "UPDATE account a INNER JOIN `user` u ON u.id = a.userId SET a.password = ? WHERE LOWER(u.email) = ? AND a.providerId IN ('credential','email')",
+    "UPDATE account SET password = ? WHERE userId IN (SELECT id FROM `user` WHERE LOWER(email) = ?) AND providerId = 'credential'",
+    "UPDATE account SET password = ? WHERE userId IN (SELECT id FROM `user` WHERE LOWER(email) = ?)",
+  ];
+  let wrote = false;
+  for (const sql of updates) {
+    try {
+      const result = await query(sql, [hash, email]);
+      if (affectedOf(result) > 0) { wrote = true; break; }
+    } catch { /* next shape */ }
+  }
+  if (!wrote) return false;
+  try {
+    const result = await query(
+      "SELECT a.password AS password FROM account a INNER JOIN `user` u ON u.id = a.userId WHERE LOWER(u.email) = ? AND a.password IS NOT NULL LIMIT 1",
+      [email],
+    );
+    const row = rowsOf(result)[0];
+    if (!row?.password) return false;
+    return await verifyPassword(String(row.password), password);
+  } catch {
+    return wrote;
+  }
 }
 
 function persistApplied(dataDir: string, email: string) {
@@ -168,6 +233,11 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
       res.status(400).json({ error: "invalid_email" });
       return;
     }
+    const registered = await emailRegistered(opts?.db, email);
+    if (!registered) {
+      res.status(404).json({ ok: false, error: "not_registered" });
+      return;
+    }
     const token = randomBytes(24).toString("hex");
     store().set(token, { email, at: Date.now(), used: false });
     const origin = appOrigin(req);
@@ -208,7 +278,15 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
       res.status(400).json({ ok: false, error: "password" });
       return;
     }
+    if (!(await emailRegistered(opts?.db, rec.email))) {
+      res.status(404).json({ ok: false, error: "not_registered" });
+      return;
+    }
     const applied = await applyPassword(opts?.db, rec.email, password);
+    if (!applied) {
+      res.status(400).json({ ok: false, error: "not_applied" });
+      return;
+    }
     rec.used = true;
     store().set(token, rec);
     persistApplied(dataDir, rec.email);
