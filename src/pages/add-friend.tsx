@@ -180,6 +180,18 @@ function announceStoryPageActive() {
     window.dispatchEvent(new CustomEvent('stooorna:story-page-active', { detail: { active: true } }));
   } catch { /* ignore */ }
 }
+
+if (typeof window !== 'undefined' && !(window as any).__stooornaSpeedOn) {
+  (window as any).__stooornaSpeedOn = true;
+  let hold = 0;
+  document.addEventListener('pointerdown', (e) => {
+    const t = e.target as HTMLElement | null;
+    if (!t || !t.closest || !t.closest('button, a, [role="button"]')) return;
+    hold = Date.now() + 700;
+    (window as any).__stooornaSectionBusy = true;
+    window.setTimeout(() => { if (Date.now() >= hold) (window as any).__stooornaSectionBusy = false; }, 720);
+  }, true);
+}
 announceStoryPageActive();
 startStoryLiveWatch();
 void refreshStoryLives();
@@ -7925,7 +7937,7 @@ const adMediaMem = new Map<string, string>();
 function openFeedAdNow(ad: any, setViewer: (v: any) => void) {
   const id = String(ad?.id || '');
   const cached = id ? (adMediaMem.get(id) || '') : '';
-  setViewer({ ...ad, mediaUrl: ad?.mediaUrl || cached || '', pdfUrl: ad?.pdfUrl || (ad?.mediaType === 'pdf' ? cached : '') || '' });
+  setViewer({ ...ad, mediaUrl: ad?.mediaUrl || cached || '', pdfUrl: ad?.pdfUrl || '' });
   if (!id || ad?.mediaUrl || ad?.pdfUrl || cached) return;
   void stooornaAdMediaGet(id).then(m => { if (m) setViewer((v: any) => (v && String(v.id) === id ? { ...v, mediaUrl: m, pdfUrl: v.mediaType === 'pdf' ? m : v.pdfUrl } : v)); });
 }
@@ -14641,6 +14653,7 @@ function SavedMessagesScreen({
   const [text, setText] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [toast, setToast] = useState('');
   /** Full-screen media: first tap opens, second tap closes. kind image | video */
   const [mediaView, setMediaView] = useState<{ kind: 'image' | 'video'; url: string } | null>(null);
@@ -14817,31 +14830,50 @@ function SavedMessagesScreen({
   /** Prefer blob: for large media (avoids OOM / tab crash). Persist dataURL only when small enough for localStorage. */
   const ingestFile = async (file: File, kind: 'image' | 'video' | 'file') => {
     if (!userId || !file) return;
+    pickingRef.current = false;
+    const paint = kind === 'image' || kind === 'video';
+    if (paint) setUploadPct(1);
     setBusy(true);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => typeof reader.result === 'string' ? resolve(reader.result) : reject(new Error('read failed'));
-        reader.onerror = () => reject(reader.error || new Error('read failed'));
-        reader.readAsDataURL(file);
-      });
-      let mediaUrl = dataUrl;
-      if (kind === 'image' || kind === 'video') {
-        const r = await fetch('/api/chat-images', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: dataUrl, media: dataUrl, video: kind === 'video' ? dataUrl : '', dataUrl, userId }) });
-        const d = await r.json().catch(() => ({}));
-        if (d?.url) mediaUrl = String(d.url);
+      const blobUrl = URL.createObjectURL(file);
+      if (paint) {
+        await new Promise<void>((resolve) => {
+          const started = Date.now();
+          const tick = () => {
+            const n = Math.min(92, Math.round(((Date.now() - started) / 800) * 92));
+            setUploadPct(n);
+            if (n >= 92) resolve();
+            else window.setTimeout(tick, 40);
+          };
+          tick();
+        });
       }
-      pushItem({
-        kind,
-        mediaUrl,
-        fileName: file.name,
-        fileSize: file.size,
-        text: kind === 'file' ? file.name : null,
-      });
-    } catch (err) {
+      let mediaUrl = blobUrl;
+      try {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('type', kind);
+        const ctrl = new AbortController();
+        const timer = window.setTimeout(() => ctrl.abort(), 15000);
+        let r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
+        if (!r.ok) r = await fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
+        window.clearTimeout(timer);
+        if (r.ok) {
+          const d = await r.json().catch(() => ({} as any));
+          const permanent = d?.url || d?.mediaUrl || d?.path;
+          if (permanent && typeof permanent === 'string' && !permanent.startsWith('blob:')) mediaUrl = permanent;
+        }
+      } catch { /* keep local preview */ }
+      if (paint) {
+        setUploadPct(100);
+        await new Promise(r => window.setTimeout(r, 180));
+      }
+      pushItem({ kind, mediaUrl, fileName: file.name, fileSize: file.size, text: kind === 'file' ? file.name : null });
+    } catch {
       setToast('تعذر إرفاق الملف');
     } finally {
       setBusy(false);
+      setUploadPct(null);
       pickingRef.current = false;
     }
   };
@@ -14917,7 +14949,9 @@ function SavedMessagesScreen({
   };
 
   const handleClose = () => {
-    if (pickingRef.current || busy) return; // never kick out mid-pick
+    pickingRef.current = false;
+    setBusy(false);
+    setUploadPct(null);
     try { sessionStorage.setItem('stooorna_saved_open', '0'); } catch { /* */ }
     // Return to public live chat (not outside the app / blank home).
     try {
@@ -15404,8 +15438,10 @@ function SavedMessagesScreen({
               <div style={{
                 flex: 1, minWidth: 0, display: 'flex', alignItems: 'center',
                 border: '1px solid #3a3a3a', borderRadius: 999, padding: '4px 8px 4px 14px',
-                minHeight: 38, background: '#000000',
+                minHeight: 38, background: '#000000', position: 'relative', overflow: 'hidden',
               }}>
+                {uploadPct != null && <div aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${uploadPct}%`, background: '#eab308', pointerEvents: 'none' }} />}
+                {uploadPct != null && <span style={{ position: 'relative', zIndex: 1, color: '#111', fontWeight: 800, fontSize: '0.72rem', marginRight: 6 }}>{uploadPct}%</span>}
                 <input
                   ref={inputRef}
                   value={text}
@@ -18541,7 +18577,7 @@ export function PublicLiveCommentsPanel({
         }
         if (blocked) cleaned.push(makeLiveChatBotNotice('text'));
         next = cleaned;
-        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${String(x.imageUrl || '').length}:${String(x.voiceUrl || '').slice(-12)}`).join('|');
+        const sig = next.map(x => `${x.id}:${x.text}:${x.likes.length}:${String(x.imageUrl || '').length}`).join('|');
         if (sig === liveSigRef.current) return;
         liveSigRef.current = sig;
         savePublicLiveComments(next);
@@ -22300,7 +22336,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       knownStoryItemIdsRef.current = new Set(fresh.flatMap(g => g.items.map(it => it.id)));
       if (user?.id) { if (headerListsCache.uid !== String(user.id)) { headerListsCache.friends = []; } headerListsCache.uid = String(user.id); }
       headerListsCache.stories = fresh as any[];
-      const sig = fresh.map(g => `${g.userId}:${g.avatarUrl || ''}:${g.items.map(it => it.id + (it.seen ? 1 : 0)).join(',')}`).join('|');
+      const sig = fresh.map(g => `${g.userId}:${g.items.map(it => it.id).join(',')}`).join('|');
       const w = window as any;
       if (w.__stooornaStorySig === sig) return;
       w.__stooornaStorySig = sig;
@@ -22513,7 +22549,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       } catch { /* */ }
     };
     tick();
-    const id = window.setInterval(() => { if (document.visibilityState !== 'visible') return; if (!adUiOpenRef.current && Date.now() % 20000 > 1100) return; tick(); }, 1000);
+    const id = window.setInterval(() => { if (document.visibilityState === 'visible') tick(); }, 1000);
     return () => window.clearInterval(id);
   }, []);
   // Restore media blobs from IndexedDB so video/image survive refresh
@@ -22526,7 +22562,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         const next = [];
         for (const a of list) {
           if ((a.mediaUrl || a.pdfUrl) || !a.id) { next.push(a); continue; }
-          if (a.mediaType === 'video') { next.push(a); continue; }
           const m = await stooornaAdMediaGet(String(a.id));
           if (m) {
             changed = true;
@@ -25172,7 +25207,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     };
 
     refreshTextPosts();
-    const intervalId = window.setInterval(refreshTextPosts, 10000);
+    const intervalId = window.setInterval(refreshTextPosts, 2000);
     return () => window.clearInterval(intervalId);
   }, [textPostsPageOpen, fetchPosts]);
 
