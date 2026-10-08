@@ -5506,6 +5506,23 @@ export default function RootLayout({
   const session = (sessionResult as any).session ?? (sessionResult as any).data;
   const location = useLocation();
   const navigate = useNavigate();
+  // AUTO-REFRESH ON LOGOUT: when a logged-in user logs out, reload the page once so the login box shows immediately
+  // (before this, the login box stayed hidden until the user left the app and came back).
+  const prevSessionUserIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const u = (sessionResult as any)?.user ?? session?.user ?? null;
+    const pending = !!(sessionResult as any)?.isPending;
+    const uid = u?.id ? String(u.id) : null;
+    if (uid) { prevSessionUserIdRef.current = uid; return; }
+    if (pending || !prevSessionUserIdRef.current) return;
+    const t = window.setTimeout(() => {
+      const again = (sessionResult as any)?.user ?? null;
+      if (again?.id) return;
+      prevSessionUserIdRef.current = null;
+      try { window.location.reload(); } catch { /* */ }
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [(sessionResult as any)?.user?.id, (sessionResult as any)?.isPending, session?.user?.id]);
   // Tap haptic on navigation / buttons. Long-press on the bell (add-friend.tsx HeaderAdminBell) turns it off/on:
   // it stores stooorna_haptic_off = '1' and every tap-style vibration in the whole app is silenced until toggled back.
   // Ringing / incoming-call vibration patterns (long ones) are NOT affected.
