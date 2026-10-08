@@ -18739,15 +18739,12 @@ function PublicLiveCommentsPanel({
       setChatLift(1);
     }
   }, [overlayOpen]);
-  // الشات دايم مرفوع: أول ما الشيت يرتفع (الهيدر ينغلق) يطلع الشات مباشرة. النزول فقط بالنقر على هيد توقيت التنظيف بأعلى الشات.
+  // الشات لا يفتح عند دخول التطبيق ولا عند ارتفاع الشيت.
+  // يفتح فقط بالنقر على أيقونة الشات (طبقة overlay) أو زر الرفع داخل الشات.
   useEffect(() => {
-    if (!headerOpen) {
-      // رفع الهيدر بنقر خط الشيت: ما يفتح الشات العام (الشات يفتح بالضغط المطوّل على Call فقط)
-      try {
-        if ((window as any).__stooornaGrabberLift) { (window as any).__stooornaGrabberLift = false; return; }
-      } catch { /* */ }
-      React.startTransition(() => { setChatLift(1); });
-    }
+    try {
+      if ((window as any).__stooornaGrabberLift) (window as any).__stooornaGrabberLift = false;
+    } catch { /* */ }
   }, [headerOpen]);
   /** النقر على هيد توقيت تنظيف الشات: ينزّل الشات بانميشن الهبوط ثم يفتح الشيت = رجوع لصفحة القصة */
   const dropChatToStory = () => {
