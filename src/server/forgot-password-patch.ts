@@ -389,11 +389,8 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
     const token = String(req.query.token || "");
     const rec = store().get(token);
     if (!rec || rec.used || Date.now() - rec.at > TTL_MS) {
-      if (!emailHint || !(await emailRegistered(opts?.db, emailHint))) {
-        res.status(400).json({ ok: false, error: "expired" });
-        return;
-      }
-      rec = { email: emailHint, at: Date.now(), used: false, phone: await phoneForEmail(opts?.db, dataDir, emailHint) };
+      res.status(400).json({ ok: false, error: "expired" });
+      return;
     }
     res.json({ ok: true, email: rec.email });
   });
@@ -412,8 +409,11 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
       if (!rec || rec.used) rec = findToken(dataDir, "", emailHint);
     }
     if (!rec || rec.used || Date.now() - rec.at > TTL_MS) {
-      res.status(400).json({ ok: false, error: "expired" });
-      return;
+      if (!emailHint || !(await emailRegistered(opts?.db, emailHint))) {
+        res.status(400).json({ ok: false, error: "expired" });
+        return;
+      }
+      rec = { email: emailHint, at: Date.now(), used: false, phone: await phoneForEmail(opts?.db, dataDir, emailHint) };
     }
     if (password.length < 6 || password !== confirm) {
       res.status(400).json({ ok: false, error: "password" });
