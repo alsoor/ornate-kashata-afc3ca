@@ -3,7 +3,7 @@ import { LogOut, Mic, MicOff, Users, Volume2, VolumeX, X } from 'lucide-react';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
 
 const ROOM = 'stooorna-public-voice';
-const TALK_MS = 30_000;
+const TALK_MS = 25_000;
 const COOLDOWN_MS = 3_000;
 const CHIME_FLASH_MS = 2_500;
 const LONG_PRESS_MS = 500;
@@ -67,6 +67,22 @@ export default function PublicVoiceLive({
   const [chatOpen, setChatOpen] = useState(true);
   const [membersOpen, setMembersOpen] = useState(false);
   const [chatText, setChatText] = useState('');
+  const [mentionHits, setMentionHits] = useState<Array<{ id: string; username: string }>>([]);
+  useEffect(() => {
+    const onQ = (e: Event) => {
+      if ((e as CustomEvent).detail?.room !== 'public-voice') return;
+      const text = String((e as CustomEvent).detail?.text || '');
+      const caret = Number((e as CustomEvent).detail?.caret || text.length);
+      const m = text.slice(0, caret).match(/(^|\s)@([a-zA-Z0-9_\u0600-\u06FF.]{0,32})$/);
+      if (!m) { setMentionHits([]); return; }
+      const q = m[2].toLowerCase();
+      const people = [...peersRef.current.map(p => ({ id: p.id, username: String(p.username || p.name || '').replace(/^@/, '') })), ...(((window as any).__stooornaFriends || []) as any[]).map(f => ({ id: String(f.id), username: String(f.username || '').replace(/^@/, '') }))];
+      const seen = new Set<string>();
+      setMentionHits(people.filter(p => p.username && !seen.has(p.username) && seen.add(p.username) && (!q || p.username.toLowerCase().startsWith(q))).slice(0, 8));
+    };
+    window.addEventListener('stooorna:mention-query', onQ as EventListener);
+    return () => window.removeEventListener('stooorna:mention-query', onQ as EventListener);
+  }, []);
   const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
 
   const peersRef = useRef<Peer[]>([]);
@@ -261,6 +277,11 @@ export default function PublicVoiceLive({
     talkingRef.current = false;
     setTalking(false);
     setLeftMs(0);
+    if (String((window as any).__stooornaFloorOwner || '') === String(userId)) {
+      (window as any).__stooornaFloorOwner = '';
+      (window as any).__stooornaFloorUntil = 0;
+      void fetch('/api/room/signal', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: ROOM, t: 'floor', data: { userId, until: 0 } }) }).catch(() => {});
+    }
     const mic = micRef.current;
     if (mic) {
       try { mic.setMuted(true); } catch { /* ignore */ }
@@ -292,13 +313,19 @@ export default function PublicVoiceLive({
     if (coolMs > 0 || talkingRef.current || !userId) return;
     const mic = micRef.current;
     if (!mic) return;
-    const otherOnMic = peersRef.current.some(p => p.id && p.id !== userId && p.talking);
+    const now = Date.now();
+    const owner = String((window as any).__stooornaFloorOwner || '');
+    const until = Number((window as any).__stooornaFloorUntil || 0);
+    const otherOnMic = peersRef.current.some(p => p.id && p.id !== userId && p.talking) || (owner && owner !== userId && now < until);
     if (otherOnMic) {
       setFloorBusy(true);
       playBusyTone();
       window.setTimeout(() => setFloorBusy(false), 1600);
       return;
     }
+    (window as any).__stooornaFloorOwner = userId;
+    (window as any).__stooornaFloorUntil = now + TALK_MS;
+    void fetch('/api/room/signal', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: ROOM, t: 'floor', data: { userId, until: now + TALK_MS } }) }).catch(() => {});
     // Play the chime right now, inside the user's tap (Android WebView blocks sound after an await)
     const chimeId = `ms-${userId}-${Date.now()}`;
     if (!chimeOffRef.current) playMicSound(chimeId);
@@ -397,7 +424,17 @@ export default function PublicVoiceLive({
             raw = raw.replace(/\u0000/g, '').trim();
             if (!raw) return;
             const msg = JSON.parse(raw);
-            if (msg?.t === 'mic-sound' && msg.id) {
+            if (msg?.t === 'floor' || raw?.t === 'floor') {
+            const uid = String(msg.userId || raw?.userId || '');
+            const until = Number(msg.until || raw?.until || 0);
+            if (uid && until) {
+              (window as any).__stooornaFloorOwner = uid;
+              (window as any).__stooornaFloorUntil = until;
+              if (uid !== String(userId) && Date.now() < until) setFloorBusy(true);
+            }
+            continue;
+          }
+          if (msg?.t === 'mic-sound' && msg.id) {
               if (String(msg.userId) !== String(userId) && !speakerOffRef.current) playMicSound(String(msg.id));
               return;
             }
@@ -656,6 +693,13 @@ export default function PublicVoiceLive({
                 </p>
               ))}
             </div>
+            {mentionHits.length > 0 && (
+              <div style={{ background: '#102226', border: '1px solid rgba(0,188,212,0.35)', borderRadius: 10, marginBottom: 4 }}>
+                {mentionHits.map(p => (
+                  <button key={p.id + p.username} type="button" onPointerDown={e => e.preventDefault()} onClick={() => { setChatText(prev => { const re = /(^|\s)@([a-zA-Z0-9_\u0600-\u06FF.]{0,32})$/; return re.test(prev) ? prev.replace(re, `$1@${p.username} `) : `${prev}${prev && !/\s$/.test(prev) ? ' ' : ''}@${p.username} `; }); setMentionHits([]); }} style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#fff', padding: '6px 8px', cursor: 'pointer' }}>@{p.username}</button>
+                ))}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
               <input
                 value={chatText}
@@ -772,7 +816,7 @@ export default function PublicVoiceLive({
         </button>
       </div>
       <p style={{ margin: '0 0 6px', fontSize: 10, color: (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? '#f97316' : 'rgba(150,200,200,0.45)', textAlign: 'center', fontWeight: (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? 800 : 400 }}>
-        {talking ? `${secs}s` : (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? 'مشغول' : coolMs > 0 ? `Wait ${cool}s` : '30s turns'}
+        {talking ? `${secs}s` : (floorBusy || peers.some(p => p.id !== userId && p.talking)) ? 'مشغول' : coolMs > 0 ? `Wait ${cool}s` : '25s turns'}
       </p>
 
       {membersOpen && (

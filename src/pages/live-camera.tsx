@@ -224,6 +224,40 @@ export default function LiveCameraPage() {
   const [error, setError] = useState('');
   const [liveChatMsgs, setLiveChatMsgs] = useState<LiveChatMsg[]>([]);
   const [liveChatText, setLiveChatText] = useState('');
+  const [savedInvite, setSavedInvite] = useState<{ id: string; fromName: string; ownerId: string } | null>(null);
+  useEffect(() => {
+    if (!myId) return;
+    const pull = async () => {
+      try {
+        const r = await fetch(`/api/notifications?userId=${encodeURIComponent(String(myId))}&username=${encodeURIComponent(String(myUsername || ''))}`, { credentials: 'include', cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        const inv = (d.notifications || []).find((n: any) => n.type === 'invite' && !n.read);
+        if (inv) setSavedInvite({ id: inv.id, fromName: inv.fromName || 'Someone', ownerId: String(inv.room || '').replace('saved:', '') });
+      } catch { /* */ }
+    };
+    void pull();
+    const id = window.setInterval(pull, 3000);
+    return () => window.clearInterval(id);
+  }, [myId, myUsername]);
+
+  const [mentionHits, setMentionHits] = useState<Array<{ id: string; username: string }>>([]);
+  useEffect(() => {
+    const onQ = (e: Event) => {
+      if ((e as CustomEvent).detail?.room !== 'live') return;
+      const text = String((e as CustomEvent).detail?.text || '');
+      const caret = Number((e as CustomEvent).detail?.caret || text.length);
+      const m = text.slice(0, caret).match(/(^|\s)@([a-zA-Z0-9_\u0600-\u06FF.]{0,32})$/);
+      if (!m) { setMentionHits([]); return; }
+      const q = m[2].toLowerCase();
+      const people = [...(members || []).map((x: any) => ({ id: String(x.userId || x.uid), username: String(x.username || x.name || '').replace(/^@/, '') })), ...(((window as any).__stooornaFriends || []) as any[]).map((f: any) => ({ id: String(f.id), username: String(f.username || '').replace(/^@/, '') }))];
+      const seen = new Set<string>();
+      setMentionHits(people.filter(p => p.username && !seen.has(p.username.toLowerCase()) && seen.add(p.username.toLowerCase()) && (!q || p.username.toLowerCase().startsWith(q))).slice(0, 8));
+    };
+    window.addEventListener('stooorna:mention-query', onQ as EventListener);
+    return () => window.removeEventListener('stooorna:mention-query', onQ as EventListener);
+  }, [members]);
+
   const [liveChatOpen, setLiveChatOpen] = useState(true);
   /** Compact by default. Full Chat rises to the yellow line; Hide chat drops it back. */
   const [chatFull, setChatFull] = useState(false);
@@ -2276,6 +2310,15 @@ export default function LiveCameraPage() {
   }
 
   return (
+      {savedInvite && (
+        <div style={{ position: 'fixed', top: 12, left: 12, right: 12, zIndex: 200000, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 16, padding: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button type="button" onClick={() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); sessionStorage.setItem('stooorna_saved_owner', savedInvite.ownerId); } catch { /* */ } window.location.href = '/?saved=1'; }} style={{ flex: 1, background: 'none', border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
+            <b>@{savedInvite.fromName}</b>
+            <div style={{ fontSize: 13, color: '#00BCD4', fontWeight: 800 }}>Join the Chat</div>
+          </button>
+          <button type="button" aria-label="Ignore invite" onClick={() => setSavedInvite(null)} style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #fff', background: 'transparent', color: '#fff' }}>×</button>
+        </div>
+      )}
     <div
       style={{
         position: 'fixed',
@@ -2951,6 +2994,13 @@ export default function LiveCameraPage() {
                 <div ref={liveChatEndRef} />
               </div>
               {isHostRoom ? <HeartsCounter count={heartsApi.total} onTap={() => heartsApi.tap()} lift={chatFull ? 60 : 50} /> : null}
+              {mentionHits.length > 0 && (
+                <div style={{ background: '#102226', border: '1px solid rgba(0,188,212,0.35)', borderRadius: 10 }}>
+                  {mentionHits.map(p => (
+                    <button key={p.id + p.username} type="button" onPointerDown={e => e.preventDefault()} onClick={() => { setLiveChatText(prev => { const re = /(^|\s)@([a-zA-Z0-9_\u0600-\u06FF.]{0,32})$/; return re.test(prev) ? prev.replace(re, `$1@${p.username} `) : `${prev}${prev && !/\s$/.test(prev) ? ' ' : ''}@${p.username} `; }); setMentionHits([]); }} style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#fff', padding: '6px 8px', cursor: 'pointer' }}>@{p.username}</button>
+                  ))}
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 6 }}>
                 <input
                   value={liveChatText}

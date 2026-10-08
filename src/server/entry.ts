@@ -16,6 +16,7 @@ import { registerAppReleaseRoutes } from "./app-releases-routes.js"; // APP-RELE
 import { registerTemplatesRoutes } from "./templates-routes.js"; // TEMPLATES-PATCH
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
+import { registerSavedRoomRoutes } from "./saved-room-patch.js";
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -564,6 +565,7 @@ app.post("/api/live-chat/voice", (req, res) => {
 });
 registerChatImageRoutes(app);
 registerNotificationRoutes(app);
+registerSavedRoomRoutes(app);
 app.post("/api/live-chat/media", (req, res) => {
   const body = (req.body || {}) as any;
   const dataUrl = String(body.image || body.video || body.media || body.file || "");

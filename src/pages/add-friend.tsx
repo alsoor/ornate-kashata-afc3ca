@@ -14600,15 +14600,6 @@ function SavedMessagesScreen({
 }) {
   const [items, setItems] = useState<SavedMsg[]>(() => (userId ? loadSavedMessages(userId) : []));
   const [text, setText] = useState('');
-  useEffect(() => {
-    const onPick = (e: Event) => {
-      const username = String((e as CustomEvent).detail?.username || '').replace(/^@/, '');
-      if (!username) return;
-      setText(prev => prev.replace(/(^|\s)@([a-zA-Z0-9_\u0600-\u06FF.]{0,32})$/, `$1@${username} `));
-    };
-    window.addEventListener('stooorna:mention-pick', onPick as EventListener);
-    return () => window.removeEventListener('stooorna:mention-pick', onPick as EventListener);
-  }, []);
   const [plusOpen, setPlusOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
@@ -14662,6 +14653,53 @@ function SavedMessagesScreen({
     setItems(next);
     if (userId) saveSavedMessages(userId, next);
   };
+  const [roomMembers, setRoomMembers] = useState<Array<{ userId: string; username: string; name: string }>>([]);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [joinedOwner, setJoinedOwner] = useState('');
+  const roomOwner = joinedOwner || userId;
+  useEffect(() => {
+    if (!open || !userId) return;
+    const pull = async () => {
+      try {
+        const r = await fetch(`/api/saved-room?userId=${encodeURIComponent(userId)}&username=${encodeURIComponent(userUsername || '')}`, { credentials: 'include', cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json();
+        const room = d.joined || d.mine;
+        if (!room) { setRoomMembers([]); setJoinedOwner(''); return; }
+        setJoinedOwner(d.joined ? String(room.ownerId) : '');
+        setRoomMembers(room.members || []);
+        const extra = (room.messages || []).map((m: any) => ({ id: String(m.id), kind: 'text' as const, text: `${m.name || ''}: ${m.text}`, createdAt: Number(m.at) || Date.now() }));
+        if (extra.length) setItems(prev => {
+          const ids = new Set(prev.map(x => x.id));
+          return [...prev, ...extra.filter((x: SavedMsg) => !ids.has(x.id))].slice(-500);
+        });
+      } catch { /* */ }
+    };
+    void pull();
+    const id = window.setInterval(pull, 2000);
+    return () => window.clearInterval(id);
+  }, [open, userId, userUsername]);
+  const inviteUser = async (username: string, name: string) => {
+    await fetch('/api/saved-room/invite', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId, ownerName: userName || userUsername, username, name }) });
+    await fetch('/api/notifications', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'invite', usernames: [username], fromUserId: userId, fromName: userName || userUsername, title: 'دعوة شات محفوظات', body: 'تمت دعوتك لشات خاص', room: `saved:${userId}`, href: '/?saved=1' }) });
+    setInviteOpen(false);
+    setToast(`تمت دعوة @${username}`);
+  };
+  const leaveRoom = async () => {
+    await fetch('/api/saved-room/leave', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, username: userUsername }) });
+    setJoinedOwner('');
+    setRoomMembers([]);
+  };
+  const kickUser = async (username: string) => {
+    await fetch('/api/saved-room/kick', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId, username }) });
+    setRoomMembers(prev => prev.filter(m => m.username !== username));
+  };
+  const deleteRoom = async () => {
+    await fetch('/api/saved-room/delete', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId }) });
+    persist([]);
+    setRoomMembers([]);
+    setToast('تم حذف الشات');
+  };
 
   const pushItem = (partial: Omit<SavedMsg, 'id' | 'createdAt'>) => {
     if (!userId) return;
@@ -14671,6 +14709,9 @@ function SavedMessagesScreen({
       createdAt: Date.now(),
     };
     persist([...loadSavedMessages(userId), row]);
+    if (partial.kind === 'text' && partial.text && roomOwner) {
+      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, text: partial.text }) });
+    }
   };
 
   const removeItem = (id: string) => {
@@ -14884,7 +14925,26 @@ function SavedMessagesScreen({
                 Saved Messages
               </span>
             </button>
+            <button type="button" onClick={() => setInviteOpen(v => !v)} style={{ marginLeft: 8, border: 'none', borderRadius: 999, background: '#00BCD4', color: '#041414', fontWeight: 800, padding: '8px 10px', cursor: 'pointer' }}>دعوة</button>
+            <button type="button" onClick={() => void (joinedOwner ? leaveRoom() : deleteRoom())} style={{ marginLeft: 6, border: '1px solid #ef4444', borderRadius: 999, background: '#fff', color: '#ef4444', fontWeight: 800, padding: '8px 10px', cursor: 'pointer' }}>{joinedOwner ? 'خروج' : 'حذف'}</button>
           </div>
+          {roomMembers.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap' }}>
+              {roomMembers.map(m => (
+                <span key={m.username} style={{ background: '#111', color: '#fff', borderRadius: 999, padding: '4px 8px', fontSize: 12 }}>
+                  @{m.username}
+                  {!joinedOwner && <button type="button" onClick={() => void kickUser(m.username)} style={{ marginLeft: 6, border: 'none', background: 'none', color: '#fca5a5', cursor: 'pointer' }}>طرد</button>}
+                </span>
+              ))}
+            </div>
+          )}
+          {inviteOpen && (
+            <div style={{ margin: '0 12px 8px', background: '#fff', border: '1px solid #ddd', borderRadius: 12, padding: 6 }}>
+              {(((window as any).__stooornaFriends || []) as Array<{ id: string; username?: string; name?: string }>).map(f => (
+                <button key={f.id} type="button" onClick={() => void inviteUser(String(f.username || f.name || ''), String(f.name || ''))} style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '8px', cursor: 'pointer' }}>@{f.username || f.name}</button>
+              ))}
+            </div>
+          )}
 
           {/* التمرير: يسمح بالسحب العمودي فوق أي رسالة/صورة/خريطة (يتغلب على أي touch-action عام) */}
           <style>{`
@@ -17906,6 +17966,21 @@ function PublicLiveCommentsPanel({
 }) {
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
+  useEffect(() => {
+    const onPick = (e: Event) => {
+      const username = String((e as CustomEvent).detail?.username || '').replace(/^@/, '').trim();
+      if (!username) return;
+      setText(prev => {
+        const re = /(^|\s)@([a-zA-Z0-9_\u0600-\u06FF.]{0,32})$/;
+        if (re.test(prev)) return prev.replace(re, `$1@${username} `);
+        const pad = prev && !/\s$/.test(prev) ? ' ' : '';
+        return `${prev}${pad}@${username} `;
+      });
+      window.setTimeout(() => { try { chatInputRef.current?.focus(); } catch { /* */ } }, 40);
+    };
+    window.addEventListener('stooorna:mention-pick', onPick as EventListener);
+    return () => window.removeEventListener('stooorna:mention-pick', onPick as EventListener);
+  }, []);
   const [replyTarget, setReplyTarget] = useState<{ id: string; name: string; text: string } | null>(null);
   const replyTargetRef = useRef<{ id: string; name: string; text: string } | null>(null);
   const replyDragRef = useRef<{ id: string; x: number; dx: number } | null>(null);
@@ -24943,6 +25018,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [friends, setFriends] = useState<Friend[]>(() => (user?.id && headerListsCache.uid === String(user.id) ? headerListsCache.friends as Friend[] : []));
   const [mentionHits, setMentionHits] = useState<Array<{ id: string; username: string; name: string }>>([]);
   const [noticeTop, setNoticeTop] = useState<{ id: string; title: string; body: string; messageId: string; kind?: string } | null>(null);
+  const [savedInvite, setSavedInvite] = useState<{ id: string; fromName: string; ownerId: string } | null>(null);
   useEffect(() => {
     try { (window as any).__stooornaFriends = friends.map(f => ({ id: String(f.friendId), username: f.username, name: f.name })); } catch { /* */ }
   }, [friends]);
@@ -24978,6 +25054,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (!n?.id || seen.has(n.id)) continue;
           seen.add(n.id);
           since = Math.max(since, Number(n.at) || 0);
+          if (n.type === 'invite' && !n.read) {
+            const ownerId = String(n.room || '').replace('saved:', '');
+            setSavedInvite({ id: n.id, fromName: n.fromName || 'Someone', ownerId });
+          }
           if (n.type === 'call' && document.visibilityState === 'visible') continue;
           if (n.type === 'call' && document.visibilityState === 'hidden') {
             try { sessionStorage.setItem('stooorna_missed_call', JSON.stringify({ title: n.title || 'كان عندك اتصال', body: n.body || '' })); } catch { /* */ }
@@ -27398,13 +27478,23 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {mentionHits.length > 0 && (
           <div style={{ position: 'fixed', left: 12, right: 12, bottom: 92, zIndex: 12080, background: '#0c1c1f', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 14, padding: 6 }}>
             {mentionHits.map(p => (
-              <button key={p.id} type="button" onClick={() => {
-                try { window.dispatchEvent(new CustomEvent('stooorna:mention-pick', { detail: { username: p.username } })); } catch { /* */ }
+              <button key={p.id} type="button" onPointerDown={e => e.preventDefault()} onClick={() => {
+                const username = p.username || p.name;
+                try { window.dispatchEvent(new CustomEvent('stooorna:mention-pick', { detail: { username } })); } catch { /* */ }
                 setMentionHits([]);
               }} style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: '#fff', padding: '8px 10px', cursor: 'pointer', fontWeight: 700 }}>
                 @{p.username || p.name}
               </button>
             ))}
+          </div>
+        )}
+        {savedInvite && (
+          <div style={{ position: 'fixed', top: 54, left: 12, right: 12, zIndex: 200000, background: '#041414', color: '#fff', border: '1px solid #00BCD4', borderRadius: 16, padding: '12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button type="button" onClick={() => { try { sessionStorage.setItem('stooorna_saved_open', '1'); sessionStorage.setItem('stooorna_saved_owner', savedInvite.ownerId); } catch { /* */ } setSavedOpen(true); setChatOverlayOpen(true); setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: savedInvite.id }) }); }} style={{ flex: 1, background: 'none', border: 'none', color: '#fff', textAlign: 'left', cursor: 'pointer' }}>
+              <b>@{savedInvite.fromName}</b>
+              <div style={{ fontSize: 13, color: '#00BCD4', fontWeight: 800 }}>Join the Chat</div>
+            </button>
+            <button type="button" aria-label="Ignore invite" onClick={() => setSavedInvite(null)} style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #fff', background: 'transparent', color: '#fff', cursor: 'pointer' }}>×</button>
           </div>
         )}
         {noticeTop && (
