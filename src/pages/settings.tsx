@@ -7221,11 +7221,15 @@ export default function SettingsPage() {
         method: 'PATCH',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: phoneInput })
+        body: JSON.stringify({ phone: phoneInput, email: user?.email || '' })
       });
-      if (user?.email) localStorage.setItem(`stooorna_phone_${String(user.email).toLowerCase()}`, phoneInput);
       const d = await r.json().catch(() => ({} as any));
-      if (r.ok || bind.ok) {
+      if (r.status === 409 || d.error === 'phone_taken') {
+        setPhoneMsg('هذا الرقم مستخدم على حساب آخر');
+        return;
+      }
+      if (r.ok) {
+        if (user?.email) localStorage.setItem(`stooorna_phone_${String(user.email).toLowerCase()}`, phoneInput);
         setPhoneMsg('Saved!');
         setEditingPhone(false);
         setProfilePhone(d.phone || phoneInput);

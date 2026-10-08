@@ -369,33 +369,49 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
 
 
 
+function samePhone(a: string, b: string): boolean {
+  if (a.length < 8 || b.length < 8) return false;
+  return a === b || a.endsWith(b) || b.endsWith(a);
+}
 async function phoneUsedByOther(db: Record<string, any> | undefined, dataDir: string, email: string, phone: string): Promise<boolean> {
   const wanted = digitsOf(phone);
   if (wanted.length < 8) return false;
-  const fileHit = Object.entries(readPhoneFile(dataDir)).find(([em, ph]) => em !== email && (digitsOf(String(ph)) === wanted || digitsOf(String(ph)).endsWith(wanted) || wanted.endsWith(digitsOf(String(ph)))));
-  if (fileHit && digitsOf(String(fileHit[1])).length >= 8) return true;
+  const fileHit = Object.entries(readPhoneFile(dataDir)).find(([em, ph]) => em !== email && samePhone(digitsOf(String(ph)), wanted));
+  if (fileHit) return true;
   const query = queryOf(db);
   if (!query) return false;
   for (const sql of [
-    "SELECT email, phone, phoneNumber, mobile FROM `user`",
-    "SELECT email, phone FROM `user`",
-    "SELECT email, phone FROM user",
-    "SELECT email, phoneNumber AS phone FROM `user`",
+    "SELECT * FROM `user`",
+    "SELECT * FROM user",
+    "SELECT * FROM users",
   ]) {
     try {
       const rows = rowsOf(await query(sql));
       for (const row of rows) {
-        const em = normEmail(row.email);
-        if (!em || em === email) continue;
-        const stored = digitsOf(String(row.phone || row.phoneNumber || row.mobile || ""));
-        if (stored.length < 8) continue;
-        if (stored === wanted || stored.endsWith(wanted) || wanted.endsWith(stored)) return true;
+        const em = normEmail(row.email || row.Email);
+        if (em && em === email) continue;
+        for (const [key, value] of Object.entries(row)) {
+          if (!/phone|mobile|tel/i.test(key)) continue;
+          if (samePhone(digitsOf(String(value || "")), wanted)) return true;
+        }
       }
       return false;
-    } catch { /* next query */ }
+    } catch { /* next table */ }
   }
   return false;
 }
+
+  app.patch("/api/users/me/phone", async (req: Request, res: Response, next: () => void) => {
+    const body = await readBody(req);
+    req.body = body;
+    const email = normEmail(body.email);
+    const phone = String(body.phone || "").trim();
+    if (digitsOf(phone).length >= 8 && await phoneUsedByOther(opts?.db, dataDir, email, phone)) {
+      res.status(409).json({ ok: false, error: "phone_taken" });
+      return;
+    }
+    next();
+  });
 
   app.post("/api/password/phone-bind", async (req: Request, res: Response) => {
     const body = await readBody(req);
