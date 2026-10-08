@@ -38,6 +38,35 @@ function useOwnerLiveIconsPrivate(): boolean {
   }, []);
   return on;
 }
+type LiveHide = { coins: boolean; gifts: boolean; deposit: boolean };
+function readLiveHide(): LiveHide {
+  try {
+    const raw = localStorage.getItem('stooorna_live_icons_hide');
+    if (!raw) return { coins: false, gifts: false, deposit: false };
+    const d = JSON.parse(raw);
+    return { coins: !!d.coins, gifts: !!d.gifts, deposit: !!d.deposit };
+  } catch { return { coins: false, gifts: false, deposit: false }; }
+}
+function useLiveHideFlags(): LiveHide {
+  const [hide, setHide] = useState<LiveHide>(readLiveHide);
+  useEffect(() => {
+    const sync = (e?: Event) => {
+      const detail = (e as CustomEvent | undefined)?.detail;
+      if (detail && typeof detail === 'object') setHide({ coins: !!detail.coins, gifts: !!detail.gifts, deposit: !!detail.deposit });
+      else setHide(readLiveHide());
+    };
+    window.addEventListener('stooorna:live-icons-hide', sync as EventListener);
+    window.addEventListener('storage', sync);
+    void fetch('/api/live-icons', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.hide) setHide({ coins: !!d.hide.coins, gifts: !!d.hide.gifts, deposit: !!d.hide.deposit });
+    }).catch(() => {});
+    return () => {
+      window.removeEventListener('stooorna:live-icons-hide', sync as EventListener);
+      window.removeEventListener('storage', sync);
+    };
+  }, []);
+  return hide;
+}
 function sessionIsOwner(user: { email?: string | null; username?: string | null; name?: string | null } | null | undefined): boolean {
   const email = String(user?.email || '').trim().toLowerCase();
   const username = String(user?.username || user?.name || '').replace(/^@/, '').trim().toLowerCase();
@@ -631,8 +660,9 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   const sessionResult = useSession();
   const sessionUser = (sessionResult as any)?.data?.user ?? (sessionResult as any)?.user ?? (sessionResult as any)?.session?.user ?? null;
   const ownerPrivateIcons = useOwnerLiveIconsPrivate() && sessionIsOwner(sessionUser) && !!hostId;
-  const showCoinsIcon = liveSw.coins || ownerPrivateIcons;
-  const showGiftsIcon = liveSw.gifts || ownerPrivateIcons;
+  const hideFlags = useLiveHideFlags();
+  const showCoinsIcon = ((liveSw.coins && !hideFlags.coins) || ownerPrivateIcons);
+  const showGiftsIcon = ((liveSw.gifts && !hideFlags.gifts) || ownerPrivateIcons);
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
   const [giftsOpen, setGiftsOpen] = useState(false);
@@ -1475,7 +1505,7 @@ function parseCents(t: string): number {
 
 /** allowWithdraw: زر السحب إلى PayPal يظهر فقط حيث تمرّره true (الإعدادات). داخل البث يبقى مخفي. */
 export function WalletSheet({ open, onClose, userId, allowWithdraw = false }: { open: boolean; onClose: () => void; userId?: string; allowWithdraw?: boolean }) {
-  const showDeposit = useLiveSwitches().deposit; // owner switch: hides the Deposit (+) box in live and in user Settings
+  const showDeposit = useLiveSwitches().deposit && !useLiveHideFlags().deposit; // owner switch: hides the Deposit (+) box in live and in user Settings
   const uid = String(userId || '');
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [earnings, setEarnings] = useState<number>(() => readEarnings(uid));

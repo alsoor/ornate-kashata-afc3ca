@@ -22,6 +22,48 @@ import { LiveVipDock } from '@/components/LiveVipDock';
 import { WalletSheet } from '@/components/LiveCoinsDock';
 
 /** Owner gift: credits spendable Coins immediately and queues the gifts-box notice. */
+
+function OwnerLiveIconsControls() {
+  const [hide, setHide] = useState({ coins: false, gifts: false, deposit: false });
+  const [priv, setPriv] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('stooorna_live_icons_hide');
+      if (raw) setHide({ coins: false, gifts: false, deposit: false, ...JSON.parse(raw) });
+      setPriv(localStorage.getItem('stooorna_owner_live_icons_private') === '1');
+    } catch { /* */ }
+    void fetch('/api/live-icons', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => {
+      if (d && d.hide) setHide({ coins: !!d.hide.coins, gifts: !!d.hide.gifts, deposit: !!d.hide.deposit });
+    }).catch(() => {});
+  }, []);
+  function saveHide(next: { coins: boolean; gifts: boolean; deposit: boolean }) {
+    setHide(next);
+    try { localStorage.setItem('stooorna_live_icons_hide', JSON.stringify(next)); } catch { /* */ }
+    window.dispatchEvent(new CustomEvent('stooorna:live-icons-hide', { detail: next }));
+    void fetch('/api/live-icons', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ hide: next }) }).catch(() => {});
+  }
+  const row = (key: 'coins' | 'gifts' | 'deposit', label: string) => (
+    <button key={key} type="button" onClick={() => saveHide({ ...hide, [key]: !hide[key] })}
+      style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: hide[key] ? 'rgba(239,68,68,0.12)' : 'rgba(34,197,94,0.1)', border: `1px solid ${hide[key] ? 'rgba(239,68,68,0.4)' : 'rgba(34,197,94,0.35)'}`, color: hide[key] ? '#fca5a5' : '#86efac', fontWeight: 800, fontSize: '0.82rem' }}>
+      {label}: {hide[key] ? 'مخفي عن الناس' : 'ظاهر للناس'}
+    </button>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {row('coins', 'إخفاء الشحن')}
+      {row('gifts', 'إخفاء الهدايا')}
+      {row('deposit', 'إخفاء الإيداع')}
+      <button type="button" onClick={() => {
+        const next = !priv; setPriv(next);
+        try { localStorage.setItem('stooorna_owner_live_icons_private', next ? '1' : '0'); } catch { /* */ }
+        window.dispatchEvent(new Event('stooorna:owner-live-icons'));
+      }} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: priv ? 'rgba(250,204,21,0.12)' : 'rgba(255,255,255,0.04)', border: `1px solid ${priv ? 'rgba(250,204,21,0.45)' : 'rgba(255,255,255,0.12)'}`, color: priv ? '#facc15' : 'rgba(220,220,220,0.9)', fontWeight: 800, fontSize: '0.82rem' }}>
+        {priv ? 'زر البث الخاص: شغّال — الشحن والهدايا تظهر لك فقط' : 'زر البث الخاص: متوقف'}
+      </button>
+    </div>
+  );
+}
+
 function grantAppCoins(targetUserId: string, coins: number): { ok: boolean; error?: string; id?: string } {
   const uid = String(targetUserId || '').trim();
   const n = Math.floor(Number(coins) || 0);
@@ -9749,7 +9791,7 @@ export default function SettingsPage() {
                     <span style={{ textAlign: 'left' }}>
                       <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>User Control</span>
                       <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                        Username color · Edit username · Password · Ban
+                        Color · Username · Password · Ban · VIP · Ads · Stories · Reset
                       </span>
                     </span>
                   </div>
@@ -9759,245 +9801,8 @@ export default function SettingsPage() {
                 {/* App Upload (Android / iOS boxes + live icons switch) — right under User Control */}
                 <AppUploadSection T={T} />
 
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    setRecoveredUsers(loadDeletedUsers());
-                    startTransition(() => setShowRecoveredUsers(true));
-                  }}
-                  className="flex items-center justify-between"
-                  style={{
-                    width: '100%',
-                    background: T.surface,
-                    border: `1px solid ${T.surfaceBorder}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    color: T.text,
-                    cursor: 'pointer',
-                  }}
-                  aria-label="Banned and Deleted"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
-                    }}>
-                      <ShieldCheck size={19} strokeWidth={2.1} />
-                    </span>
-                    <span style={{ textAlign: 'left' }}>
-                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Banned / Deleted</span>
-                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                        Restore · Unban · Permanent wipe
-                      </span>
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {loadDeletedUsers().length > 0 && (
-                      <span style={{
-                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                        background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        {loadDeletedUsers().length > 9 ? '9+' : loadDeletedUsers().length}
-                      </span>
-                    )}
-                    <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                  </div>
-                </motion.button>
+                <OwnerLiveIconsControls />
 
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    setOwnerVipMsg('');
-                    setOwnerVipSel(null);
-                    if (allUsers.length === 0) { void loadOwnerData(); }
-                    startTransition(() => setShowOwnerVip(true));
-                  }}
-                  className="flex items-center justify-between"
-                  style={{
-                    width: '100%',
-                    background: T.surface,
-                    border: `1px solid ${T.surfaceBorder}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    color: T.text,
-                    cursor: 'pointer',
-                  }}
-                  aria-label="Give VIP"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308', fontWeight: 900, fontSize: '0.72rem',
-                    }}>
-                      VIP
-                    </span>
-                    <span style={{ textAlign: 'left' }}>
-                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>VIP Manager</span>
-                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                        Give any user VIP · Frame · Color · Header
-                      </span>
-                    </span>
-                  </div>
-                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                </motion.button>
-
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => startTransition(() => setShowOwnerAds(true))}
-                  className="flex items-center justify-between"
-                  style={{
-                    width: '100%',
-                    background: T.surface,
-                    border: `1px solid ${T.surfaceBorder}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    color: T.text,
-                    cursor: 'pointer',
-                  }}
-                  aria-label="Ads"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: T.primaryFaint,
-                      border: `1px solid ${T.primaryBorder}`, color: T.primary, fontWeight: 900, fontSize: '0.72rem',
-                    }}>
-                      Ads
-                    </span>
-                    <span style={{ textAlign: 'left' }}>
-                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Ads</span>
-                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                        Publish an ad between feed posts · Video · Image · PDF
-                      </span>
-                    </span>
-                  </div>
-                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                </motion.button>
-
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    setOwnerBizMsg('');
-                    setOwnerBizSel(null);
-                    setOwnerBizProject('');
-                    if (allUsers.length === 0) { void loadOwnerData(); }
-                    startTransition(() => setShowOwnerBiz(true));
-                  }}
-                  className="flex items-center justify-between"
-                  style={{
-                    width: '100%',
-                    background: T.surface,
-                    border: `1px solid ${T.surfaceBorder}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    color: T.text,
-                    cursor: 'pointer',
-                  }}
-                  aria-label="Give Business"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
-                    }}>
-                      <Briefcase size={19} strokeWidth={2.1} />
-                    </span>
-                    <span style={{ textAlign: 'left' }}>
-                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Business Manager</span>
-                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                        Give any user Business · Business header
-                      </span>
-                    </span>
-                  </div>
-                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                </motion.button>
-
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    if (allUsers.length === 0) { void loadOwnerData(); }
-                    startTransition(() => setShowOwnerStoryMod(true));
-                  }}
-                  className="flex items-center justify-between"
-                  style={{
-                    width: '100%',
-                    background: T.surface,
-                    border: `1px solid ${T.surfaceBorder}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    color: T.text,
-                    cursor: 'pointer',
-                  }}
-                  aria-label="Story Moderation"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(239,68,68,0.12)',
-                      border: '1px solid rgba(239,68,68,0.35)', color: '#ef4444',
-                    }}>
-                      <ShieldCheck size={19} strokeWidth={2.1} />
-                    </span>
-                    <span style={{ textAlign: 'left' }}>
-                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Story Moderation</span>
-                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                        Delete any story · Warn / ban · Moderators
-                      </span>
-                    </span>
-                  </div>
-                  <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                </motion.button>
-
-                <motion.button
-                  whileTap={{ scale: 0.98 }}
-                  type="button"
-                  onClick={() => {
-                    setOwnerBusinessList(loadBusinessRegistry());
-                    startTransition(() => setShowOwnerBusiness(true));
-                  }}
-                  className="flex items-center justify-between"
-                  style={{
-                    width: '100%',
-                    background: T.surface,
-                    border: `1px solid ${T.surfaceBorder}`,
-                    borderRadius: 14,
-                    padding: '14px 16px',
-                    color: T.text,
-                    cursor: 'pointer',
-                  }}
-                  aria-label="Business applications" hidden
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex items-center justify-center" style={{
-                      width: 38, height: 38, borderRadius: 12, background: 'rgba(234,179,8,0.12)',
-                      border: '1px solid rgba(234,179,8,0.35)', color: '#eab308',
-                    }}>
-                      <Briefcase size={19} strokeWidth={2.1} />
-                    </span>
-                    <span style={{ textAlign: 'left' }}>
-                      <span style={{ display: 'block', fontSize: '0.86rem', fontWeight: 700 }}>Business applications</span>
-                      <span style={{ display: 'block', marginTop: 2, color: T.textMuted, fontSize: '0.68rem' }}>
-                        Full request data · Approve · Reject · Owner note
-                      </span>
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {ownerBusinessList.filter(x => x.status === 'pending').length > 0 && (
-                      <span style={{
-                        minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
-                        background: '#eab308', color: '#1a1400', fontSize: '0.62rem', fontWeight: 800,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        {ownerBusinessList.filter(x => x.status === 'pending').length > 9 ? '9+' : ownerBusinessList.filter(x => x.status === 'pending').length}
-                      </span>
-                    )}
-                    <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
-                  </div>
-                </motion.button>
               </div>
             )}
 
@@ -10244,53 +10049,22 @@ export default function SettingsPage() {
                 {usersLoading ? '…' : '↻'}
               </button>
               <span style={{ color: 'rgba(200,180,180,0.6)', fontSize: '0.7rem' }}>
-                {supportUsersTab === 'users' ? allUsers.length : allCompanyCtrlUsers.length}
+                {allUsers.length}
               </span>
             </div>
 
-            {/* تبويبان: مستخدمين | شركات — نفس أدوات التحكم */}
-            <div style={{
-              display: 'flex', gap: 8, padding: '10px 14px 0', flexShrink: 0,
-            }}>
-              <button
-                type="button"
-                onClick={() => { setSupportUsersTab('users'); setSupportUsersSearch(''); }}
-                style={{
-                  flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
-                  fontWeight: 800, fontSize: '0.8rem',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: supportUsersTab === 'users' ? 'rgba(239,68,68,0.18)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${supportUsersTab === 'users' ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.1)'}`,
-                  color: supportUsersTab === 'users' ? '#fca5a5' : 'rgba(200,180,180,0.7)',
-                }}
-              >
-                <Users size={14} strokeWidth={2.2} />
-                مستخدمين
-                <span style={{
-                  fontSize: '0.65rem', fontWeight: 700, opacity: 0.85,
-                  background: supportUsersTab === 'users' ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.06)',
-                  padding: '2px 7px', borderRadius: 8,
-                }}>{allUsers.length}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 14px 0', flexShrink: 0 }}>
+              <button type="button" onClick={() => { setRecoveredUsers(loadDeletedUsers()); startTransition(() => setShowRecoveredUsers(true)); }}
+                style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.35)', color: '#eab308', fontWeight: 800, fontSize: '0.82rem' }}>
+                المحظورون / المحذوفون · استعادة ورفع الحظر
               </button>
-              <button
-                type="button"
-                onClick={() => { setSupportUsersTab('companies'); setSupportUsersSearch(''); }}
-                style={{
-                  flex: 1, padding: '10px 8px', borderRadius: 12, cursor: 'pointer',
-                  fontWeight: 800, fontSize: '0.8rem',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.15)' : 'rgba(255,255,255,0.04)',
-                  border: `1px solid ${supportUsersTab === 'companies' ? 'rgba(0,188,212,0.45)' : 'rgba(255,255,255,0.1)'}`,
-                  color: supportUsersTab === 'companies' ? '#00BCD4' : 'rgba(200,180,180,0.7)',
-                }}
-              >
-                <Building2 size={14} strokeWidth={2.2} />
-                شركات
-                <span style={{
-                  fontSize: '0.65rem', fontWeight: 700, opacity: 0.85,
-                  background: supportUsersTab === 'companies' ? 'rgba(0,188,212,0.2)' : 'rgba(255,255,255,0.06)',
-                  padding: '2px 7px', borderRadius: 8,
-                }}>{allCompanyCtrlUsers.length}</span>
+              <button type="button" onClick={() => startTransition(() => setShowOwnerAds(true))}
+                style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.35)', color: '#7dd3fc', fontWeight: 800, fontSize: '0.82rem' }}>
+                الإعلانات · نشر إعلان بين البوستات
+              </button>
+              <button type="button" onClick={() => startTransition(() => setShowOwnerStoryMod(true))}
+                style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.4)', color: '#fdba74', fontWeight: 800, fontSize: '0.82rem' }}>
+                إدارة الستوريات · حذف / تحذير / مشرفين
               </button>
             </div>
 
@@ -10298,9 +10072,7 @@ export default function SettingsPage() {
               <input
                 value={supportUsersSearch}
                 onChange={e => setSupportUsersSearch(e.target.value)}
-                placeholder={supportUsersTab === 'companies'
-                  ? 'بحث باسم الشركة / الإيميل / اليوزر…'
-                  : 'بحث باليوزر / الإيميل / الاسم…'}
+                placeholder="بحث باليوزر / الإيميل / الاسم…" 
                 style={{
                   width: '100%', boxSizing: 'border-box',
                   padding: '10px 12px', borderRadius: 12,
@@ -10891,6 +10663,19 @@ export default function SettingsPage() {
                 <motion.button whileTap={{ scale: 0.98 }} type="button" disabled={scSaving}
                   onClick={async () => {
                     const label = supportCtrlUser.username ? `@${supportCtrlUser.username}` : supportCtrlUser.email;
+                    if (!window.confirm(`منح VIP لـ ${label}؟ (إطار + لون + هيدر)`)) return;
+                    setScSaving(true); setScMsg('');
+                    const ok = await ownerGrantVip(supportCtrlUser, scColor || 'gold');
+                    setScSaving(false);
+                    setScMsg(ok ? 'تم منح VIP' : 'تم التفعيل محلياً — تحقق من السيرفر');
+                  }}
+                  style={{ padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', background: 'rgba(234,179,8,0.16)', border: '1px solid rgba(234,179,8,0.45)', color: '#eab308', fontWeight: 800, fontSize: '0.85rem' }}>
+                  👑 منح VIP (إطار + لون + هيدر)
+                </motion.button>
+
+                <motion.button whileTap={{ scale: 0.98 }} type="button" disabled={scSaving}
+                  onClick={async () => {
+                    const label = supportCtrlUser.username ? `@${supportCtrlUser.username}` : supportCtrlUser.email;
                     if (!window.confirm(`إزالة خاصية VIP من ${label}؟ (الإطار + اللون + الهيدر)`)) return;
                     setScSaving(true); setScMsg('');
                     const ok = await ownerRemoveVip(supportCtrlUser);
@@ -10969,6 +10754,38 @@ export default function SettingsPage() {
                   }}>
                   <Trash2 size={15} strokeWidth={2} />
                   تفريغ قصة المستخدم (حذف كل ستوريه)
+                </motion.button>
+
+                <motion.button
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  disabled={scSaving || scDeleting || isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username)}
+                  onClick={async () => {
+                    if (isSupportOwnerAccount(supportCtrlUser, supportCtrlUser.username)) { setScMsg('لا يمكن ريست حساب الدعم'); return; }
+                    const label = supportCtrlUser.username ? `@${supportCtrlUser.username}` : supportCtrlUser.email;
+                    if (!window.confirm(`ريست ${label}؟ تنمسح كل بياناته ويصير اليوزر والإيميل قابلين لإنشاء حساب جديد.`)) return;
+                    setScSaving(true); setScMsg('');
+                    const target = supportCtrlUser;
+                    try { markUsernameFreed(target.username); } catch { /* */ }
+                    try { markUserDeleted({ id: target.id, email: target.email, username: target.username }); } catch { /* */ }
+                    try {
+                      const uid = String(target.id);
+                      const uname = String(target.username || '').replace(/^@/, '').toLowerCase();
+                      for (const k of Object.keys(localStorage)) {
+                        const lk = k.toLowerCase();
+                        if (lk.includes(uid) || (uname && lk.includes(uname))) localStorage.removeItem(k);
+                      }
+                    } catch { /* */ }
+                    await permanentlyDeleteSupportUser({ id: target.id, email: target.email, username: target.username });
+                    setAllUsers(prev => prev.filter(x => x.id !== target.id));
+                    setAllCompanyCtrlUsers(prev => prev.filter(x => x.id !== target.id));
+                    setSupportCtrlUser(null);
+                    setScEditBox(null);
+                    setScSaving(false);
+                    setScMsg('تم الريست — الحساب قابل للإنشاء من جديد');
+                  }}
+                  style={{ padding: '12px 14px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', background: 'rgba(168,85,247,0.16)', border: '1px solid rgba(168,85,247,0.45)', color: '#d8b4fe', fontWeight: 800, fontSize: '0.85rem' }}>
+                  ♻️ ريست الحساب (مسح البيانات وإتاحة التسجيل من جديد)
                 </motion.button>
 
                 <motion.button

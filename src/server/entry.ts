@@ -17,7 +17,7 @@ import { registerTemplatesRoutes } from "./templates-routes.js"; // TEMPLATES-PA
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
 import { registerSavedRoomRoutes } from "./saved-room-patch.js";
-import { registerForgotPasswordRoutes } from "./forgot-password-patch.js"; // FORGOT-PASSWORD-PATCH
+import { registerForgotPasswordRoutes, registerLiveIconRoutes } from "./forgot-password-patch.js"; // FORGOT-PASSWORD-PATCH
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -386,6 +386,7 @@ app.get('/api/status/comment-likes', getStatusCommentLikes);
 
 // <api-registrations>
 registerForgotPasswordRoutes(app, { db: dbClientModule as unknown as Record<string, any> }); // FORGOT-PASSWORD-PATCH before auth catch-all
+registerLiveIconRoutes(app);
 app.get("/api/auth/:action", auth_action_get_0);
 app.post("/api/auth/:action", auth_action_post_1);
 app.get("/api/auth/:action/:detail", auth_action_detail_get_2);

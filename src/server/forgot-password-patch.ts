@@ -139,6 +139,23 @@ async function readBody(req: Request): Promise<Record<string, unknown>> {
   try { return JSON.parse(raw) as Record<string, unknown>; } catch { return { email: raw }; }
 }
 
+type LiveHide = { coins: boolean; gifts: boolean; deposit: boolean };
+function liveHideStore(): { hide: LiveHide } {
+  const g = globalThis as typeof globalThis & { __stooornaLiveHide?: { hide: LiveHide } };
+  if (!g.__stooornaLiveHide) g.__stooornaLiveHide = { hide: { coins: false, gifts: false, deposit: false } };
+  return g.__stooornaLiveHide;
+}
+export function registerLiveIconRoutes(app: Express) {
+  app.get("/api/live-icons", (_req, res) => { res.json(liveHideStore()); });
+  app.post("/api/live-icons", async (req, res) => {
+    const body = await readBody(req);
+    const hide = (body.hide || body) as Partial<LiveHide>;
+    const cur = liveHideStore();
+    cur.hide = { coins: !!hide.coins, gifts: !!hide.gifts, deposit: !!hide.deposit };
+    res.json(cur);
+  });
+}
+
 export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<string, any>; dataDir?: string }) {
   const g = globalThis as typeof globalThis & { __stooornaForgotPwRoutes?: boolean };
   if (g.__stooornaForgotPwRoutes) return;
