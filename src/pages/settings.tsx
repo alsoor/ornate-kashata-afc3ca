@@ -1023,6 +1023,7 @@ export async function purgeUserOnServer(u: {
   if (id) {
     urls.push(
       { url: `/api/owner/users/${encodeURIComponent(id)}/purge`, method: 'POST', body },
+      { url: `/api/owner/permanent-wipe`, method: 'POST', body },
       { url: `/api/owner/users/${encodeURIComponent(id)}?hard=1`, method: 'DELETE', body },
       { url: `/api/owner/users/${encodeURIComponent(id)}?permanent=1`, method: 'DELETE', body },
       { url: `/api/owner/users/${encodeURIComponent(id)}`, method: 'DELETE', body },
@@ -1032,6 +1033,7 @@ export async function purgeUserOnServer(u: {
   }
   if (email) {
     urls.push(
+      { url: `/api/owner/users/by-email/purge`, method: 'POST', body },
       { url: `/api/owner/users/by-email/${encodeURIComponent(email)}`, method: 'DELETE', body },
       { url: `/api/users/delete`, method: 'POST', body },
     );

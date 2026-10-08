@@ -367,6 +367,60 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
   if (g.__stooornaForgotPwRoutes) return;
   g.__stooornaForgotPwRoutes = true;
   const dataDir = opts?.dataDir || join(process.cwd(), "data", "forgot-password");
+
+  app.post("/api/owner/users/:id/purge", async (req: Request, res: Response) => {
+    try {
+      const body = await readBody(req);
+      const email = normEmail(body.email);
+      const id = String(req.params.id || body.id || "").trim();
+      const query = queryOf(opts?.db);
+      if (!query) {
+        res.status(500).json({ ok: false, error: "no_db" });
+        return;
+      }
+      const ids = new Set<string>();
+      if (id && id !== "by-email") ids.add(id);
+      if (email) {
+        for (const sql of ["SELECT id FROM `user` WHERE LOWER(email) = ?", "SELECT id FROM user WHERE LOWER(email) = ?"]) {
+          try {
+            for (const row of rowsOf(await query(sql, [email]))) if (row.id) ids.add(String(row.id));
+          } catch { /* next */ }
+        }
+      }
+      let removed = 0;
+      for (const uid of ids) {
+        for (const sql of [
+          "DELETE FROM `session` WHERE userId = ?",
+          "DELETE FROM session WHERE userId = ?",
+          "DELETE FROM `account` WHERE userId = ?",
+          "DELETE FROM account WHERE userId = ?",
+          "DELETE FROM `verification` WHERE value = ? OR identifier = ?",
+        ]) {
+          try { removed += affectedOf(await query(sql, sql.includes("verification") ? [uid, uid] : [uid])); } catch { /* table missing */ }
+        }
+      }
+      if (email) {
+        for (const sql of [
+          "DELETE FROM `account` WHERE accountId = ?",
+          "DELETE FROM `user` WHERE LOWER(email) = ?",
+          "DELETE FROM user WHERE LOWER(email) = ?",
+        ]) {
+          try { removed += affectedOf(await query(sql, [email])); } catch { /* next */ }
+        }
+        try {
+          const phones = readPhoneFile(dataDir);
+          delete phones[email];
+          mkdirSync(dataDir, { recursive: true });
+          writeFileSync(phoneFile(dataDir), JSON.stringify(phones));
+        } catch { /* ignore */ }
+      }
+      res.json({ ok: true, purged: true, removed, email });
+    } catch (e) {
+      console.error("[permanent-wipe]", e);
+      res.status(500).json({ ok: false, error: "wipe_failed" });
+    }
+  });
+
   app.post("/api/password/forgot", async (req: Request, res: Response) => {
     try {
     const body = await readBody(req);
