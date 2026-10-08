@@ -14925,8 +14925,10 @@ function SavedMessagesScreen({
                 Saved Messages
               </span>
             </button>
-            <button type="button" onClick={() => setInviteOpen(v => !v)} style={{ marginLeft: 8, border: 'none', borderRadius: 999, background: '#00BCD4', color: '#041414', fontWeight: 800, padding: '8px 10px', cursor: 'pointer' }}>دعوة</button>
-            <button type="button" onClick={() => void (joinedOwner ? leaveRoom() : deleteRoom())} style={{ marginLeft: 6, border: '1px solid #ef4444', borderRadius: 999, background: '#fff', color: '#ef4444', fontWeight: 800, padding: '8px 10px', cursor: 'pointer' }}>{joinedOwner ? 'خروج' : 'حذف'}</button>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, padding: '0 12px 8px' }}>
+            <button type="button" onClick={() => setInviteOpen(v => !v)} style={{ border: 'none', borderRadius: 999, background: '#00BCD4', color: '#041414', fontWeight: 800, padding: '8px 14px', cursor: 'pointer' }}>دعوة صديق</button>
+            <button type="button" onClick={() => void (joinedOwner ? leaveRoom() : deleteRoom())} style={{ border: '1px solid #ef4444', borderRadius: 999, background: '#fff', color: '#ef4444', fontWeight: 800, padding: '8px 14px', cursor: 'pointer' }}>{joinedOwner ? 'خروج' : 'حذف الشات'}</button>
           </div>
           {roomMembers.length > 0 && (
             <div style={{ display: 'flex', gap: 6, padding: '0 12px 8px', flexWrap: 'wrap' }}>
