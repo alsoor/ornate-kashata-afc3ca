@@ -146,21 +146,30 @@ function writePhoneFile(dataDir: string, email: string, phone: string) {
     writeFileSync(phoneFile(dataDir), JSON.stringify(prev));
   } catch { /* ignore */ }
 }
+function pickPhone(row: Record<string, unknown> | undefined): string {
+  if (!row) return "";
+  for (const [key, value] of Object.entries(row)) {
+    if (!/phone|mobile|tel/i.test(key)) continue;
+    const phone = String(value || "").trim();
+    if (digitsOf(phone).length >= 8) return phone;
+  }
+  return "";
+}
 async function phoneForEmail(db: Record<string, any> | undefined, dataDir: string, email: string): Promise<string> {
   const saved = String(readPhoneFile(dataDir)[email] || "").trim();
+  if (digitsOf(saved).length >= 8) return saved;
   const query = queryOf(db);
-  if (query) {
-    for (const sql of [
-      "SELECT phone FROM `user` WHERE LOWER(email) = ? LIMIT 1",
-      "SELECT phoneNumber AS phone FROM `user` WHERE LOWER(email) = ? LIMIT 1",
-      "SELECT mobile AS phone FROM `user` WHERE LOWER(email) = ? LIMIT 1",
-    ]) {
-      try {
-        const rows = rowsOf(await query(sql, [email]));
-        const phone = String(rows[0]?.phone || "").trim();
-        if (phone) return phone;
-      } catch { /* column missing */ }
-    }
+  if (!query) return saved;
+  for (const sql of [
+    "SELECT * FROM `user` WHERE LOWER(email) = ? LIMIT 1",
+    "SELECT * FROM user WHERE LOWER(email) = ? LIMIT 1",
+    "SELECT * FROM users WHERE LOWER(email) = ? LIMIT 1",
+  ]) {
+    try {
+      const row = rowsOf(await query(sql, [email]))[0] as Record<string, unknown> | undefined;
+      const phone = pickPhone(row);
+      if (phone) return phone;
+    } catch { /* table shape differs */ }
   }
   return saved;
 }
@@ -328,10 +337,11 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
   g.__stooornaForgotPwRoutes = true;
   const dataDir = opts?.dataDir || join(process.cwd(), "data", "forgot-password");
   app.post("/api/password/forgot", async (req: Request, res: Response) => {
+    try {
     const body = await readBody(req);
     const email = normEmail(body.email || req.query.email);
     if (!validEmail(email)) {
-      res.status(400).json({ error: "invalid_email" });
+      res.status(400).json({ ok: false, error: "invalid_email" });
       return;
     }
     const registered = await emailRegistered(opts?.db, email);
@@ -351,7 +361,11 @@ export function registerForgotPasswordRoutes(app: Express, opts?: { db?: Record<
     let sent = false;
     try { sent = await sendResetEmail(email, resetUrl); } catch (e) { console.error("[forgot-password] send", e); }
     console.log(`[forgot-password] ${email} sent=${sent}`);
-    res.json({ ok: true, sent, appToken: token, phoneMask: maskPhone(phone) });
+    res.json({ ok: true, sent, appToken: token, phoneMask: maskPhone(phone), registered: true });
+    } catch (e) {
+      console.error("[forgot-password] forgot", e);
+      res.status(500).json({ ok: false, error: "server" });
+    }
   });
 
 

@@ -5059,10 +5059,10 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
             try {
               const r = await fetch('/api/password/forgot', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: em }) });
               const d = await r.json().catch(() => ({} as any));
-              if (!r.ok || d.ok === false || d.error === 'not_registered') {
+              if (!r.ok || d.ok === false || d.error === 'not_registered' || d.error === 'no_phone') {
                 if (d.error === 'not_registered') setForgotMsg(isEn ? 'This email is not registered' : 'هذا البريد غير مسجّل في التطبيق');
-                else if (d.error === 'no_phone') setForgotMsg(isEn ? 'This account has no mobile number' : 'هذا الحساب بدون رقم موبايل');
-                else if (r.status === 404 && !d.error) setForgotMsg(isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط');
+                else if (d.error === 'no_phone') setForgotMsg(isEn ? 'No mobile is saved on this account yet' : 'ما لقينا رقم موبايل محفوظ على هذا الحساب');
+                else if (r.status === 404) setForgotMsg(isEn ? 'Server route is not linked yet' : 'مسار السيرفر غير مربوط');
                 else setForgotMsg(isEn ? 'Could not start reset. Check the email.' : 'تعذر بدء الاستعادة. تأكد من البريد.');
               }
               else {
@@ -5097,8 +5097,9 @@ function AuthScreen({ T }: { T: Record<string, string> }) {
               <>
                 <p style={{ margin: 0, color: '#d7eeee', fontWeight: 900, fontSize: 16, textAlign: 'center' }}>{isEn ? 'Reset password' : 'استعادة كلمة المرور'}</p>
                 <p style={{ margin: 0, color: 'rgba(190,220,220,0.75)', fontSize: 13, textAlign: 'center', lineHeight: 1.55 }}>
-                  {isEn ? 'Tap the icon to set a new password inside the app.' : 'اضغط الأيقونة لتعيين كلمة المرور من داخل التطبيق.'}
+                  {isEn ? 'Tap the lock. Your mobile will show with the last 3 digits.' : 'اضغط القفل. يبين رقم موبايلك وآخر ٣ أرقام.'}
                 </p>
+                {forgotPhoneMask ? <p style={{ margin: 0, color: '#00BCD4', fontWeight: 900, letterSpacing: 1 }} dir="ltr">{forgotPhoneMask}</p> : null}
                 <button
                   type="button"
                   aria-label={isEn ? 'Open password reset' : 'فتح تعيين كلمة المرور'}
