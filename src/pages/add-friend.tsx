@@ -14672,7 +14672,7 @@ function SavedMessagesScreen({
 
   useEffect(() => {
     if (!open || !userId) return;
-    setItems(loadSavedMessages(userId));
+    setItems(withMemOnly(loadSavedMessages(userId)));
   }, [open, userId]);
 
   useEffect(() => {
@@ -14701,8 +14701,17 @@ function SavedMessagesScreen({
     };
   }, [open]);
 
+  // Session-only rows (photo/video whose URL is a temporary blob:, or media sent inside a friend's room): they live in memory,
+  // never in localStorage. Every persist() must keep them, otherwise sending the next text message wiped them from the screen.
+  const memOnlyRef = useRef<SavedMsg[]>([]);
+  const withMemOnly = (list: SavedMsg[]): SavedMsg[] => {
+    if (!memOnlyRef.current.length) return list;
+    const ids = new Set(list.map(x => x.id));
+    const extra = memOnlyRef.current.filter(x => !ids.has(x.id));
+    return extra.length ? [...list, ...extra].sort((x, y) => x.createdAt - y.createdAt).slice(-500) : list;
+  };
   const persist = (next: SavedMsg[]) => {
-    setItems(next);
+    setItems(withMemOnly(next));
     if (userId) saveSavedMessages(userId, next);
   };
   const [roomMembers, setRoomMembers] = useState<Array<{ userId: string; username: string; name: string }>>([]);
@@ -14796,6 +14805,7 @@ function SavedMessagesScreen({
   };
   const deleteRoom = async () => {
     await fetch('/api/saved-room/delete', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: userId }) });
+    memOnlyRef.current = [];
     persist([]);
     setRoomMembers([]);
     setToast('تم حذف الشات');
@@ -14816,7 +14826,9 @@ function SavedMessagesScreen({
     const isMedia = partial.kind === 'image' || partial.kind === 'video';
     // blob: URLs die on reload, so they stay in memory only (never written to localStorage)
     if (isMedia && (inFriendRoom || String(partial.mediaUrl || '').startsWith('blob:'))) {
-      setItems(prev => [...prev, { ...row, senderName: userUsername || userName || null }].slice(-500));
+      const memRow: SavedMsg = { ...row, senderName: userUsername || userName || null };
+      memOnlyRef.current = [...memOnlyRef.current, memRow].slice(-100);
+      setItems(prev => [...prev, memRow].slice(-500));
     } else {
       persist([...loadSavedMessages(userId), row]);
     }
@@ -14827,6 +14839,7 @@ function SavedMessagesScreen({
 
   const removeItem = (id: string) => {
     if (!userId) return;
+    memOnlyRef.current = memOnlyRef.current.filter(x => x.id !== id);
     persist(loadSavedMessages(userId).filter(x => x.id !== id));
   };
 
