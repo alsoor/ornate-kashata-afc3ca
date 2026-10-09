@@ -15057,7 +15057,9 @@ function SavedMessagesScreen({
         });
         if (extra.length) setItems(prev => {
           const ids = new Set(prev.map(x => x.id));
-          const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id) && !prev.some(y => (!!x.mediaUrl && y.mediaUrl === x.mediaUrl) || (y.senderName === x.senderName && y.text === x.text && y.mediaUrl === x.mediaUrl)));
+          // SAVED-DUP-FIX: my own text is added locally first, then the server echoes it back (with my name + avatar) → was shown twice.
+          const meUn = cleanUn(userUsername || userName || '');
+          const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id) && !prev.some(y => (!!x.mediaUrl && y.mediaUrl === x.mediaUrl) || (y.senderName === x.senderName && y.text === x.text && y.mediaUrl === x.mediaUrl) || (x.kind === 'text' && y.kind === 'text' && !!meUn && cleanUn(x.senderName) === meUn && (!y.senderName || cleanUn(y.senderName) === meUn) && String(y.text || '') === String(x.text || ''))));
           if (fresh.length) {
             try {
               const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -15122,14 +15124,14 @@ function SavedMessagesScreen({
     const inFriendRoom = !!joinedOwner && String(joinedOwner) !== String(userId);
     const isMedia = partial.kind === 'image' || partial.kind === 'video';
     // blob: URLs die on reload, so they stay in memory only (never written to localStorage)
-    if (isMedia && (inFriendRoom || String(partial.mediaUrl || '').startsWith('blob:'))) {
-      const memRow: SavedMsg = { ...row, senderName: userUsername || userName || null };
+    if ((isMedia && (inFriendRoom || String(partial.mediaUrl || '').startsWith('blob:'))) || (inFriendRoom && partial.kind === 'text')) { // SAVED-DUP-FIX
+      const memRow: SavedMsg = { ...row, senderName: userUsername || userName || null, avatarUrl: userAvatar || null };
       memOnlyRef.current = [...memOnlyRef.current, memRow].slice(-100);
       setItems(prev => [...prev, memRow].slice(-500));
     } else {
       persist([...loadSavedMessages(userId), row]);
     }
-    if (roomOwner && (partial.text || partial.mediaUrl)) {
+    if (roomOwner && (partial.text || (partial.mediaUrl && !String(partial.mediaUrl).startsWith('blob:')))) { // SAVED-IMG-FIX
       void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? `img:${partial.mediaUrl || ''}` : partial.kind === 'video' ? `vid:${partial.mediaUrl || ''}` : (partial.text || '') }) });
     }
   };
@@ -15169,21 +15171,39 @@ function SavedMessagesScreen({
         });
       }
       let mediaUrl = blobUrl;
-      try {
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('type', kind);
-        const ctrl = new AbortController();
-        const timer = window.setTimeout(() => ctrl.abort(), 15000);
-        let r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
-        if (!r.ok) r = await fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
-        window.clearTimeout(timer);
-        if (r.ok) {
-          const d = await r.json().catch(() => ({} as any));
-          const permanent = d?.url || d?.mediaUrl || d?.path;
-          if (permanent && typeof permanent === 'string' && !permanent.startsWith('blob:')) mediaUrl = permanent;
-        }
-      } catch { /* keep local preview */ }
+      // SAVED-IMG-FIX: phone photos (HEIC / several MB) timed out or were rejected, so the friend never got them → shrink to JPEG first.
+      let upFile: File = file;
+      if (kind === 'image' && (file.size > 900_000 || /heic|heif/i.test(file.type + file.name))) {
+        try {
+          const bmp = await createImageBitmap(file);
+          const sc = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+          const cv = document.createElement('canvas');
+          cv.width = Math.max(1, Math.round(bmp.width * sc)); cv.height = Math.max(1, Math.round(bmp.height * sc));
+          cv.getContext('2d')?.drawImage(bmp, 0, 0, cv.width, cv.height);
+          try { bmp.close(); } catch { /* */ }
+          const jb: Blob | null = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.82));
+          if (jb && jb.size > 0) upFile = new File([jb], `${(file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo'}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
+        } catch { upFile = file; }
+      }
+      for (const url of ['/api/posts/media', '/api/files/upload', '/api/posts/media']) {
+        if (mediaUrl !== blobUrl) break;
+        try {
+          const fd = new FormData();
+          fd.append('file', upFile, upFile.name);
+          fd.append('media', upFile, upFile.name);
+          fd.append('type', kind);
+          const ctrl = new AbortController();
+          const timer = window.setTimeout(() => ctrl.abort(), kind === 'video' ? 15000 : 30000);
+          const r = await fetch(url, { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
+          window.clearTimeout(timer);
+          if (r.ok) {
+            const d = await r.json().catch(() => ({} as any));
+            const permanent = d?.url || d?.mediaUrl || d?.path;
+            if (permanent && typeof permanent === 'string' && !permanent.startsWith('blob:')) mediaUrl = permanent;
+          }
+        } catch { /* try next endpoint, else keep local preview */ }
+      }
+      if (paint && mediaUrl === blobUrl && (!!joinedOwner || roomMembers.length > 0)) setToast('تعذر رفع الملف للطرف الآخر، حاول مرة ثانية');
       if (paint) {
         setUploadPct(100);
         await new Promise(r => window.setTimeout(r, 180));
