@@ -7988,6 +7988,124 @@ function loadFeedAdsMeta(): any[] {
 }
 
 
+// ── OWNER-NOTE: ملاحظة المالك على اسم STOOORNA ──
+// تُحفظ على السيرفر عبر نفس مسارات الإعلانات (/api/ads) بمعرّف يبدأ بـ note- (فيها رفع صورة/فيديو/PDF وحذف)،
+// لكنها تعيش بمخزن مستقل: لا تدخل قائمة إعلانات الفيد ولا بطاقات الهوم. ملاحظة واحدة فقط — الجديدة تحلّ مكان القديمة.
+const OWNER_NOTE_CACHE_KEY = 'stooorna_owner_note_cache';
+const OWNER_NOTE_DISMISSED_KEY = 'stooorna_owner_note_dismissed';
+const OWNER_NOTE_SEEN_KEY = 'stooorna_owner_note_seen';
+type OwnerNote = {
+  id: string; userId: string; text: string;
+  mediaType: 'image' | 'video' | 'pdf' | null; mediaUrl: string | null; mediaName: string | null; createdAt: string;
+};
+function isOwnerNoteAd(a: any): boolean { return String(a?.id || '').startsWith('note-'); }
+function ownerNoteFromAd(a: any): OwnerNote | null {
+  if (!a || !isOwnerNoteAd(a)) return null;
+  const id = String(a.id);
+  const mt = a.mediaType === 'image' || a.mediaType === 'video' || a.mediaType === 'pdf' ? a.mediaType : (a.pdfUrl ? 'pdf' : null);
+  let url: string | null = null;
+  if (mt) url = (mt === 'pdf' ? (a.pdfUrl || a.mediaUrl) : a.mediaUrl) || `/api/ads/${encodeURIComponent(id)}/media`;
+  return { id, userId: String(a.userId || ''), text: String(a.body || a.title || ''), mediaType: mt, mediaUrl: url, mediaName: a.mediaName || a.pdfName || null, createdAt: String(a.createdAt || '') };
+}
+let ownerNoteSnap: { note: OwnerNote | null; dismissedId: string } = (() => {
+  let note: OwnerNote | null = null; let dismissedId = '';
+  try { const raw = localStorage.getItem(OWNER_NOTE_CACHE_KEY); if (raw) { const n = JSON.parse(raw); if (n && n.id) note = n as OwnerNote; } } catch { /* */ }
+  try { dismissedId = localStorage.getItem(OWNER_NOTE_DISMISSED_KEY) || ''; } catch { /* */ }
+  return { note, dismissedId };
+})();
+const ownerNoteListeners = new Set<() => void>();
+function setOwnerNoteSnap(patch: Partial<{ note: OwnerNote | null; dismissedId: string }>) {
+  ownerNoteSnap = { ...ownerNoteSnap, ...patch };
+  ownerNoteListeners.forEach(fn => { try { fn(); } catch { /* */ } });
+}
+function subscribeOwnerNote(fn: () => void) { ownerNoteListeners.add(fn); return () => { ownerNoteListeners.delete(fn); }; }
+function getOwnerNoteSnap() { return ownerNoteSnap; }
+function useOwnerNote() {
+  const snap = useSyncExternalStore(subscribeOwnerNote, getOwnerNoteSnap, getOwnerNoteSnap);
+  return { note: snap.note, active: !!snap.note && snap.note.id !== snap.dismissedId };
+}
+function persistOwnerNoteCache(note: OwnerNote | null) {
+  try {
+    if (!note) { localStorage.removeItem(OWNER_NOTE_CACHE_KEY); return; }
+    localStorage.setItem(OWNER_NOTE_CACHE_KEY, JSON.stringify({ ...note, mediaUrl: note.mediaUrl && note.mediaUrl.startsWith('data:') ? null : note.mediaUrl }));
+  } catch { /* */ }
+}
+/** السيرفر هو المرجع: الملاحظة الأحدث تظهر عند الكل، وإذا انحذفت من السيرفر تختفي من عند الكل. */
+function applyOwnerNoteFromServer(ad: any | null) {
+  const next = ownerNoteFromAd(ad);
+  const cur = ownerNoteSnap.note;
+  if (!next && !cur) return;
+  if (next && cur && next.id === cur.id && next.text === cur.text && next.mediaType === cur.mediaType) {
+    // نفس الملاحظة — نحتفظ بنسخة الصورة المحلية (data:) إن وُجدت على جهاز المالك
+    if (cur.mediaUrl && cur.mediaUrl.startsWith('data:')) return;
+    if (next.mediaUrl === cur.mediaUrl) return;
+  }
+  persistOwnerNoteCache(next);
+  setOwnerNoteSnap({ note: next });
+}
+/** حذف الملاحظة من عند هذا المستخدم فقط (زر الحذف داخل الفقاعة). الملاحظة الجديدة ترجع تظهر له. */
+function dismissOwnerNote(id: string) {
+  try { localStorage.setItem(OWNER_NOTE_DISMISSED_KEY, id); } catch { /* */ }
+  setOwnerNoteSnap({ dismissedId: id });
+}
+async function listServerOwnerNotes(): Promise<any[]> {
+  try {
+    const r = await fetch('/api/ads', { credentials: 'include', cache: 'no-store' });
+    const d = await r.json().catch(() => ({} as any));
+    return r.ok && Array.isArray(d.ads) ? (d.ads as any[]).filter(isOwnerNoteAd) : [];
+  } catch { return []; }
+}
+async function deleteServerOwnerNotes(list: any[], fallbackUserId: string, exceptId = '') {
+  for (const o of list) {
+    if (String(o.id) === exceptId) continue;
+    try { await fetch(`/api/ads/${encodeURIComponent(String(o.id))}?userId=${encodeURIComponent(String(o.userId || fallbackUserId))}`, { method: 'DELETE', credentials: 'include' }); } catch { /* */ }
+  }
+}
+/** نشر ملاحظة جديدة: تحلّ مكان القديمة (تُحذف) وتصير للجميع. */
+async function publishOwnerNote(user: any, text: string, media: { name: string; dataUrl: string; type: 'image' | 'video' | 'pdf'; mime: string } | null): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const now = Date.now();
+    const id = `note-${now}-${Math.random().toString(36).slice(2, 8)}`;
+    const uname = String(user?.username || user?.name || 'stooorna').replace(/^@/, '');
+    const far = new Date(now + 5 * 365 * 24 * 3600 * 1000).toISOString();
+    const meta = {
+      id, userId: String(user.id),
+      authorName: user?.name || uname || 'Stooorna', authorUsername: uname, authorAvatarUrl: user?.image || user?.avatarUrl || null,
+      title: '', body: text, mediaUrl: null, pdfUrl: null,
+      mediaType: media?.type || null, mediaName: media?.name || null, mediaMime: media?.mime || null,
+      pdfName: media?.type === 'pdf' ? (media.name || null) : null,
+      createdAt: new Date(now).toISOString(), endsAt: far, expiresAt: far, nextEligibleAt: far, campaignEndsAt: far,
+    };
+    const old = await listServerOwnerNotes();
+    const r = await fetch('/api/ads', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad: meta, hasMedia: !!media }) });
+    if (!r.ok) return { ok: false, error: `Server refused the note (HTTP ${r.status})` };
+    const j = await r.json().catch(() => ({} as any));
+    if (media && j?.needsMedia !== false) {
+      const blob = adDataUrlToBlob(media.dataUrl);
+      const up = await fetch(`/api/ads/${encodeURIComponent(id)}/media?userId=${encodeURIComponent(String(user.id))}`, {
+        method: 'PUT', credentials: 'include', headers: { 'Content-Type': blob.type || media.mime || 'application/octet-stream' }, body: blob,
+      });
+      if (!up.ok) return { ok: false, error: `Attachment upload failed (HTTP ${up.status})` };
+    }
+    await deleteServerOwnerNotes(old, String(user.id), id); // القديمة تنحذف — ملاحظة واحدة فقط
+    // تظهر فوراً على هذا الجهاز ثم نتأكد من السيرفر
+    const local = ownerNoteFromAd({ ...meta, mediaUrl: media?.dataUrl || null });
+    if (local) { persistOwnerNoteCache(local); setOwnerNoteSnap({ note: local }); }
+    adsLastVer = '';
+    await syncAdsFromServer();
+    if (ownerNoteSnap.note?.id !== id) return { ok: false, error: 'The server did not keep the note' };
+    return { ok: true };
+  } catch (e: any) { return { ok: false, error: String(e?.message || 'Failed') }; }
+}
+async function deleteOwnerNoteEverywhere(user: any): Promise<void> {
+  const old = await listServerOwnerNotes();
+  await deleteServerOwnerNotes(old, String(user?.id || ''));
+  applyOwnerNoteFromServer(null);
+  adsLastVer = '';
+  void syncAdsFromServer();
+}
+
+
 // ── ADS-SERVER-SYNC: السيرفر هو المرجع. الإعلان يظهر للجميع، والحذف رسمي ويختفي من عند الكل ──
 const ADS_SYNCED_KEY = 'stooorna_ads_synced_ids';
 const ADS_PENDING_DEL_KEY = 'stooorna_ads_pending_del';
@@ -8026,10 +8144,15 @@ async function syncAdsFromServer() {
     const r = await fetch('/api/ads', { credentials: 'include', cache: 'no-store' });
     const d = await r.json().catch(() => ({} as any));
     if (!r.ok || !Array.isArray(d.ads)) return;
+    // OWNER-NOTE: ملاحظة STOOORNA تُغذّي مخزنها المستقل ولا تدخل قائمة إعلانات الفيد
+    try {
+      const latestNote = (d.ads as any[]).filter(isOwnerNoteAd).sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0))[0] || null;
+      applyOwnerNoteFromServer(latestNote);
+    } catch { /* */ }
     const me = adsMyId();
     const synced = readSyncedAdIds();
     const pendingDel = new Set(readPendingAdDeletes().map(x => x.id));
-    const serverAds = (d.ads as any[]).filter(a => a && a.id && !pendingDel.has(String(a.id)));
+    const serverAds = (d.ads as any[]).filter(a => a && a.id && !pendingDel.has(String(a.id)) && !isOwnerNoteAd(a));
     const serverIds = new Set(serverAds.map(a => String(a.id)));
     const prev = loadFeedAdsMeta();
     const byId = new Map<string, any>();
@@ -10229,6 +10352,152 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
           </button>
         </motion.div>
       </motion.div>
+  );
+}
+
+// ── OWNER-NOTE panel (User Control → ملاحظة STOOORNA): the owner writes ONE note (+ optional image / video / PDF).
+//    A new note replaces the old one for everybody and the STOOORNA title turns orange with the silver shine. ──
+export function OwnerNotePanel({ onClose }: { onClose: () => void }) {
+  const { user } = useSession();
+  const { note: currentNote } = useOwnerNote();
+  const [text, setText] = useState('');
+  const [media, setMedia] = useState<{ name: string; dataUrl: string; type: 'image' | 'video' | 'pdf'; mime: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [done, setDone] = useState(false);
+  const pick = (type: 'image' | 'video' | 'pdf', fallbackMime: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setMedia({ name: f.name, dataUrl: String(reader.result || ''), type, mime: f.type || fallbackMime });
+    reader.readAsDataURL(f);
+  };
+  const ORANGE = '#f97316';
+  const labelStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 12,
+    border: '1.5px dashed rgba(249,115,22,0.55)', color: ORANGE, background: 'rgba(249,115,22,0.05)', fontWeight: 800, cursor: 'pointer',
+  };
+  const canSend = !busy && !!user?.id && (!!text.trim() || !!media);
+  return (
+    <motion.div
+      key="owner-note"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 13500, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={() => onClose()}
+    >
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 'min(92vw, 380px)', maxHeight: '85vh', overflowY: 'auto', boxSizing: 'border-box',
+          background: 'radial-gradient(ellipse 90% 70% at 50% 0%, #2a1608 0%, #1a0f08 50%, #0e0804 100%)',
+          border: `2px solid ${ORANGE}`, borderRadius: 18,
+          boxShadow: '0 0 0 1px rgba(249,115,22,0.2), 0 20px 50px rgba(0,0,0,0.55)',
+          padding: '16px 16px 18px', color: '#f3e3d3',
+          scrollbarWidth: 'thin', scrollbarColor: 'rgba(249,115,22,0.55) transparent',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <p style={{ margin: 0, fontWeight: 900, fontSize: '1.05rem', color: ORANGE }}>ملاحظة STOOORNA</p>
+          <button type="button" onClick={() => onClose()} style={{ border: 'none', background: 'none', cursor: 'pointer', color: ORANGE }}><X size={20} /></button>
+        </div>
+
+        {currentNote && (
+          <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(249,115,22,0.4)', background: 'rgba(249,115,22,0.08)' }}>
+            <p style={{ margin: '0 0 4px', color: ORANGE, fontWeight: 800, fontSize: '0.72rem' }}>الملاحظة الحالية (تظهر للجميع)</p>
+            <p dir="auto" style={{ margin: 0, color: '#f3e3d3', fontSize: '0.8rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {currentNote.text || (currentNote.mediaType ? `[${currentNote.mediaType}]` : '')}
+            </p>
+            {currentNote.mediaType && currentNote.text && (
+              <p style={{ margin: '4px 0 0', color: 'rgba(243,227,211,0.6)', fontSize: '0.68rem', textTransform: 'uppercase' }}>+ {currentNote.mediaType}</p>
+            )}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                if (busy) return;
+                setBusy(true); setErr('');
+                try { await deleteOwnerNoteEverywhere(user); } catch { /* */ }
+                setBusy(false);
+              }}
+              style={{ marginTop: 8, padding: '7px 12px', borderRadius: 10, border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(239,68,68,0.12)', color: '#ef4444', fontWeight: 800, fontSize: '0.74rem', cursor: busy ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
+              <Trash2 size={14} /> حذف الملاحظة من عند الجميع
+            </button>
+          </div>
+        )}
+
+        <p style={{ margin: '0 0 8px', color: 'rgba(243,227,211,0.75)', fontSize: '0.75rem', fontWeight: 700 }}>
+          اكتب ملاحظتك {currentNote ? '(الجديدة تحلّ مكان الحالية)' : ''}
+        </p>
+        <textarea
+          value={text}
+          onChange={e => { setText(e.target.value.slice(0, 2000)); setDone(false); }}
+          rows={5}
+          dir="auto"
+          placeholder="ملاحظة…"
+          style={{
+            width: '100%', boxSizing: 'border-box', border: '1px solid rgba(249,115,22,0.3)', borderRadius: 12,
+            padding: '12px 14px', fontSize: '0.88rem', marginBottom: 12, outline: 'none',
+            resize: 'vertical', color: '#fff4ea', background: 'rgba(40,20,8,0.8)', caretColor: ORANGE,
+            WebkitTextFillColor: '#fff4ea',
+          }}
+        />
+        <p style={{ margin: '0 0 8px', color: 'rgba(243,227,211,0.75)', fontSize: '0.75rem', fontWeight: 700 }}>إرفاق (اختياري)</p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+          <label style={labelStyle}>
+            <Video size={18} />
+            Video (MP4, MOV)
+            <input type="file" accept="video/mp4,video/quicktime,video/*,.mp4,.mov,.m4v" hidden onChange={pick('video', 'video/mp4')} />
+          </label>
+          <label style={labelStyle}>
+            <ImageIcon size={18} />
+            Image (JPG, PNG, WebP)
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/*,.jpg,.jpeg,.png,.webp" hidden onChange={pick('image', 'image/jpeg')} />
+          </label>
+          <label style={labelStyle}>
+            <FileText size={18} />
+            PDF file
+            <input type="file" accept="application/pdf,.pdf" hidden onChange={pick('pdf', 'application/pdf')} />
+          </label>
+        </div>
+        {media && (
+          <div style={{ marginBottom: 12, padding: '10px 12px', borderRadius: 12, border: '1px solid rgba(249,115,22,0.35)', display: 'flex', alignItems: 'center', gap: 10, background: 'rgba(249,115,22,0.07)' }}>
+            {media.type === 'image' && <img src={media.dataUrl} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />}
+            {media.type === 'video' && <video src={media.dataUrl} muted style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8 }} />}
+            {media.type === 'pdf' && <FileText size={22} color={ORANGE} />}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ margin: 0, color: '#fff4ea', fontWeight: 700, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{media.name}</p>
+              <p style={{ margin: '2px 0 0', color: 'rgba(243,227,211,0.6)', fontSize: '0.68rem', textTransform: 'uppercase' }}>{media.type}</p>
+            </div>
+            <button type="button" onClick={() => setMedia(null)} style={{ border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', borderRadius: 8, width: 32, height: 32, cursor: 'pointer' }}>
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        {err && <p style={{ margin: '0 0 10px', color: '#ef4444', fontSize: '0.74rem', fontWeight: 700 }}>{err}</p>}
+        {done && !err && <p style={{ margin: '0 0 10px', color: '#22c55e', fontSize: '0.78rem', fontWeight: 800 }}>تم النشر — صارت ظاهرة للجميع</p>}
+        <button
+          type="button"
+          disabled={!canSend}
+          onClick={async () => {
+            if (!canSend || !user) return;
+            setBusy(true); setErr(''); setDone(false);
+            const res = await publishOwnerNote(user, text.trim(), media);
+            setBusy(false);
+            if (res.ok) { setDone(true); setText(''); setMedia(null); } else { setErr(res.error || 'Failed'); }
+          }}
+          style={{
+            width: '100%', padding: 14, borderRadius: 12, border: 'none',
+            background: ORANGE, color: '#0a0a0a', fontWeight: 900, fontSize: '0.92rem',
+            cursor: canSend ? 'pointer' : 'default', opacity: canSend ? 1 : 0.45,
+          }}
+        >
+          {busy ? 'Publishing…' : (currentNote ? 'Replace note' : 'Publish note')}
+        </button>
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -14475,6 +14744,13 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
   // STOOORNA title: single tap = admin notices (as the old bell did), double tap = in-page soft refresh + wave
   const lastTapRef = useRef(0);
   const tapTimerRef = useRef<number | null>(null);
+  // OWNER-NOTE: while the owner's note exists (and this user hasn't deleted it) the name turns orange; tapping opens the note bubble
+  const { note: ownerNote, active: noteActive } = useOwnerNote();
+  const noteActiveRef = useRef(false);
+  noteActiveRef.current = noteActive;
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [notePdfOpen, setNotePdfOpen] = useState(false);
+  const [noteToast, setNoteToast] = useState(false);
   const [waving, setWaving] = useState(false);
   const [waveKey, setWaveKey] = useState(0);
   const waveTimerRef = useRef<number | null>(null);
@@ -14495,6 +14771,22 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
   });
   const [items, setItems] = useState<AdminBellNotice[]>(() => loadAdminBellNotices(uid));
   const unread = items.some(x => !x.read);
+  // OWNER-NOTE: make sure the note is pulled from the server even if the home ads poller isn't mounted
+  useEffect(() => { try { void checkAdsVersion(); } catch { /* */ } }, []);
+  // OWNER-NOTE: a NEW note (different id than the last one this device announced) → orange toast (not for the author)
+  useEffect(() => {
+    if (!ownerNote || !noteActive) return;
+    let seen = '';
+    try { seen = localStorage.getItem(OWNER_NOTE_SEEN_KEY) || ''; } catch { /* */ }
+    if (seen === ownerNote.id) return;
+    try { localStorage.setItem(OWNER_NOTE_SEEN_KEY, ownerNote.id); } catch { /* */ }
+    if (uid && String(ownerNote.userId) === uid) return;
+    setNoteToast(true);
+    try { if (!hapticOff) navigator.vibrate?.([40, 60, 40]); } catch { /* */ }
+    const t = window.setTimeout(() => setNoteToast(false), 7000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerNote?.id, noteActive]);
 
   useEffect(() => {
     setItems(loadAdminBellNotices(uid));
@@ -14551,7 +14843,10 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
             return;
           }
           lastTapRef.current = now;
-          tapTimerRef.current = window.setTimeout(() => { tapTimerRef.current = null; openPanel(); }, 320);
+          tapTimerRef.current = window.setTimeout(() => {
+            tapTimerRef.current = null;
+            if (noteActiveRef.current) setNoteOpen(true); else openPanel();
+          }, 320);
         }}
         onContextMenu={e => e.preventDefault()}
         onPointerDown={e => {
@@ -14588,6 +14883,11 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
   12% { color: #c3cedd; text-shadow: 0 0 9px rgba(241,245,249,0.95), 0 0 2px rgba(255,255,255,0.9); }
   24% { color: #ffffff; text-shadow: 0 0 4px rgba(226,232,240,0.45); }
 }
+@keyframes stooornaNameShineNote {
+  0%, 40%, 100% { color: #f97316; text-shadow: 0 0 0 rgba(226,232,240,0); }
+  12% { color: #e2e8f0; text-shadow: 0 0 9px rgba(241,245,249,0.95), 0 0 2px rgba(255,255,255,0.9); }
+  24% { color: #f97316; text-shadow: 0 0 5px rgba(249,115,22,0.55); }
+}
 @keyframes stooornaNameWave {
   0% { transform: translateY(0) rotate(0deg); }
   20% { transform: translateY(-6px) rotate(-8deg); }
@@ -14602,11 +14902,11 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
               key={`${i}-${waveKey}`}
               style={{
                 display: 'inline-block',
-                color: '#ffffff',
+                color: noteActive ? '#f97316' : '#ffffff',
                 fontSize: '0.8rem', fontWeight: 800, lineHeight: 1, letterSpacing: '0.12em',
                 animation: waving
-                  ? `stooornaNameShine 2.8s linear ${i * 0.11}s infinite, stooornaNameWave 1.05s ease-in-out ${i * 0.07}s 1`
-                  : `stooornaNameShine 2.8s linear ${i * 0.11}s infinite`,
+                  ? `${noteActive ? 'stooornaNameShineNote' : 'stooornaNameShine'} 2.8s linear ${i * 0.11}s infinite, stooornaNameWave 1.05s ease-in-out ${i * 0.07}s 1`
+                  : `${noteActive ? 'stooornaNameShineNote' : 'stooornaNameShine'} 2.8s linear ${i * 0.11}s infinite`,
               }}
             >{ch}</span>
           ))}
@@ -14628,6 +14928,100 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
           zIndex: 6,
         }}
       >{formatVisitorCount(visitorCount)}</span>
+      {noteToast && ownerNote && noteActive && typeof document !== 'undefined' && createPortal(
+        <button
+          type="button"
+          onClick={() => { setNoteToast(false); setNoteOpen(true); }}
+          style={{
+            position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', left: '50%', transform: 'translateX(-50%)',
+            zIndex: 14100, width: 'min(92vw, 360px)', display: 'flex', alignItems: 'center', gap: 10,
+            padding: '10px 14px', borderRadius: 16, cursor: 'pointer', direction: 'rtl', textAlign: 'right',
+            background: 'rgba(40,18,4,0.97)', border: '1.5px solid rgba(249,115,22,0.9)',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.5), 0 0 14px rgba(249,115,22,0.35)', color: '#fff',
+          }}
+        >
+          <Bell size={18} color="#f97316" />
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontSize: '0.74rem', fontWeight: 800, color: '#f97316' }}>ملاحظة جديدة من STOOORNA</span>
+            <span dir="auto" style={{ display: 'block', fontSize: '0.76rem', lineHeight: 1.4, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {ownerNote.text || (ownerNote.mediaType ? `[${ownerNote.mediaType}]` : '')}
+            </span>
+          </span>
+        </button>,
+        document.body
+      )}
+      {noteOpen && ownerNote && noteActive && typeof document !== 'undefined' && createPortal(
+        <>
+          <button type="button" aria-label="Close" onClick={() => setNoteOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', border: 'none', zIndex: 14000 }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 14001, width: 'min(88vw, 360px)', maxHeight: '78vh', overflowY: 'auto', boxSizing: 'border-box',
+            background: '#ffffff', color: '#111111', borderRadius: 22,
+            boxShadow: '0 18px 44px rgba(0,0,0,0.5)', padding: '18px 16px 16px',
+          }}>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={() => setNoteOpen(false)}
+              style={{ position: 'absolute', top: 10, left: 10, width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.06)', color: '#555', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+            ><X size={16} /></button>
+            <p style={{ margin: '0 0 12px', textAlign: 'center', color: '#111', fontWeight: 900, fontSize: '1.05rem' }}>ملاحظة :</p>
+            {!!ownerNote.text && (
+              <p dir="auto" style={{ margin: '0 0 12px', textAlign: 'center', color: '#1f2937', fontSize: '0.92rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                {ownerNote.text}
+              </p>
+            )}
+            {ownerNote.mediaType === 'image' && ownerNote.mediaUrl && (
+              <img src={ownerNote.mediaUrl} alt="" style={{ display: 'block', width: '100%', maxHeight: '45vh', objectFit: 'contain', borderRadius: 12, background: '#f3f4f6', margin: '0 0 12px' }} />
+            )}
+            {ownerNote.mediaType === 'video' && ownerNote.mediaUrl && (
+              <video src={ownerNote.mediaUrl} controls playsInline preload="metadata" style={{ display: 'block', width: '100%', maxHeight: '45vh', borderRadius: 12, background: '#000', margin: '0 0 12px' }} />
+            )}
+            {ownerNote.mediaType === 'pdf' && ownerNote.mediaUrl && (
+              <button
+                type="button"
+                onClick={() => setNotePdfOpen(true)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer', margin: '0 0 12px', color: '#111', textAlign: 'left' }}
+              >
+                <FileText size={24} color="#f97316" />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontWeight: 800, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ownerNote.mediaName || 'PDF'}</span>
+                  <span style={{ display: 'block', color: '#6b7280', fontSize: '0.7rem', marginTop: 2 }}>PDF · اضغط للفتح</span>
+                </span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => { dismissOwnerNote(ownerNote.id); setNoteOpen(false); setNotePdfOpen(false); }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 14px', borderRadius: 12, border: '1px solid rgba(239,68,68,0.45)', background: 'rgba(239,68,68,0.08)', color: '#dc2626', fontWeight: 800, fontSize: '0.85rem', cursor: 'pointer' }}
+            >
+              <Trash2 size={16} /> حذف
+            </button>
+            {(unread || items.length > 0) && (
+              <button
+                type="button"
+                onClick={() => { setNoteOpen(false); openPanel(); }}
+                style={{ width: '100%', marginTop: 8, padding: '8px 10px', border: 'none', background: 'none', color: '#6b7280', fontWeight: 700, fontSize: '0.72rem', cursor: 'pointer' }}
+              >
+                Admin notices{unread ? ' •' : ''}
+              </button>
+            )}
+          </div>
+        </>,
+        document.body
+      )}
+      {noteOpen && notePdfOpen && ownerNote?.mediaType === 'pdf' && ownerNote.mediaUrl && typeof document !== 'undefined' && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 14200, background: '#111' }}>
+          <AdPdfPages src={ownerNote.mediaUrl} />
+          <button
+            type="button"
+            aria-label="Close PDF"
+            onClick={() => setNotePdfOpen(false)}
+            style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 12, zIndex: 4, width: 38, height: 38, borderRadius: 12, border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(239,68,68,0.15)', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+          ><X size={20} /></button>
+        </div>,
+        document.body
+      )}
       {open && typeof document !== 'undefined' && createPortal(
         <>
           <button type="button" aria-label="Close" onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', border: 'none', zIndex: 14000 }} />
@@ -28036,6 +28430,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         try { void fetchStoryCommentThreads(); } catch { /* */ }
                       }
                       setFeedAdsTick(t => t + 1);
+                      try { adsLastVer = ''; void checkAdsVersion(); } catch { /* */ }
                       try { window.dispatchEvent(new CustomEvent('stooorna:refresh-text-feed')); } catch { /* */ }
                     }}
                   />

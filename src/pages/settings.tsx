@@ -13,6 +13,8 @@ import { maskStoredPhone } from './forgot-phone-mask';
 import { restoreOwnerAccount, wipeOwnerAccount } from '@/lib/ownerRestorePatch';
 // Owner-only paid Ads panel (feed ads) — loaded on demand
 const OwnerAdsPanelLazy = React.lazy(() => import('./add-friend').then((m) => ({ default: m.OwnerAdsPanel })));
+// Owner-only STOOORNA note (shows on the STOOORNA title for everyone) — loaded on demand
+const OwnerNotePanelLazy = React.lazy(() => import('./add-friend').then((m) => ({ default: m.OwnerNotePanel })));
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown, ownerGrantEightMics, getVipFeats } from '@/lib/vipPatch';
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
@@ -5779,6 +5781,8 @@ export default function SettingsPage() {
   const [showOwnerVip, setShowOwnerVip] = useState(false);
   // ── Owner-only: Ads (paid feed ads) ──
   const [showOwnerAds, setShowOwnerAds] = useState(false);
+  // ── Owner-only: STOOORNA note (written here, shown to everyone on the STOOORNA title) ──
+  const [showOwnerNote, setShowOwnerNote] = useState(false);
   const [ownerVipQuery, setOwnerVipQuery] = useState('');
   const [ownerVipSel, setOwnerVipSel] = useState<{ id: string; username: string | null; email: string } | null>(null);
   const [ownerVipColor, setOwnerVipColor] = useState<string>('gold');
@@ -10244,6 +10248,10 @@ export default function SettingsPage() {
                 style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.4)', color: '#fdba74', fontWeight: 800, fontSize: '0.82rem' }}>
                 إدارة الستوريات · حذف / تحذير / مشرفين
               </button>
+              <button type="button" onClick={() => startTransition(() => setShowOwnerNote(true))}
+                style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: 'rgba(249,115,22,0.14)', border: '1px solid rgba(249,115,22,0.55)', color: '#f97316', fontWeight: 800, fontSize: '0.82rem' }}>
+                ملاحظة STOOORNA · اكتب ملاحظة تظهر للجميع
+              </button>
             </div>
 
             <div style={{ padding: '10px 14px', flexShrink: 0 }}>
@@ -12009,6 +12017,18 @@ export default function SettingsPage() {
         ) && (
           <React.Suspense fallback={null}>
             <OwnerAdsPanelLazy onClose={() => setShowOwnerAds(false)} />
+          </React.Suspense>
+        )}
+      </AnimatePresence>
+
+      {/* ── Owner: STOOORNA note — one note for everybody (+ image / video / PDF), new replaces old ── */}
+      <AnimatePresence>
+        {showOwnerNote && isSupportOwnerAccount(
+          user as { email?: string | null; username?: string | null; name?: string | null },
+          profileUsername,
+        ) && (
+          <React.Suspense fallback={null}>
+            <OwnerNotePanelLazy onClose={() => setShowOwnerNote(false)} />
           </React.Suspense>
         )}
       </AnimatePresence>
