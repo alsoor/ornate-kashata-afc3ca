@@ -10,13 +10,14 @@
  */
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { Check, X } from 'lucide-react';
 
 const MARK = '\u2063TPLSHARE\u2063';
 const SEEN_KEY = 'stooorna_tpl_share_seen_';
 const SAVED_KEY = 'stooorna_saved_messages_v1_';
 
-type SharePayload = { postId: string; kind: 'video' | 'image'; from: string };
+type SharePayload = { postId: string; kind: 'video' | 'image'; from: string; sid?: string };
 
 export function isTplShareText(t?: string | null): boolean {
   return !!t && t.startsWith(MARK);
@@ -24,6 +25,53 @@ export function isTplShareText(t?: string | null): boolean {
 function parseShare(t?: string | null): SharePayload | null {
   if (!isTplShareText(t)) return null;
   try { return JSON.parse(String(t).slice(MARK.length)) as SharePayload; } catch { return null; }
+}
+
+
+/* ───────────── unread marker (orange blink) ───────────── */
+const UNREAD_KEY = 'stooorna_tpl_share_unread_';
+let curUid = '';
+try { curUid = localStorage.getItem('stooorna_tpl_share_uid') || ''; } catch { /* */ }
+function readUnread(): string[] {
+  if (!curUid) return [];
+  try { const a = JSON.parse(localStorage.getItem(UNREAD_KEY + curUid) || '[]'); return Array.isArray(a) ? a.map(String) : []; } catch { return []; }
+}
+function writeUnread(a: string[]) {
+  if (!curUid) return;
+  try { localStorage.setItem(UNREAD_KEY + curUid, JSON.stringify(a.slice(-200))); } catch { /* */ }
+  try { window.dispatchEvent(new CustomEvent('stooorna:tpl-share-unread')); } catch { /* */ }
+}
+function markRead(sid?: string) {
+  if (!sid) return;
+  const a = readUnread();
+  if (a.includes(sid)) writeUnread(a.filter(x => x !== sid));
+}
+/** number of shared posts I have not opened yet */
+export function useTplShareUnread(): number {
+  const [n, setN] = useState(() => readUnread().length);
+  useEffect(() => {
+    const f = () => setN(readUnread().length);
+    f();
+    window.addEventListener('stooorna:tpl-share-unread', f);
+    window.addEventListener('stooorna:tpl-share-arrived', f);
+    return () => { window.removeEventListener('stooorna:tpl-share-unread', f); window.removeEventListener('stooorna:tpl-share-arrived', f); };
+  }, []);
+  return n;
+}
+/** orange blinking fill inside the profile circle (put inside a position:relative circle) */
+export function TplShareDot() {
+  const n = useTplShareUnread();
+  if (!n) return null;
+  return (
+    <>
+      <style>{'@keyframes tplShareBlink{0%,100%{opacity:.18}50%{opacity:.9}}'}</style>
+      <span aria-hidden style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#f97316', boxShadow: '0 0 0 2px #f97316', animation: 'tplShareBlink 1s ease-in-out infinite', pointerEvents: 'none' }} />
+    </>
+  );
+}
+/** z-index helper: while Saved Messages (z 120050) is open, the Templates post page must sit above it */
+export function tplZ(base: number): number {
+  try { return sessionStorage.getItem('stooorna_saved_open') === '1' ? base + 110000 : base; } catch { return base; }
 }
 
 /* ───────────── receiver: inbox poller → Saved Messages vault ───────────── */
@@ -35,6 +83,7 @@ async function pullInbox() {
     if (!r.ok) return;
     const d = await r.json();
     const uid = String(d?.userId || '');
+    if (uid && uid !== curUid) { curUid = uid; try { localStorage.setItem('stooorna_tpl_share_uid', uid); } catch { /* */ } }
     if (!uid || !Array.isArray(d.items) || !d.items.length) return;
     let seen: string[] = [];
     try { seen = JSON.parse(localStorage.getItem(SEEN_KEY + uid) || '[]'); } catch { /* */ }
@@ -43,7 +92,7 @@ async function pullInbox() {
     let list: any[] = [];
     try { list = JSON.parse(localStorage.getItem(SAVED_KEY + uid) || '[]'); if (!Array.isArray(list)) list = []; } catch { list = []; }
     for (const x of fresh) {
-      const payload: SharePayload = { postId: String(x.postId), kind: x.kind === 'image' ? 'image' : 'video', from: String(x.fromUsername || x.fromName || '') };
+      const payload: SharePayload = { postId: String(x.postId), kind: x.kind === 'image' ? 'image' : 'video', from: String(x.fromUsername || x.fromName || ''), sid: String(x.id) };
       list.push({
         id: `sm-${String(x.id)}`, kind: 'text', text: MARK + JSON.stringify(payload),
         senderName: payload.from || null, avatarUrl: x.fromAvatar || null, mediaUrl: null, createdAt: Number(x.at) || Date.now(),
@@ -51,7 +100,9 @@ async function pullInbox() {
     }
     localStorage.setItem(SAVED_KEY + uid, JSON.stringify(list.slice(-500)));
     localStorage.setItem(SEEN_KEY + uid, JSON.stringify([...seen, ...fresh.map((x: any) => String(x.id))].slice(-500)));
-    window.dispatchEvent(new CustomEvent('stooorna:tpl-share-arrived', { detail: { uid } }));
+    writeUnread([...readUnread(), ...fresh.map((x: any) => String(x.id))]);
+    const last = fresh[fresh.length - 1];
+    window.dispatchEvent(new CustomEvent('stooorna:tpl-share-arrived', { detail: { uid, from: String(last.fromUsername || last.fromName || ''), avatar: String(last.fromAvatar || ''), count: fresh.length } }));
   } catch { /* offline — try again next tick */ }
 }
 function startPoller() {
@@ -60,8 +111,62 @@ function startPoller() {
   window.setTimeout(() => { void pullInbox(); }, 1500);
   window.setInterval(() => { void pullInbox(); }, 6000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void pullInbox(); });
+  const mount = () => {
+    try { const host = document.createElement('div'); host.id = 'tpl-share-toast-root'; document.body.appendChild(host); createRoot(host).render(<TplShareToast />); } catch { /* */ }
+  };
+  if (document.body) mount(); else window.addEventListener('DOMContentLoaded', mount, { once: true });
 }
 startPoller();
+
+
+/* ───────────── top notification when a share arrives (outside Saved Messages) ───────────── */
+function TplShareToast() {
+  const [t, setT] = useState<{ from: string; avatar: string; count: number } | null>(null);
+  useEffect(() => {
+    let timer = 0;
+    const onArrive = (e: Event) => {
+      let inSaved = false;
+      try { inSaved = sessionStorage.getItem('stooorna_saved_open') === '1'; } catch { /* */ }
+      if (inSaved) return;
+      const d = (e as CustomEvent).detail || {};
+      setT({ from: String(d.from || ''), avatar: String(d.avatar || ''), count: Number(d.count) || 1 });
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setT(null), 15000);
+    };
+    window.addEventListener('stooorna:tpl-share-arrived', onArrive);
+    return () => { window.removeEventListener('stooorna:tpl-share-arrived', onArrive); window.clearTimeout(timer); };
+  }, []);
+  if (!t) return null;
+  const open = () => {
+    setT(null);
+    try { sessionStorage.setItem('stooorna_saved_open', '1'); } catch { /* */ }
+    try { window.dispatchEvent(new CustomEvent('stooorna:open-saved')); } catch { /* */ }
+  };
+  return (
+    <div
+      dir="rtl"
+      style={{ position: 'fixed', top: 'calc(env(safe-area-inset-top, 0px) + 8px)', left: 10, right: 10, zIndex: 2147483000, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}
+    >
+      <div
+        style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 10, width: '100%', maxWidth: 420, background: '#06171a', border: '1px solid #f97316', borderRadius: 16, padding: '8px 10px', boxShadow: '0 8px 28px rgba(0,0,0,0.5)' }}
+      >
+        <button type="button" onClick={open} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'right', color: '#fff' }}>
+          {t.avatar ? (
+            <img src={t.avatar} alt="" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, boxShadow: '0 0 0 2px #f97316' }} />
+          ) : (
+            <span style={{ width: 38, height: 38, borderRadius: '50%', background: '#f97316', flexShrink: 0 }} />
+          )}
+          <span style={{ minWidth: 0, fontWeight: 700, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {t.from ? `@${t.from.replace(/^@/, '')} ` : ''}{t.count > 1 ? `شارك ${t.count} منشورات` : 'شارك منشور'}
+          </span>
+        </button>
+        <button type="button" aria-label="Dismiss" onClick={() => setT(null)} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <X size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /* ───────────── receiver: tile inside the Saved Messages chat ───────────── */
 export function TplSharedTile({ text }: { text?: string | null }) {
@@ -71,7 +176,7 @@ export function TplSharedTile({ text }: { text?: string | null }) {
   return (
     <button
       type="button"
-      onClick={e => { e.stopPropagation(); window.dispatchEvent(new CustomEvent('stooorna:open-shared-post', { detail: { postId: p.postId } })); }}
+      onClick={e => { e.stopPropagation(); markRead(p.sid); window.dispatchEvent(new CustomEvent('stooorna:open-shared-post', { detail: { postId: p.postId } })); }}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: 168, height: 96, border: 'none', cursor: 'pointer',
         borderRadius: 12, background: 'linear-gradient(135deg,#06171a,#0b2a30)', color: '#7ee8f5', fontWeight: 800, fontSize: '1rem',

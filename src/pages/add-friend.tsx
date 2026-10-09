@@ -146,7 +146,7 @@ import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoT
 // Templates (الصور/الفيديو بالخارج): مخزن مستقل تماماً عن الشات العام — لا يتأثر بتنظيف الـ24 ساعة
 import { useLiveEmojiBurstSync } from '@/lib/liveEmojiBurst'; // EMOJI-BURST-PATCH
 import '@/lib/templatesShieldPatch'; // TEMPLATES-SHIELD: blocks screenshots / save-image inside Templates
-import { TplShareButton, TplSharedTile, isTplShareText } from '@/lib/templatesSharePatch'; // TEMPLATES-SHARE-PATCH
+import { TplShareButton, TplSharedTile, isTplShareText, TplShareDot, useTplShareUnread, tplZ } from '@/lib/templatesSharePatch'; // TEMPLATES-SHARE-PATCH TEMPLATES-SHARE-PATCH-2
 import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
 import { StoryModerationBell, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
@@ -14801,6 +14801,7 @@ function SavedMessagesScreen({
     if (!open || !userId) return;
     setItems(withMemOnly(loadSavedMessages(userId)));
   }, [open, userId]);
+  const tplUnread = useTplShareUnread(); // TEMPLATES-SHARE-PATCH-2
   // TEMPLATES-SHARE-PATCH: a shared post that arrives while Saved Messages is open shows at once
   useEffect(() => {
     if (!open || !userId) return;
@@ -15188,7 +15189,7 @@ function SavedMessagesScreen({
                 width: 34, height: 34, borderRadius: '50%', overflow: 'hidden', flexShrink: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 background: '#00BCD4',
-                boxShadow: '0 0 0 2px rgba(0,188,212,0.25)',
+                boxShadow: tplUnread > 0 ? '0 0 0 3px #f97316' : '0 0 0 2px rgba(0,188,212,0.25)', // TEMPLATES-SHARE-PATCH-2
               }}>
                 {(joinedOwner ? sessionStorage.getItem('stooorna_saved_owner_avatar') : userAvatar) ? (
                   <img src={(joinedOwner ? sessionStorage.getItem('stooorna_saved_owner_avatar') : userAvatar) || ''} alt="" style={{ width: 34, height: 34, objectFit: 'cover' }} />
@@ -18111,7 +18112,7 @@ function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLike
   const kb = focused && kbBottom > 100 ? kbBottom : 0;
   const sheetH = Math.round(visH * (focused ? 0.86 : 0.68));
   return createPortal(
-    <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: 11000, pointerEvents: 'auto' }}>
+    <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: tplZ(11000), pointerEvents: 'auto' }}>
       <style>{`
         @keyframes stooornaMediaSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
         @keyframes stooornaMediaSheetDown { from { transform: translateY(0); } to { transform: translateY(100%); } }
@@ -18216,7 +18217,7 @@ function LiveMediaFeedOverlay({ posts, startId, favIds, nameOf, likedBy, comment
   }, []);
   if (typeof document === 'undefined') return null;
   return createPortal(
-    <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: 10900, background: '#000', pointerEvents: 'auto' }}>
+    <div onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: tplZ(10900), background: '#000', pointerEvents: 'auto' }}>
       <div
         ref={ref}
         style={{ position: 'absolute', inset: 0, overflowY: 'auto', overscrollBehavior: 'contain', WebkitOverflowScrolling: 'touch', scrollSnapType: 'y mandatory', touchAction: 'pan-y' }}
@@ -18570,11 +18571,14 @@ export function PublicLiveCommentsPanel({
     };
   }, [myId]);
   // TEMPLATES-SHARE-PATCH: tapping a shared photo/video in Saved Messages slides the post up inside Templates (X closes it)
+  const savedOpenShareRef = useRef(false); // TEMPLATES-SHARE-PATCH-2
+  savedOpenShareRef.current = savedOpen;
   useEffect(() => {
     if (!myId) return;
     const onOpen = async (e: Event) => {
       const d = (e as CustomEvent).detail || {};
-      if (d.handled) return; // another panel instance already took it
+      let ss = false; try { ss = sessionStorage.getItem('stooorna_saved_open') === '1'; } catch { /* */ }
+      if (ss ? !savedOpenShareRef.current : d.handled) return; // only the panel that owns the open Saved Messages (or the first one) takes it
       const postId = String(d.postId || '');
       if (!postId) return;
       d.handled = true;
@@ -20277,7 +20281,7 @@ export function PublicLiveCommentsPanel({
               setSavedOpen(true);
             }}
             style={{
-              flexShrink: 0, padding: 0, border: 'none', background: 'transparent',
+              flexShrink: 0, padding: 0, border: 'none', background: 'transparent', position: 'relative',
               cursor: myId ? 'pointer' : 'default', borderRadius: '50%',
               WebkitTapHighlightColor: 'transparent',
             }}
@@ -20288,6 +20292,7 @@ export function PublicLiveCommentsPanel({
               size={34}
               style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }}
             />
+            <TplShareDot /> {/* TEMPLATES-SHARE-PATCH-2 */}
           </button>
           <div style={{
             flex: '1 1 0%',
