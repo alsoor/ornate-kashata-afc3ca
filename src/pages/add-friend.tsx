@@ -8052,16 +8052,36 @@ async function syncAdsFromServer() {
   } catch { /* keep local ads if the route is late */ }
 }
 let adsLastVer = '';
-/** فحص خفيف: إذا تغيّر رقم نسخة الإعلانات في السيرفر (نشر أو حذف) نسحب القائمة فوراً */
+let adsVerBusy = false;
+let adsLastFullAt = 0;
+/** نفس فكرة بطاقات اللايف: فحص سريع للسيرفر، وأي تغيير (نشر/حذف) ينزل فوراً. إذا مسار النسخة غير متاح نسحب القائمة مباشرة. */
 async function checkAdsVersion() {
+  if (adsVerBusy) return;
+  adsVerBusy = true;
   try {
     const r = await fetch('/api/ads/version', { credentials: 'include', cache: 'no-store' });
-    if (!r.ok) return;
-    const d = await r.json().catch(() => ({} as any));
-    if (!d?.ver || d.ver === adsLastVer) return;
+    const d = r.ok ? await r.json().catch(() => ({} as any)) : null;
+    if (!d?.ver) {
+      if (Date.now() - adsLastFullAt > 6000) { adsLastFullAt = Date.now(); await syncAdsFromServer(); }
+      return;
+    }
+    if (d.ver === adsLastVer) return;
+    adsLastFullAt = Date.now();
     await syncAdsFromServer();
     adsLastVer = String(d.ver);
-  } catch { /* */ }
+  } catch {
+    if (Date.now() - adsLastFullAt > 6000) { adsLastFullAt = Date.now(); try { await syncAdsFromServer(); } catch { /* */ } }
+  } finally { adsVerBusy = false; }
+}
+function adDataUrlToBlob(dataUrl: string): Blob {
+  const m = /^data:([^;,]*)(;base64)?,(.*)$/s.exec(dataUrl);
+  if (!m) return new Blob([]);
+  const mime = m[1] || 'application/octet-stream';
+  if (!m[2]) return new Blob([decodeURIComponent(m[3])], { type: mime });
+  const bin = atob(m[3]);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
 }
 async function pushAdToServer(ad: any) {
   const id = String(ad?.id || '');
@@ -8078,7 +8098,7 @@ async function pushAdToServer(ad: any) {
     const j = await r.json().catch(() => ({} as any));
     if (j?.deleted) return; // انحذف قبل — لا نرجعه
     if (data && j?.ready === false) {
-      const blob = await (await fetch(data)).blob();
+      const blob = adDataUrlToBlob(data);
       const up = await fetch(`/api/ads/${encodeURIComponent(id)}/media?userId=${encodeURIComponent(String(ad.userId || ''))}`, {
         method: 'PUT', credentials: 'include',
         headers: { 'Content-Type': blob.type || String(ad.mediaMime || 'application/octet-stream') },
@@ -21242,6 +21262,16 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
     const id = window.setInterval(bump, 5000);
     return () => { window.removeEventListener('stooorna:feed-ads', bump); window.clearInterval(id); };
   }, []);
+  // ADS-LIVE-STYLE: نفس آلية فحص البثوث (كل 2.5 ثانية من داخل نفس مكوّن البطاقات) — الإعلان الجديد/المحذوف ينزل مباشرة
+  useEffect(() => {
+    if (!myId) return;
+    try { if (!(window as any).__stooornaAdsMe) (window as any).__stooornaAdsMe = String(myId); } catch { /* */ }
+    void checkAdsVersion();
+    const iv = window.setInterval(() => { if (document.visibilityState === 'visible') void checkAdsVersion(); }, 2500);
+    const onVis = () => { if (document.visibilityState === 'visible') { adsLastVer = ''; void checkAdsVersion(); } };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { window.clearInterval(iv); document.removeEventListener('visibilitychange', onVis); };
+  }, [myId]);
   const homeAds: any[] = showCards ? (() => {
     void adsTick;
     try {
