@@ -14,7 +14,6 @@ const VW = 720;
 const VH = 1280;
 const RING = { cx: 360, cy: 636, r: 82 };
 const SHIMMER_FROM = 15.6; // the logo starts to appear here (seconds)
-const BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='; // 1px transparent poster
 
 function wasRegistered(): boolean {
   try { return localStorage.getItem(REGISTERED_KEY) === '1'; } catch { return false; }
@@ -37,7 +36,8 @@ type Particle = { x: number; y: number; sx: number; sy: number; vx: number; vy: 
 export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }: { isLoggedIn: boolean; authLoading?: boolean; onLogin: () => void }) {
   const [dismissed, setDismissed] = useState(() => skippedThisSession);
   const [phase, setPhase] = useState<'play' | 'shatter'>('play');
-  const [playing, setPlaying] = useState(false);
+  const [ready, setReady] = useState(false);   // first picture of the video is loaded -> start the circular opening
+  const [opened, setOpened] = useState(false);   // opening finished -> the video starts playing
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const snapRef = useRef<HTMLCanvasElement | null>(null);
@@ -51,30 +51,36 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
 
   const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered();
 
-  // Plays by itself: starts muted (always allowed), then tries to turn the sound on.
+  // setup: silent, no controls. The video waits (showing its first picture) while the circular opening runs.
   useEffect(() => {
     if (!visible) return;
     const v = videoRef.current;
     if (!v) return;
     v.controls = false;
     v.muted = true;
+    if (v.readyState >= 2) setReady(true);
+    // if the video can never load/start, don't leave a black screen
+    const giveUp = window.setTimeout(() => { if (v.paused && v.currentTime === 0) { skippedThisSession = true; setDismissed(true); } }, 9000);
+    return () => window.clearTimeout(giveUp);
+  }, [visible]);
+
+  /** called when the opening finishes: plays by itself (muted = always allowed), then tries to turn the sound on */
+  const startPlay = useCallback(() => {
+    setOpened(true);
+    const v = videoRef.current;
+    if (!v) return;
     const playMuted = () => { v.muted = true; return v.play().catch(() => {}); };
     const trySound = () => {
       v.muted = false;
       window.setTimeout(() => { if (v.paused && !v.ended) void playMuted(); }, 250);
     };
     v.play().then(trySound).catch(() => { void playMuted(); });
-    const retry = () => { if (v.paused && !v.ended && phase === 'play') void playMuted(); };
-    const wake = () => {
+    v.addEventListener('canplay', () => { if (v.paused && !v.ended) void playMuted(); });
+    window.addEventListener('pointerdown', () => {
       if (v.muted) v.muted = false;
-      if (v.paused && !v.ended && phase === 'play') v.play().catch(() => {});
-    };
-    v.addEventListener('canplay', retry);
-    window.addEventListener('pointerdown', wake, { once: true });
-    // if the video can never start, don't leave a black screen
-    const giveUp = window.setTimeout(() => { if (v.paused && v.currentTime === 0) { skippedThisSession = true; setDismissed(true); } }, 5000);
-    return () => { window.clearTimeout(giveUp); v.removeEventListener('canplay', retry); window.removeEventListener('pointerdown', wake); };
-  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+      if (v.paused && !v.ended) v.play().catch(() => {});
+    }, { once: true });
+  }, []);
 
   const onTime = useCallback(() => { const v = videoRef.current; if (v) setT(v.currentTime); }, []);
 
@@ -163,6 +169,8 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
 
   const shimmer = (t >= SHIMMER_FROM || ended) && phase === 'play';
   const circ = 2 * Math.PI * RING.r;
+  const stW = Math.max(window.innerWidth, window.innerHeight * 9 / 16), stH = Math.max(window.innerHeight, window.innerWidth * 16 / 9);
+  const ringD = Math.round(0.14 * Math.hypot(stW, stH) / Math.SQRT2); // = the starting circle (7% radius)
 
   return createPortal(
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', zIndex: 2147483000, background: phase === 'play' ? '#000' : 'transparent', overflow: 'hidden' }}>
@@ -177,12 +185,28 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
               width: 'max(100vw, calc(100dvh * 9 / 16))', height: 'max(100dvh, calc(100vw * 16 / 9))',
             }}
           >
-            <div style={{ position: 'absolute', inset: 0, opacity: playing ? undefined : 0, animation: playing ? 'stIntroVortex 1.5s cubic-bezier(.16,.8,.3,1) both' : 'none' }}>
+            {/* liquid "melting" distortion that settles while the circle opens (removed once the video plays) */}
+            {ready && !opened && (
+              <svg width="0" height="0" aria-hidden="true" style={{ position: 'absolute' }}>
+                <filter id="stIntroMelt" x="-10%" y="-10%" width="120%" height="120%">
+                  <feTurbulence type="fractalNoise" baseFrequency="0.008 0.016" numOctaves="2" seed="4" result="n" />
+                  <feDisplacementMap in="SourceGraphic" in2="n" scale="160" xChannelSelector="R" yChannelSelector="G">
+                    <animate attributeName="scale" values="160;110;50;0" keyTimes="0;0.35;0.75;1" dur="1.7s" fill="freeze" />
+                  </feDisplacementMap>
+                </filter>
+              </svg>
+            )}
+            <div
+              onAnimationEnd={e => { if (e.target === e.currentTarget && !opened) startPlay(); }}
+              style={{
+                position: 'absolute', inset: 0, opacity: ready ? undefined : 0,
+                animation: ready && !opened ? 'stIntroOpen 1.7s cubic-bezier(.22,.75,.2,1) both' : 'none',
+                filter: ready && !opened ? 'url(#stIntroMelt)' : 'none',
+              }}
+            >
               <video
                 ref={videoRef}
                 src={INTRO_VIDEO_SRC}
-                poster={BLANK}
-                autoPlay
                 muted
                 controls={false}
                 playsInline
@@ -190,7 +214,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
                 disablePictureInPicture
                 disableRemotePlayback
                 {...({ controlsList: 'nodownload nofullscreen noremoteplayback' } as Record<string, string>)}
-                onPlaying={() => setPlaying(true)}
+                onLoadedData={() => setReady(true)}
                 onTimeUpdate={onTime}
                 onEnded={() => { setEnded(true); setT(999); shatter(false); }}
                 onError={() => { console.error('Intro video failed to load - check that', INTRO_VIDEO_SRC, 'exists in /public'); skippedThisSession = true; setDismissed(true); }}
@@ -220,6 +244,15 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
             </div>
           </div>
 
+          {/* glowing rim that grows with the circle */}
+          {ready && !opened && (
+            <div aria-hidden="true" style={{
+              position: 'absolute', left: '50%', top: '50%', width: ringD, height: ringD, borderRadius: '50%', pointerEvents: 'none',
+              border: '3px solid #7df3ff', boxShadow: '0 0 24px 6px rgba(0,188,212,0.7), inset 0 0 24px 4px rgba(0,188,212,0.5)',
+              animation: 'stIntroRim 1.7s cubic-bezier(.22,.75,.2,1) both',
+            }} />
+          )}
+
           {/* red "Log in" banner: there from the start, at the bottom (ends up under STOOORNA) */}
           <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '0 22px max(26px, calc(env(safe-area-inset-bottom) + 16px))', display: 'flex', justifyContent: 'center' }}>
             <button
@@ -240,7 +273,15 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
 
       <style>{`
         video::-webkit-media-controls, video::-webkit-media-controls-start-playback-button, video::-webkit-media-controls-overlay-play-button, video::-webkit-media-controls-panel { display: none !important; opacity: 0 !important; -webkit-appearance: none; }
-        @keyframes stIntroVortex { 0% { transform: rotate(-900deg) scale(0.04); filter: blur(14px) brightness(2); opacity: 0; } 55% { opacity: 1; } 100% { transform: rotate(0deg) scale(1); filter: blur(0) brightness(1); opacity: 1; } }
+        @keyframes stIntroOpen {
+          0%   { clip-path: circle(7% at 50% 50%);  transform: rotate(-720deg) scale(0.9); }
+          100% { clip-path: circle(75% at 50% 50%); transform: rotate(0deg) scale(1); }
+        }
+        @keyframes stIntroRim {
+          0%   { transform: translate(-50%, -50%) scale(1);     opacity: 1; }
+          80%  { opacity: 0.9; }
+          100% { transform: translate(-50%, -50%) scale(10.7);  opacity: 0; }
+        }
         @keyframes stIntroFlash { 0%{opacity:0} 6%{opacity:.55} 8%{opacity:0} 31%{opacity:.3} 33%{opacity:0} 62%{opacity:.6} 64%{opacity:.1} 66%{opacity:0} 88%{opacity:.35} 90%{opacity:0} 100%{opacity:0} }
         @keyframes stIntroSweep { 0%{transform:translateX(-80%)} 60%,100%{transform:translateX(80%)} }
         @keyframes stIntroSpin { to { transform: rotate(360deg); } }
