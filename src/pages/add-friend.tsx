@@ -18176,6 +18176,8 @@ export function PublicLiveCommentsPanel({
   headerOpen,
   onToggleHeader,
   onBusyChange,
+  onTypersChange,
+  onMentionChange,
   overlayOpen = false,
   onOverlayClose,
 }: {
@@ -18188,6 +18190,10 @@ export function PublicLiveCommentsPanel({
   onOverlayClose?: () => void;
   /** true while someone is actively typing in the live chat (drives the green shimmering grabber) */
   onBusyChange?: (busy: boolean) => void;
+  /** someone else is typing / recording in the public chat (drives the "..." dots next to the floating chat button) */
+  onTypersChange?: (typers: { count: number; name: string }) => void;
+  /** an unseen message mentions me with @username (drives the moving shine on the floating chat button's frame) */
+  onMentionChange?: (mentioned: boolean) => void;
 }) {
   const [comments, setComments] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const [text, setText] = useState('');
@@ -19109,6 +19115,39 @@ export function PublicLiveCommentsPanel({
   onBusyChangeRef.current = onBusyChange;
   useEffect(() => { onBusyChangeRef.current?.(chatBusy); }, [chatBusy]);
   useEffect(() => () => { onBusyChangeRef.current?.(false); }, []);
+  // ── floating chat button signals: others typing + unseen @mention of me ──
+  const onTypersChangeRef = useRef(onTypersChange);
+  onTypersChangeRef.current = onTypersChange;
+  const onMentionChangeRef = useRef(onMentionChange);
+  onMentionChangeRef.current = onMentionChange;
+  const typersSig = liveTypers.map(t => `${t.userId}:${t.activity || ''}`).join('|');
+  useEffect(() => {
+    onTypersChangeRef.current?.({ count: liveTypers.length, name: liveTypers[0]?.name || '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typersSig]);
+  useEffect(() => () => { onTypersChangeRef.current?.({ count: 0, name: '' }); }, []);
+  const mentionSeenRef = useRef<Set<string>>(new Set());
+  const mentionMountedAt = useRef(Date.now());
+  const [mentionPending, setMentionPending] = useState(false);
+  useEffect(() => {
+    const un = String(myUsername || '').replace(/^@/, '').trim().toLowerCase();
+    if (!un || !myId) return;
+    const esc = un.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('(^|[^a-zA-Z0-9_\\u0621-\\u064A])@' + esc + '(?![a-zA-Z0-9_\\u0621-\\u064A])', 'i');
+    let hit = false;
+    for (const c of comments) {
+      if (!c?.id || mentionSeenRef.current.has(c.id)) continue;
+      mentionSeenRef.current.add(c.id);
+      if (c.userId === myId) continue;
+      if ((Number(c.createdAt) || 0) < mentionMountedAt.current - 60_000) continue; // old history is not a new mention
+      if (re.test(String(c.text || ''))) hit = true;
+    }
+    if (hit) setMentionPending(true);
+  }, [comments, myUsername, myId]);
+  // opening the chat = I saw it → the shine stops
+  useEffect(() => { if (overlayOpen || headerOpen === false) setMentionPending(false); }, [overlayOpen, headerOpen]);
+  useEffect(() => { onMentionChangeRef.current?.(mentionPending); }, [mentionPending]);
+  useEffect(() => () => { onMentionChangeRef.current?.(false); }, []);
 
   // الشات بالأسفل: ينتقل من الرئيسية إلى ما بعد نقر الخط (الهيدر مرفوع/مخفي).
   // عند إنزال الهيدر (الرئيسية) يختفي الشات ويرجع لوضعه المصغّر، بنفس آلياته كاملة.

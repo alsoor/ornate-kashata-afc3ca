@@ -5392,6 +5392,10 @@ function GlobalPublicChatHost({ user }: { user: any }) {
   });
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // someone else is typing in the public chat → "..." dots appear on the side of the floating button
+  const [typers, setTypers] = useState<{ count: number; name: string }>({ count: 0, name: '' });
+  // someone @mentioned me → a light shine runs around the button's frame until I open the chat
+  const [mentioned, setMentioned] = useState(false);
   // موضع زر الشات العائم: يتحرك بالإصبع لأي مكان (فوق/تحت/يمين/يسار) ويتذكر مكانه
   // حالة الهيدر من صفحة الستوري: true = تظهر الأيقونة، false = تختفي، null (خارج الصفحة) = تظهر. مفتاح التشغيل الأساسي ما يتغير.
   const [headerLifted, setHeaderLifted] = useState<boolean | null>(() => {
@@ -5408,7 +5412,7 @@ function GlobalPublicChatHost({ user }: { user: any }) {
     window.addEventListener('stooorna:header-lifted', on as EventListener);
     return () => window.removeEventListener('stooorna:header-lifted', on as EventListener);
   }, []);
-  const FAB_SIZE = 44;
+  const FAB_SIZE = 38; // slightly smaller than before (was 44)
   const [fabPos, setFabPos] = useState<{ x: number; y: number } | null>(() => {
     try {
       const raw = localStorage.getItem('stooorna_public_chat_fab_pos');
@@ -5481,14 +5485,47 @@ function GlobalPublicChatHost({ user }: { user: any }) {
               : { right: 16, bottom: 'max(92px, calc(env(safe-area-inset-bottom, 0px) + 78px))' }),
             touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
             zIndex: 23000, width: FAB_SIZE, height: FAB_SIZE, borderRadius: '50%', cursor: 'pointer', padding: 0,
-            border: '1.5px solid #ffffff', background: 'rgba(6,16,18,0.94)',
-            color: busy ? '#3b82f6' : '#ffffff',
+            border: '1.5px solid #3b82f6', background: 'rgba(6,16,18,0.94)',
+            color: '#3b82f6',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: busy ? '0 0 16px rgba(59,130,246,0.55)' : '0 8px 20px rgba(0,0,0,0.35)',
             animation: 'stooornaPublicChatFloat 1.35s ease-in-out infinite',
           }}
         >
-          <MessageCircle size={22} strokeWidth={2.2} />
+          <MessageCircle size={19} strokeWidth={2.2} />
+          {mentioned ? (
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute', inset: -1.5, borderRadius: '50%', padding: 2, pointerEvents: 'none',
+                background: 'conic-gradient(from 0deg, rgba(147,197,253,0) 0deg, rgba(147,197,253,0) 250deg, rgba(147,197,253,0.45) 300deg, #ffffff 340deg, rgba(147,197,253,0) 360deg)',
+                WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+                WebkitMaskComposite: 'xor',
+                mask: 'linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0)',
+                animation: 'stooornaFabShine 1.3s linear infinite',
+              }}
+            />
+          ) : null}
+          {typers.count > 0 ? (() => {
+            const fabLeft = fabPos ? fabPos.x : (typeof window !== 'undefined' ? window.innerWidth : 400) - 16 - FAB_SIZE;
+            const roomRight = (typeof window !== 'undefined' ? window.innerWidth : 400) - (fabLeft + FAB_SIZE) > 40;
+            return (
+              <span
+                aria-hidden="true"
+                title={typers.name ? `${typers.name} …` : undefined}
+                style={{
+                  position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+                  ...(roomRight ? { left: '100%', marginLeft: 6 } : { right: '100%', marginRight: 6 }),
+                  display: 'flex', alignItems: 'center', gap: 3, padding: '5px 7px', borderRadius: 999,
+                  background: 'rgba(6,16,18,0.88)', border: '1px solid rgba(59,130,246,0.45)', pointerEvents: 'none',
+                }}
+              >
+                {[0, 1, 2].map(i => (
+                  <span key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: '#93c5fd', animation: 'stooornaFabTypeDots 1.1s infinite', animationDelay: `${i * 0.2}s` }} />
+                ))}
+              </span>
+            );
+          })() : null}
         </button>
       ) : null}
       <Suspense fallback={null}>
@@ -5498,9 +5535,11 @@ function GlobalPublicChatHost({ user }: { user: any }) {
           overlayOpen={open}
           onOverlayClose={() => setOpen(false)}
           onBusyChange={setBusy}
+          onTypersChange={setTypers}
+          onMentionChange={setMentioned}
         />
       </Suspense>
-      <style>{`@keyframes stooornaPublicChatFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }`}</style>
+      <style>{`@keyframes stooornaPublicChatFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } } @keyframes stooornaFabShine { to { transform: rotate(360deg); } } @keyframes stooornaFabTypeDots { 0%,80%,100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }`}</style>
     </>
   );
 }
