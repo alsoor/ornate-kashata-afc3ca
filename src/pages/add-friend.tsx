@@ -28143,9 +28143,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     title="Settings"
                     style={{
                       width: 44, height: 44, borderRadius: '50%',
-                      border: '1.5px solid #ffffff',
+                      // Settings only: gray icon + gray frame (the other dock icons stay white)
+                      border: `1.5px solid ${dockSettingsGray ? '#4b5563' : '#9ca3af'}`,
                       background: 'transparent',
-                      color: dockSettingsGray ? '#4b5563' : '#ffffff',
+                      color: dockSettingsGray ? '#4b5563' : '#9ca3af',
                       cursor: 'pointer', padding: 0,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       boxShadow: 'none',
