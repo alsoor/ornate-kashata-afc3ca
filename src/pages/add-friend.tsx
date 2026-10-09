@@ -148,6 +148,7 @@ import { useLiveEmojiBurstSync } from '@/lib/liveEmojiBurst'; // EMOJI-BURST-PAT
 import '@/lib/templatesShieldPatch'; // TEMPLATES-SHIELD: blocks screenshots / save-image inside Templates
 import { TplShareButton, TplSharedTile, isTplShareText, TplShareDot, useTplShareUnread, tplZ, playTplMessageTone } from '@/lib/templatesSharePatch'; // TEMPLATES-SHARE-PATCH TEMPLATES-SHARE-PATCH-2 TEMPLATES-SHARE-PATCH-5
 import { prepareSavedMedia, encodeSavedMediaLink, decodeSavedMediaLink, SavedPreviewLabel } from '@/lib/savedMediaPatch'; // SAVED-MEDIA-PATCH
+import { markDeleted, deletedChecker, encodeDeleteCmd, decodeDeleteCmd, rawMediaUrl, isInviteDone, markInviteDone, noteKick, inviteIsKickEcho } from '@/lib/savedRoomGuardPatch'; // SAVED-ROOM-GUARD-PATCH
 import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
 import { StoryModerationBell, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
@@ -15049,7 +15050,27 @@ function SavedMessagesScreen({
           const still = pendingRef.current.filter(p => !spoke.has(cleanUn(p.username)));
           if (still.length !== pendingRef.current.length) savePending(still);
         } catch { /* */ }
-        const extra = (room.messages || []).map((m: any) => {
+        // SAVED-ROOM-GUARD-PATCH: hidden delete commands → remove that photo/video here too, and never show the command itself
+        const roomMsgs: any[] = room.messages || [];
+        try {
+          const ownerUn = cleanUn(d.joined ? (sessionStorage.getItem('stooorna_saved_owner_name') || '') : (userUsername || userName || ''));
+          let removedAny = false;
+          for (const c of roomMsgs) {
+            const delUrl = decodeDeleteCmd(c.text);
+            if (!delUrl) continue;
+            const origin = roomMsgs.find((o: any) => !decodeDeleteCmd(o.text) && rawMediaUrl(o.text) === delUrl);
+            const by = cleanUn(c.name);
+            if (!origin || (by !== cleanUn(origin.name) && by !== ownerUn)) continue;
+            if (markDeleted(userId, { mediaUrl: delUrl })) removedAny = true;
+          }
+          if (removedAny) {
+            const gone = deletedChecker(userId);
+            memOnlyRef.current = memOnlyRef.current.filter(x => !gone(x));
+            try { saveSavedMessages(userId, loadSavedMessages(userId).filter(x => !gone(x))); } catch { /* */ }
+            setItems(prev => prev.filter(x => !gone(x)));
+          }
+        } catch { /* */ }
+        const extraAll = roomMsgs.filter((m: any) => !decodeDeleteCmd(m.text)).map((m: any) => {
           const raw = String(m.text || '');
           const dl = decodeSavedMediaLink(raw); // SAVED-MEDIA-PATCH: a media link message is shown as photo / video, never as text
           const isImg = raw.startsWith('img:') || dl?.kind === 'image';
@@ -15057,6 +15078,8 @@ function SavedMessagesScreen({
           const url = dl ? dl.url : (isImg || isVid ? raw.slice(4) : '');
           return { id: String(m.id), kind: (isVid ? 'video' : isImg ? 'image' : 'text') as SavedMsg['kind'], text: isImg || isVid ? '' : raw, mediaUrl: url || null, senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() };
         });
+        const goneNow = deletedChecker(userId);
+        const extra = extraAll.filter((x: SavedMsg) => !goneNow(x)); // SAVED-ROOM-GUARD-PATCH: deleted rows never come back
         if (extra.length) setItems(prev => {
           const ids = new Set(prev.map(x => x.id));
           // SAVED-DUP-FIX: my own text is added locally first, then the server echoes it back (with my name + avatar) → was shown twice.
@@ -15140,8 +15163,18 @@ function SavedMessagesScreen({
 
   const removeItem = (id: string) => {
     if (!userId) return;
+    // SAVED-ROOM-GUARD-PATCH: remember the delete (so the room refresh can't re-add it) + delete my photo/video for the other side too
+    const row = items.find(x => x.id === id);
+    if (row) {
+      markDeleted(userId, row);
+      const mine = !row.senderName || cleanUn(row.senderName) === cleanUn(userUsername || userName || '') || String(roomOwner) === String(userId);
+      if (mine && (row.kind === 'image' || row.kind === 'video') && row.mediaUrl && !String(row.mediaUrl).startsWith('blob:') && roomOwner) {
+        void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: encodeDeleteCmd(row.mediaUrl) }) });
+      }
+    }
     memOnlyRef.current = memOnlyRef.current.filter(x => x.id !== id);
-    persist(loadSavedMessages(userId).filter(x => x.id !== id));
+    try { saveSavedMessages(userId, loadSavedMessages(userId).filter(x => x.id !== id)); } catch { /* */ }
+    setItems(prev => prev.filter(x => x.id !== id));
   };
 
   const sendText = () => {
@@ -25858,6 +25891,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         if (!r.ok) return;
         const d = await r.json();
         const rows = (d.notifications || []) as Array<any>;
+        // SAVED-ROOM-GUARD-PATCH: a kick voids every pending invite (hide the popup if one is open)
+        for (const n of rows) { if (String(n?.title || '').includes('طرد') && Number(n.at) > 0 && noteKick(Number(n.at))) setSavedInvite(null); }
         for (const n of rows) {
           if (!n?.id || seen.has(n.id)) continue;
           seen.add(n.id);
@@ -25865,6 +25900,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (n.type !== 'invite') { if (shownBefore.has(String(n.id))) continue; rememberShown(String(n.id)); }
           if (String(n.title || '').includes('طرد')) { try { const seen = sessionStorage.getItem('stooorna_kick_seen') || ''; if (!seen.includes(n.id)) { sessionStorage.setItem('stooorna_kick_seen', seen + n.id); setKickedBox(true); } } catch { /* */ } void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: n.id }) }); continue; }
           if (n.type === 'invite' && !n.read) {
+            // SAVED-ROOM-GUARD-PATCH: answered invites and the automatic invite that follows a kick are ignored
+            if (isInviteDone(String(n.id)) || (Number(n.at) > 0 && inviteIsKickEcho(Number(n.at)))) {
+              void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: n.id }) });
+              continue;
+            }
             const ownerId = String(n.room || '').replace('saved:', '');
             setSavedInvite({ id: n.id, fromName: n.fromName || 'Someone', ownerId, fromAvatar: n.fromAvatar || '' });
             playTplMessageTone(); // TEMPLATES-SHARE-PATCH-5
@@ -28350,8 +28390,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <div style={{ fontWeight: 900, fontSize: 17, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{savedInvite.fromName}</div>
               <div style={{ fontSize: 13, opacity: 0.85, margin: '8px 0 14px', lineHeight: 1.4 }}>يدعوك للانضمام الى الشات الخاص به</div>
               <div style={{ display: 'flex', gap: 10 }}>
-                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); sessionStorage.setItem('stooorna_saved_owner_avatar', inv.fromAvatar || ''); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 16, background: '#22c55e', color: '#041414', fontWeight: 900, fontSize: 14, padding: '10px 8px', cursor: 'pointer' }}>Accept ✓</button>
-                <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ flex: 1, border: '1px solid #ef4444', borderRadius: 16, background: 'rgba(80,20,20,0.45)', color: '#fca5a5', fontWeight: 900, fontSize: 14, padding: '10px 8px', cursor: 'pointer' }}>Decline ✕</button>
+                <button type="button" onClick={() => { const inv = savedInvite; setSavedInvite(null); markInviteDone(inv.id); try { sessionStorage.setItem('stooorna_saved_owner', inv.ownerId); sessionStorage.setItem('stooorna_saved_owner_name', inv.fromName); sessionStorage.setItem('stooorna_saved_owner_avatar', inv.fromAvatar || ''); } catch { /* */ } void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: inv.ownerId, userId: user?.id, name: (user as any)?.username || user?.name, text: 'Join the chat' }) }); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: inv.id }) }); setSavedJoinSpin(true); }} style={{ flex: 1, border: 'none', borderRadius: 16, background: '#22c55e', color: '#041414', fontWeight: 900, fontSize: 14, padding: '10px 8px', cursor: 'pointer' }}>Accept ✓</button>
+                <button type="button" onClick={() => { const id = savedInvite.id; setSavedInvite(null); markInviteDone(id); void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); }} style={{ flex: 1, border: '1px solid #ef4444', borderRadius: 16, background: 'rgba(80,20,20,0.45)', color: '#fca5a5', fontWeight: 900, fontSize: 14, padding: '10px 8px', cursor: 'pointer' }}>Decline ✕</button>
               </div>
             </div>
           </div>
