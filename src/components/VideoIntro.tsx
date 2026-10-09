@@ -4,10 +4,10 @@ import { createPortal } from 'react-dom';
 /** The video lives in  /public/intro.mp4 */
 export const INTRO_VIDEO_SRC = '/intro.mp4';
 
-/** false = shown every time a logged-out visitor opens the app. true = only the very first time. */
-const ONLY_FIRST_TIME = false;
-const SEEN_KEY = 'stooorna_intro_seen';
+/** Once a person logs in or creates an account, this flag is set for good and the intro never shows again on this device. */
+const REGISTERED_KEY = 'stooorna_intro_registered';
 const TEAL = '#00BCD4';
+let skippedThisSession = false; // "Log In" pressed: don't bring it back while the app stays open
 
 // Video is 720x1280. Logo ring in the last frame: centre (50%, 49.7%), ring radius ~11.4% of width.
 const VW = 720;
@@ -15,26 +15,31 @@ const VH = 1280;
 const RING = { cx: 360, cy: 636, r: 82 };
 const SHIMMER_FROM = 15.6; // the logo starts to appear here (seconds)
 
-function alreadySeen(): boolean {
-  if (!ONLY_FIRST_TIME) return false;
-  try { return localStorage.getItem(SEEN_KEY) === '1'; } catch { return false; }
+function wasRegistered(): boolean {
+  try { return localStorage.getItem(REGISTERED_KEY) === '1'; } catch { return false; }
 }
-function markSeen() {
-  try { localStorage.setItem(SEEN_KEY, '1'); } catch { /* ignore */ }
+/** Call this after a successful login or sign-up (done automatically when isLoggedIn becomes true). */
+export function markIntroRegistered() {
+  try { localStorage.setItem(REGISTERED_KEY, '1'); } catch { /* ignore */ }
 }
 
 /**
- * Full-screen intro video for LOGGED-OUT visitors only.
- *   <VideoIntro isLoggedIn={!!user} onLogin={() => openAuthPage()} />
- * Plays by itself, no controls. The only button is "Log In" (skips the video and opens the sign-in page).
+ * Full-screen welcome video for visitors who never registered, on top of every page.
+ *   <VideoIntro isLoggedIn={!!user} authLoading={authLoading} onLogin={() => openAuthPage()} />
+ * Mount it once at the top of the app and keep it mounted even when the user is logged in.
+ * - logged out + never registered -> plays full screen, only a "Log In" button (skips the video, opens sign-in)
+ * - the moment the user logs in / creates an account -> it is switched off for good (even after log out)
  */
-export default function VideoIntro({ isLoggedIn, onLogin }: { isLoggedIn: boolean; onLogin: () => void }) {
-  const [dismissed, setDismissed] = useState(alreadySeen);
+export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }: { isLoggedIn: boolean; authLoading?: boolean; onLogin: () => void }) {
+  const [dismissed, setDismissed] = useState(() => skippedThisSession);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [t, setT] = useState(0);
   const [ended, setEnded] = useState(false);
 
-  const visible = !isLoggedIn && !dismissed;
+  // any login / account creation switches the intro off permanently
+  useEffect(() => { if (isLoggedIn) markIntroRegistered(); }, [isLoggedIn]);
+
+  const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered();
 
   // Plays by itself: starts muted (always allowed), then tries to turn the sound on.
   useEffect(() => {
@@ -62,7 +67,7 @@ export default function VideoIntro({ isLoggedIn, onLogin }: { isLoggedIn: boolea
   const onTime = useCallback(() => { const v = videoRef.current; if (v) setT(v.currentTime); }, []);
 
   const login = useCallback(() => {
-    markSeen();
+    skippedThisSession = true;
     setDismissed(true);
     onLogin();
   }, [onLogin]);
@@ -73,7 +78,7 @@ export default function VideoIntro({ isLoggedIn, onLogin }: { isLoggedIn: boolea
   const circ = 2 * Math.PI * RING.r;
 
   return createPortal(
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', zIndex: 2000000, background: '#000', overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', zIndex: 2147483000, background: '#000', overflow: 'hidden' }}>
       {/* stage keeps the video's 9:16 ratio and covers the whole screen */}
       <div
         style={{
@@ -93,7 +98,7 @@ export default function VideoIntro({ isLoggedIn, onLogin }: { isLoggedIn: boolea
           disableRemotePlayback
           onTimeUpdate={onTime}
           onEnded={() => { setEnded(true); setT(999); }}
-          onError={() => { console.error('Intro video failed to load:', INTRO_VIDEO_SRC); setDismissed(true); }}
+          onError={() => { console.error('Intro video failed to load - check that', INTRO_VIDEO_SRC, 'exists in /public'); setDismissed(true); }}
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }}
         />
 
