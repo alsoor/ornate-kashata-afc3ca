@@ -14,6 +14,7 @@ import { mapEarningsAdapter, privateAssetsGuard, registerWithdrawalRoutes } from
 import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
 import { registerAppReleaseRoutes } from "./app-releases-routes.js"; // APP-RELEASES-PATCH
 import { registerTemplatesRoutes } from "./templates-routes.js"; // TEMPLATES-PATCH
+import { registerTemplatesShareRoutes } from "./templates-share-patch.js"; // TEMPLATES-SHARE-PATCH
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
 import { registerSavedRoomRoutes } from "./saved-room-patch.js";
@@ -1231,6 +1232,7 @@ registerTemplatesRoutes(app, {
   getUser: (req) => session.user(req) as any,
   isAdmin: (u) => session.isAdmin(u as any),
 });
+registerTemplatesShareRoutes(app, { dataDir: join(ASSETS_DIR, "_private", "templates-share"), getUser: (req) => session.user(req) as any }); // TEMPLATES-SHARE-PATCH
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
 const needUser = async (req: Request, res: Response) => {

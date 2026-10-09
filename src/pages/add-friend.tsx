@@ -146,6 +146,7 @@ import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoT
 // Templates (الصور/الفيديو بالخارج): مخزن مستقل تماماً عن الشات العام — لا يتأثر بتنظيف الـ24 ساعة
 import { useLiveEmojiBurstSync } from '@/lib/liveEmojiBurst'; // EMOJI-BURST-PATCH
 import '@/lib/templatesShieldPatch'; // TEMPLATES-SHIELD: blocks screenshots / save-image inside Templates
+import { TplShareButton, TplSharedTile, isTplShareText } from '@/lib/templatesSharePatch'; // TEMPLATES-SHARE-PATCH
 import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
 import { StoryModerationBell, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
@@ -14800,6 +14801,14 @@ function SavedMessagesScreen({
     if (!open || !userId) return;
     setItems(withMemOnly(loadSavedMessages(userId)));
   }, [open, userId]);
+  // TEMPLATES-SHARE-PATCH: a shared post that arrives while Saved Messages is open shows at once
+  useEffect(() => {
+    if (!open || !userId) return;
+    const f = () => setItems(withMemOnly(loadSavedMessages(userId)));
+    window.addEventListener('stooorna:tpl-share-arrived', f);
+    return () => window.removeEventListener('stooorna:tpl-share-arrived', f);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, userId]);
 
   useEffect(() => {
     if (!open) return;
@@ -15356,7 +15365,8 @@ function SavedMessagesScreen({
                     direction: 'ltr',
                   }}
                 >
-                  {m.kind === 'text' && (
+                  {m.kind === 'text' && isTplShareText(m.text) && <TplSharedTile text={m.text} />} {/* TEMPLATES-SHARE-PATCH */}
+                  {m.kind === 'text' && !isTplShareText(m.text) && (
                     <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                       {m.senderName ? <img src={m.avatarUrl || ''} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', background: '#123', flexShrink: 0 }} /> : null}
                       {isLiveBigEmoji(m.text || '') ? <span style={{ fontSize: '3.4rem', lineHeight: 1 }}>{stripLiveBigEmojiMark(m.text || '')}</span> : <span><b style={{ fontSize: '0.95rem' }}>{m.senderName ? `@${m.senderName}` : ''}</b>{m.senderName ? ' ' : ''}{m.text}</span>}
@@ -18026,6 +18036,7 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
         <button type="button" aria-label="Favorite" onClick={e => { e.stopPropagation(); onFav(); }} style={sideBtn}>
           <Bookmark size={32} strokeWidth={2} color={fav ? '#facc15' : '#fff'} fill={fav ? '#facc15' : 'rgba(255,255,255,0.92)'} style={{ filter: icoShadow }} />
         </button>
+        <TplShareButton post={c} isVideo={isVideo} /> {/* TEMPLATES-SHARE-PATCH */}
         {canDelete && onDelete ? (
           <LiveMediaDeleteBtn variant="rail" onConfirm={() => { if (rootRef.current) onDelete(rootRef.current); }} />
         ) : null}
@@ -18557,6 +18568,22 @@ export function PublicLiveCommentsPanel({
       window.removeEventListener('storage', onStorage);
       document.removeEventListener('visibilitychange', onVis);
     };
+  }, [myId]);
+  // TEMPLATES-SHARE-PATCH: tapping a shared photo/video in Saved Messages slides the post up inside Templates (X closes it)
+  useEffect(() => {
+    if (!myId) return;
+    const onOpen = async (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (d.handled) return; // another panel instance already took it
+      const postId = String(d.postId || '');
+      if (!postId) return;
+      d.handled = true;
+      try { const list = (await syncTemplates(myId)) as PublicLiveComment[]; tplCommit(list); } catch { /* cached rows */ }
+      setFeedStartId(postId);
+    };
+    window.addEventListener('stooorna:open-shared-post', onOpen);
+    return () => window.removeEventListener('stooorna:open-shared-post', onOpen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myId]);
 
   // يبلّغ بطاقات البث (HomeLiveStack) برفع/إنزال الشات لتصعد معه وتنزل
