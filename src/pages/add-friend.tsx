@@ -15034,6 +15034,9 @@ function SavedMessagesScreen({
   const [emojiBits, setEmojiBits] = useState<Array<{ id: string; em: string; x: number }>>([]);
   const [joinedOwner, setJoinedOwner] = useState('');
   const roomOwner = joinedOwner || userId;
+  // SAVED-REFRESH-PATCH: after a delete the list is rebuilt in place (vault + room) — no page reload, nobody gets kicked, the chat keeps running
+  const pullRef = useRef<null | (() => Promise<void>)>(null);
+  const replaceRef = useRef(false);
   useEffect(() => {
     if (!open || !userId) return;
     const pull = async () => {
@@ -15082,12 +15085,14 @@ function SavedMessagesScreen({
         });
         const goneNow = deletedChecker(userId);
         const extra = extraAll.filter((x: SavedMsg) => !goneNow(x)); // SAVED-ROOM-GUARD-PATCH: deleted rows never come back
-        if (extra.length) setItems(prev => {
+        const replacing = replaceRef.current; replaceRef.current = false; // SAVED-REFRESH-PATCH
+        if (extra.length || replacing) setItems(prevRaw => {
+          const prev = replacing ? withMemOnly(loadSavedMessages(userId)).filter(x => !goneNow(x)) : prevRaw;
           const ids = new Set(prev.map(x => x.id));
           // SAVED-DUP-FIX: my own text is added locally first, then the server echoes it back (with my name + avatar) → was shown twice.
           const meUn = cleanUn(userUsername || userName || '');
           const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id) && !prev.some(y => (!!x.mediaUrl && y.mediaUrl === x.mediaUrl) || (y.senderName === x.senderName && y.text === x.text && y.mediaUrl === x.mediaUrl) || (x.kind === 'location' && y.kind === 'location' && Math.abs((x.lat || 0) - (y.lat || 0)) < 0.00001 && Math.abs((x.lng || 0) - (y.lng || 0)) < 0.00001 && !!meUn && cleanUn(x.senderName) === meUn) || (x.kind === 'text' && y.kind === 'text' && !!meUn && cleanUn(x.senderName) === meUn && (!y.senderName || cleanUn(y.senderName) === meUn) && String(y.text || '') === String(x.text || ''))));
-          if (fresh.length) {
+          if (fresh.length && !replacing) {
             try {
               const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
               const o = ctx.createOscillator();
@@ -15106,9 +15111,10 @@ function SavedMessagesScreen({
         });
       } catch { /* */ }
     };
+    pullRef.current = pull; // SAVED-REFRESH-PATCH
     void pull();
     const id = window.setInterval(pull, 2000);
-    return () => window.clearInterval(id);
+    return () => { window.clearInterval(id); pullRef.current = null; };
   }, [open, userId, userUsername]);
   const inviteUser = async (username: string, name: string) => {
     const friend = (((window as any).__stooornaFriends || []) as any[]).find(f => String(f.username || '').replace(/^@/, '') === username.replace(/^@/, ''));
@@ -15177,6 +15183,8 @@ function SavedMessagesScreen({
     memOnlyRef.current = memOnlyRef.current.filter(x => x.id !== id);
     try { saveSavedMessages(userId, loadSavedMessages(userId).filter(x => x.id !== id)); } catch { /* */ }
     setItems(prev => prev.filter(x => x.id !== id));
+    // SAVED-REFRESH-PATCH: soft refresh right after any delete (message / photo / location / file) — same chat, same room, no reload
+    window.setTimeout(() => { replaceRef.current = true; void pullRef.current?.(); }, 450);
   };
 
   const sendText = () => {
@@ -15752,7 +15760,6 @@ function SavedMessagesScreen({
                 }}
               >
                 {([
-                  { key: 'video', label: 'Video', icon: <Video size={18} strokeWidth={2.2} />, run: () => openPicker(videoRef) },
                   { key: 'photo', label: 'Photo', icon: <ImageIcon size={18} strokeWidth={2.2} />, run: () => openPicker(photoRef) },
                   { key: 'file', label: 'File', icon: <FileText size={18} strokeWidth={2.2} />, run: () => openPicker(fileRefSm) },
                   { key: 'location', label: 'Location', icon: <MapPin size={18} strokeWidth={2.2} />, run: () => addLocation() },
