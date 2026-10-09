@@ -9,6 +9,7 @@
  *     (add-friend.tsx opens the post in the Templates feed: X on top, like / comment / favorite work).
  */
 import { useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { Check, X } from 'lucide-react';
@@ -17,7 +18,7 @@ const MARK = '\u2063TPLSHARE\u2063';
 const SEEN_KEY = 'stooorna_tpl_share_seen_';
 const SAVED_KEY = 'stooorna_saved_messages_v1_';
 
-type SharePayload = { postId: string; kind: 'video' | 'image'; from: string; sid?: string };
+type SharePayload = { postId: string; kind: 'video' | 'image'; from: string; sid?: string; u?: string };
 
 export function isTplShareText(t?: string | null): boolean {
   return !!t && t.startsWith(MARK);
@@ -58,14 +59,23 @@ export function useTplShareUnread(): number {
   }, []);
   return n;
 }
-/** orange blinking fill inside the profile circle (put inside a position:relative circle) */
-export function TplShareDot() {
+/** orange ring around a profile circle with a silver glint running along it (never touches the photo itself).
+ *  Put inside a position:relative box the size of the circle; `style` can override the placement. */
+export function TplShareDot({ style }: { style?: CSSProperties }) {
   const n = useTplShareUnread();
   if (!n) return null;
+  const hole = 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px))';
   return (
     <>
-      <style>{'@keyframes tplShareBlink{0%,100%{opacity:.18}50%{opacity:.9}}'}</style>
-      <span aria-hidden style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#f97316', boxShadow: '0 0 0 2px #f97316', animation: 'tplShareBlink 1s ease-in-out infinite', pointerEvents: 'none' }} />
+      <style>{'@keyframes tplShareSpin{to{transform:rotate(360deg)}}'}</style>
+      <span
+        aria-hidden
+        style={{
+          position: 'absolute', inset: -3, borderRadius: '50%', pointerEvents: 'none',
+          background: 'conic-gradient(#f97316 0deg, #f97316 235deg, #fdba74 275deg, #ffffff 305deg, #d1d5db 325deg, #f97316 360deg)',
+          WebkitMask: hole, mask: hole, animation: 'tplShareSpin 1.3s linear infinite', ...style,
+        }}
+      />
     </>
   );
 }
@@ -92,7 +102,7 @@ async function pullInbox() {
     let list: any[] = [];
     try { list = JSON.parse(localStorage.getItem(SAVED_KEY + uid) || '[]'); if (!Array.isArray(list)) list = []; } catch { list = []; }
     for (const x of fresh) {
-      const payload: SharePayload = { postId: String(x.postId), kind: x.kind === 'image' ? 'image' : 'video', from: String(x.fromUsername || x.fromName || ''), sid: String(x.id) };
+      const payload: SharePayload = { postId: String(x.postId), kind: x.kind === 'image' ? 'image' : 'video', from: String(x.fromUsername || x.fromName || ''), sid: String(x.id), u: String(x.mediaUrl || '') };
       list.push({
         id: `sm-${String(x.id)}`, kind: 'text', text: MARK + JSON.stringify(payload),
         senderName: payload.from || null, avatarUrl: x.fromAvatar || null, mediaUrl: null, createdAt: Number(x.at) || Date.now(),
@@ -173,18 +183,36 @@ export function TplSharedTile({ text }: { text?: string | null }) {
   const p = parseShare(text);
   if (!p) return null;
   const isVid = p.kind === 'video';
+  const open = (e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    markRead(p.sid);
+    window.dispatchEvent(new CustomEvent('stooorna:tpl-open-in-saved', { detail: { postId: p.postId } }));
+  };
+  const box: CSSProperties = {
+    display: 'block', position: 'relative', width: 'min(60vw, 240px)', height: 280, padding: 0, border: 'none', background: '#000',
+    cursor: 'pointer', borderRadius: 10, overflow: 'hidden', WebkitTapHighlightColor: 'transparent',
+  };
+  if (p.u) {
+    return (
+      <button type="button" onClick={open} style={box}>
+        {isVid ? (
+          <video src={p.u} muted playsInline preload="metadata" controls={false} disablePictureInPicture
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: '#000' }} />
+        ) : (
+          <img src={p.u} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+        )}
+        {isVid ? (
+          <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+            <span style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '1.3rem' }}>▶</span>
+          </span>
+        ) : null}
+      </button>
+    );
+  }
+  // older shares without a stored link: plain tile
   return (
-    <button
-      type="button"
-      onClick={e => { e.stopPropagation(); markRead(p.sid); window.dispatchEvent(new CustomEvent('stooorna:open-shared-post', { detail: { postId: p.postId } })); }}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: 168, height: 96, border: 'none', cursor: 'pointer',
-        borderRadius: 12, background: 'linear-gradient(135deg,#06171a,#0b2a30)', color: '#7ee8f5', fontWeight: 800, fontSize: '1rem',
-        WebkitTapHighlightColor: 'transparent',
-      }}
-    >
-      <span style={{ fontSize: '1.4rem', lineHeight: 1 }}>{isVid ? '▶' : '🖼'}</span>
-      <span>{isVid ? 'فيديو' : 'صورة'}</span>
+    <button type="button" onClick={open} style={{ ...box, height: 96, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'linear-gradient(135deg,#06171a,#0b2a30)', color: '#7ee8f5', fontWeight: 800, fontSize: '1rem' }}>
+      <span>{isVid ? '▶' : '🖼'}</span><span>{isVid ? 'فيديو' : 'صورة'}</span>
     </button>
   );
 }
@@ -258,7 +286,7 @@ function TplShareBubble({ post, isVideo, onClose }: { post: { id: string; imageU
   return createPortal(
     <div
       onClick={e => { e.stopPropagation(); if (!done) onClose(); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 11200, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', direction: 'ltr' }}
+      style={{ position: 'fixed', inset: 0, zIndex: tplZ(11200), background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', direction: 'ltr' }}
     >
       <div
         onClick={e => e.stopPropagation()}

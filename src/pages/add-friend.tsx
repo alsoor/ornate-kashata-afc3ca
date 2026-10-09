@@ -14761,6 +14761,108 @@ function SavedMsgDeleteFx({ enabled, onDelete, onShare, children }: {
   );
 }
 
+// TEMPLATES-SHARE-PATCH-3: a shared Templates post opened from Saved Messages = the real Templates feed above the chat
+// (like / comments / favorite / share all work, same stores as Templates). X returns to the chat.
+function TplSharedFeedHost({ postId, myId, myName, myUsername, myAvatar, onClose }: {
+  postId: string; myId: string; myName: string | null; myUsername: string | null; myAvatar: string | null; onClose: () => void;
+}) {
+  const [rows, setRows] = useState<PublicLiveComment[]>(() => loadTemplatesCache() as PublicLiveComment[]);
+  const rowsRef = useRef<PublicLiveComment[]>(rows);
+  rowsRef.current = rows;
+  const [synced, setSynced] = useState(false);
+  const [commentsId, setCommentsId] = useState<string | null>(null);
+  const [favIds, setFavIds] = useState<string[]>(() => loadLiveMediaFavs(myId));
+  const commit = (next: PublicLiveComment[]) => { rowsRef.current = next; saveTemplatesCache(next as any); setRows(next); };
+  useEffect(() => {
+    if (!myId) return;
+    let off = false;
+    const sig = (l: PublicLiveComment[]) => l.map(x => `${x.id}:${x.text}:${x.likes.length}:${x.imageUrl || ''}`).join('|');
+    const run = async () => {
+      try {
+        const list = (await syncTemplates(myId)) as PublicLiveComment[];
+        if (!off) { setRows(prev => (sig(prev) === sig(list) ? prev : list)); setSynced(true); }
+      } catch { if (!off) setSynced(true); }
+    };
+    void run();
+    const iv = window.setInterval(run, 4000);
+    return () => { off = true; window.clearInterval(iv); };
+  }, [myId]);
+  const posts = rows.filter(isLiveMediaPost).slice().reverse();
+  const hasPost = posts.some(p => p.id === postId);
+  const toggleLike = (id: string) => {
+    if (!myId) return;
+    const cur = rowsRef.current.find(r => r.id === id);
+    if (!cur) return;
+    const has = cur.likes.includes(myId);
+    commit(rowsRef.current.map(r => (r.id === id ? { ...r, likes: has ? r.likes.filter(x => x !== myId) : [...r.likes, myId] } : r)));
+    void likeTemplateRow(id, !has);
+  };
+  const toggleFav = (id: string) => {
+    setFavIds(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      saveLiveMediaFavs(myId, next);
+      return next;
+    });
+  };
+  const sendComment = (parentId: string, body: string) => {
+    const t = body.trim().slice(0, 500);
+    if (!myId || !t || liveChatTextIsBlocked(t)) return;
+    const row: PublicLiveComment = {
+      id: `tplc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar,
+      text: `↩${parentId}\u200b${t}`, imageUrl: null, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
+    };
+    markTemplatePending(row.id);
+    commit([...rowsRef.current, row]);
+    void postTemplateRow(row as any);
+  };
+  const nameOf = (c: PublicLiveComment) => (c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم'));
+  const commentCountOf = (id: string) => rows.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
+  const commentsPost = commentsId ? (posts.find(p => p.id === commentsId) || null) : null;
+  if (typeof document === 'undefined') return null;
+  if (!hasPost) {
+    return createPortal(
+      <div style={{ position: 'fixed', inset: 0, zIndex: 120900, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>
+        {synced ? 'المنشور غير متوفر' : '...'}
+        <button type="button" aria-label="Close" onClick={onClose} style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 10px)', right: 12, width: 38, height: 38, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <X size={20} />
+        </button>
+      </div>,
+      document.body,
+    );
+  }
+  return (
+    <>
+      <LiveMediaFeedOverlay
+        posts={posts}
+        startId={postId}
+        favIds={favIds}
+        nameOf={nameOf}
+        likedBy={vc => (myId ? vc.likes.includes(myId) : false)}
+        commentCountOf={commentCountOf}
+        onLike={id => toggleLike(id)}
+        onComments={id => setCommentsId(id)}
+        onFav={id => toggleFav(id)}
+        onOpenProfile={() => {}}
+        onClose={onClose}
+      />
+      {commentsPost ? (
+        <LiveMediaCommentsSheet
+          key={commentsPost.id}
+          post={commentsPost}
+          comments={rows}
+          myId={myId}
+          myAvatar={myAvatar}
+          nameOf={nameOf}
+          onLikeComment={id => toggleLike(id)}
+          onSend={body => sendComment(commentsPost.id, body)}
+          onClose={() => setCommentsId(null)}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function SavedMessagesScreen({
   open,
   onClose,
@@ -14802,6 +14904,13 @@ function SavedMessagesScreen({
     setItems(withMemOnly(loadSavedMessages(userId)));
   }, [open, userId]);
   const tplUnread = useTplShareUnread(); // TEMPLATES-SHARE-PATCH-2
+  const [tplSharedId, setTplSharedId] = useState<string | null>(null); // TEMPLATES-SHARE-PATCH-3
+  useEffect(() => {
+    if (!open) { setTplSharedId(null); return; }
+    const f = (e: Event) => { const id = String((e as CustomEvent).detail?.postId || ''); if (id) setTplSharedId(id); };
+    window.addEventListener('stooorna:tpl-open-in-saved', f);
+    return () => window.removeEventListener('stooorna:tpl-open-in-saved', f);
+  }, [open]);
   // TEMPLATES-SHARE-PATCH: a shared post that arrives while Saved Messages is open shows at once
   useEffect(() => {
     if (!open || !userId) return;
@@ -15146,6 +15255,7 @@ function SavedMessagesScreen({
             overscrollBehavior: 'contain',
           }}
         >
+          {tplSharedId ? <TplSharedFeedHost postId={tplSharedId} myId={userId} myName={userName} myUsername={userUsername} myAvatar={userAvatar} onClose={() => setTplSharedId(null)} /> : null} {/* TEMPLATES-SHARE-PATCH-3 */}
           {/* Top-center pill: profile circle + Saved Messages — tap closes → back to public chat */}
           <div
             style={{
@@ -15169,7 +15279,7 @@ function SavedMessagesScreen({
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: '6px 18px 6px 6px',
+                padding: '6px 18px 6px 6px', position: 'relative', // TEMPLATES-SHARE-PATCH-3
                 borderRadius: 999,
                 border: '2px solid #000000',
                 background: '#000000',
@@ -15178,6 +15288,7 @@ function SavedMessagesScreen({
                 WebkitTapHighlightColor: 'transparent',
               }}
             >
+              <TplShareDot style={{ inset: 'auto', left: 3, top: '50%', marginTop: -20, width: 40, height: 40 }} /> {/* TEMPLATES-SHARE-PATCH-3 */}
               <span
                 onClick={joinedOwner ? (ev) => {
                   ev.stopPropagation();
