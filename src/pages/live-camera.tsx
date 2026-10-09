@@ -2331,7 +2331,7 @@ export default function LiveCameraPage() {
           <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
             style={{
               position: 'absolute',
-              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 62px)', // minimize button moved down a notch so it no longer touches the exit button
               right: 14,
               zIndex: 30,
               width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
@@ -2671,7 +2671,7 @@ export default function LiveCameraPage() {
           <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
             style={{
               position: 'absolute',
-              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 62px)', // minimize button moved down a notch so it no longer touches the exit button
               right: 14,
               zIndex: 30,
               width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
