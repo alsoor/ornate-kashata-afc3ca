@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import VideoIntro from './VideoIntro';
 import {
   fetchAppDownloads, releasesOf, latestDownloadUrl, releaseDownloadUrl, formatReleaseDate, RELEASES_EVENT,
   type AppRelease, type ReleasePlatform, type StoreVisibility,
@@ -179,9 +180,12 @@ export default function GuestHomeExtras({
   signInHalf = 46,
   headerHeight = 36,
   lang: langProp,
+  onLogin,
 }: {
   hamburgerTop?: number; // legacy, no longer used
   storesTop?: number; storeGap?: number; signInHalf?: number; headerHeight?: number; lang?: 'ar' | 'en';
+  /** optional: opens the sign-in page when "Log In" is pressed on the welcome video (by default the video just closes and the page under it is the sign-in page) */
+  onLogin?: () => void;
 }) {
   const [langAuto, setLang] = useState<'ar' | 'en'>(readLang);
   const lang = langProp ?? langAuto;
@@ -226,6 +230,8 @@ export default function GuestHomeExtras({
 
   return (
     <>
+      {/* welcome video for visitors who never registered: on top of every page, logged-out only */}
+      <VideoIntro isLoggedIn={false} onLogin={onLogin ?? (() => {})} />
       {createPortal(
         <>
       {/* store buttons: left = Google Play, right = App Store */}

@@ -39,6 +39,10 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   // any login / account creation switches the intro off permanently
   useEffect(() => { if (isLoggedIn) markIntroRegistered(); }, [isLoggedIn]);
 
+  // GuestHomeExtras only exists while logged out: if it goes away after the visitor pressed "Log In",
+  // they went on to log in / sign up, so the intro is switched off for good.
+  useEffect(() => () => { if (skippedThisSession) markIntroRegistered(); }, []);
+
   const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered();
 
   // Plays by itself: starts muted (always allowed), then tries to turn the sound on.
