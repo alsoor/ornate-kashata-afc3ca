@@ -28,7 +28,7 @@
 
 const TOAST_TEXT = 'You Cannot Take A Screen Shot Of The image 😊';
 const TOAST_MS = 2000;
-const NATIVE_BLOCK = true;
+const NATIVE_BLOCK = false; // old optional privacy-screen plugin (always-secure, hides our popup) - replaced by ScreenShield below
 
 type W = Window & { __stooornaTplShield?: boolean };
 
@@ -130,6 +130,18 @@ html.tpl-shield-away img, html.tpl-shield-away video, html.tpl-shield-away canva
     } catch { /* */ }
   }
 
+  // Native bridge (installed Android app): ScreenShieldPlugin.java. Tells native code when Templates is open so it can
+  // detect/block hardware screenshots (Power + Volume Down, 3-finger swipe, ...) and fire 'stooorna:screenshot-attempt'.
+  function nativeShield(on: boolean) {
+    try {
+      const C = (window as any).Capacitor;
+      if (!C) return;
+      const direct = C.Plugins?.ScreenShield;
+      if (direct?.setActive) { void direct.setActive({ active: on }); return; }
+      if (typeof C.nativePromise === 'function') void C.nativePromise('ScreenShield', 'setActive', { active: on }).catch(() => { /* */ });
+    } catch { /* */ }
+  }
+
   function recompute() {
     const next = galleryOpen || viewerOpen;
     if (next === active) return;
@@ -142,6 +154,7 @@ html.tpl-shield-away img, html.tpl-shield-away video, html.tpl-shield-away canva
         observer.observe(document.body, { childList: true, subtree: true });
       } catch { /* */ }
       nativeBlock(true);
+      nativeShield(true);
     } else {
       root.classList.remove('tpl-shield-on', 'tpl-shield-hide', 'tpl-shield-away');
       if (observer) { observer.disconnect(); observer = null; }
@@ -149,6 +162,7 @@ html.tpl-shield-away img, html.tpl-shield-away video, html.tpl-shield-away canva
       if (toastTimer) { window.clearTimeout(toastTimer); toastTimer = null; }
       if (toastEl) { try { toastEl.remove(); } catch { /* */ } toastEl = null; }
       nativeBlock(false);
+      nativeShield(false);
     }
   }
 
