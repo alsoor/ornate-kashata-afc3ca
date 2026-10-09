@@ -165,10 +165,10 @@ export function registerAdsStoreRoutes(app: Express) {
       const [gone] = (await pool.query("SELECT id FROM stooorna_ads_deleted WHERE id = ?", [id])) as any;
       if ((gone as any[]).length) return res.json({ ok: true, deleted: true }); // انحذف قبل؛ لا يرجع
 
-      const [ex] = (await pool.query("SELECT user_id, ready FROM stooorna_ads WHERE id = ?", [id])) as any;
+      const [ex] = (await pool.query("SELECT user_id, has_media FROM stooorna_ads WHERE id = ?", [id])) as any;
       if ((ex as any[]).length) {
         if (String(ex[0].user_id) !== userId) return res.status(403).json({ ok: false, error: "not_owner" });
-        return res.json({ ok: true, exists: true, ready: !!ex[0].ready }); // لا نكتب فوق (نسخ قديمة قد ترسل بيانات قديمة)
+        return res.json({ ok: true, exists: true, needsMedia: !ex[0].has_media }); // لا نكتب فوق (نسخ قديمة قد ترسل بيانات قديمة)
       }
 
       // ميديا قديمة داخل الـ JSON (data URL) → نخزنها كملف
@@ -186,8 +186,8 @@ export function registerAdsStoreRoutes(app: Express) {
       const now = Date.now();
       const created = new Date(ad.createdAt || now).getTime() || now;
       await pool.query(
-        "INSERT IGNORE INTO stooorna_ads (id, user_id, meta, has_media, ready, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?)",
-        [id, userId, metaStr, hasMedia ? 0 : 1, created, now],
+        "INSERT IGNORE INTO stooorna_ads (id, user_id, meta, has_media, ready, created_at, updated_at) VALUES (?, ?, ?, 0, 1, ?, ?)", // ready=1 فوراً: الإعلان يظهر للجميع لحظة النشر والميديا تلحقه
+        [id, userId, metaStr, created, now],
       );
       if (inlineData) {
         const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(inlineData);
@@ -196,7 +196,7 @@ export function registerAdsStoreRoutes(app: Express) {
           if (buf.length) await storeMedia(id, buf, m[1] || "application/octet-stream");
         }
       }
-      res.json({ ok: true, ready: !hasMedia || !!inlineData });
+      res.json({ ok: true, needsMedia: hasMedia && !inlineData });
     } catch (e) {
       console.error("[ads] publish failed", e);
       res.status(500).json({ ok: false, error: "ads_publish_failed" });
@@ -204,7 +204,7 @@ export function registerAdsStoreRoutes(app: Express) {
   });
 
   // ── رفع ميديا الإعلان (ملف خام) ──
-  app.put("/api/ads/:id/media", express.raw({ type: () => true, limit: "60mb" }), async (req: Request, res: Response) => {
+  app.put("/api/ads/:id/media", express.raw({ type: () => true, limit: "150mb" }), async (req: Request, res: Response) => {
     try {
       await ensure();
       const id = cleanId(req.params.id);

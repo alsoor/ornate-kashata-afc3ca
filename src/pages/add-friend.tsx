@@ -8094,17 +8094,17 @@ async function pushAdToServer(ad: any) {
     else if (ad.mediaType) data = (await stooornaAdMediaGet(id)) || '';
     const meta = { ...ad, mediaUrl: null, pdfUrl: null };
     const r = await fetch('/api/ads', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad: meta, hasMedia: !!data }) });
-    if (!r.ok) return;
+    if (!r.ok) { console.warn('[Ads] publish to server failed', r.status); return; }
     const j = await r.json().catch(() => ({} as any));
     if (j?.deleted) return; // انحذف قبل — لا نرجعه
-    if (data && j?.ready === false) {
+    if (data && j?.needsMedia !== false) {
       const blob = adDataUrlToBlob(data);
       const up = await fetch(`/api/ads/${encodeURIComponent(id)}/media?userId=${encodeURIComponent(String(ad.userId || ''))}`, {
         method: 'PUT', credentials: 'include',
         headers: { 'Content-Type': blob.type || String(ad.mediaMime || 'application/octet-stream') },
         body: blob,
       });
-      if (!up.ok) return; // نعيد المحاولة في المزامنة القادمة
+      if (!up.ok) { console.warn('[Ads] media upload failed', up.status); return; } // نعيد المحاولة في المزامنة القادمة
     }
     markAdSynced(id);
     adsLastVer = '';
@@ -20984,6 +20984,7 @@ function HomeAdCard({ ad, lifted, onOpen, onDelete }: { ad: any; lifted: boolean
     void stooornaAdMediaGet(String(ad.id)).then(m => { if (!dead && m) setThumb(m); }).catch(() => {});
     return () => { dead = true; };
   }, [ad.id, isPdf, thumb]);
+  useEffect(() => { if (!isPdf && typeof ad.mediaUrl === 'string' && ad.mediaUrl && ad.mediaUrl !== thumb) setThumb(ad.mediaUrl); }, [ad.mediaUrl, isPdf]);
   const uname = String(ad.authorUsername || 'business').replace(/^@/, '');
   const typeLabel = ad.mediaType === 'video' ? 'Video' : isPdf ? 'PDF' : 'Photo';
   const arrowStyle: React.CSSProperties = { position: 'absolute', top: '50%', marginTop: -13, width: 22, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#eab308', filter: 'drop-shadow(0 0 5px rgba(234,179,8,0.85))', pointerEvents: 'none', zIndex: 3, visibility: bursting ? 'hidden' : 'visible' };
