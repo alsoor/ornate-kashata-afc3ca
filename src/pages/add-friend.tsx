@@ -20445,6 +20445,7 @@ export function PublicLiveCommentsPanel({
             }}
             style={{
               flexShrink: 0, padding: 0, border: 'none', background: 'transparent', position: 'relative',
+              width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', // TEMPLATES-SHARE-PATCH-6 (ring centered on avatar)
               cursor: myId ? 'pointer' : 'default', borderRadius: '50%',
               WebkitTapHighlightColor: 'transparent',
             }}
@@ -20455,7 +20456,7 @@ export function PublicLiveCommentsPanel({
               size={34}
               style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }}
             />
-            <TplShareDot /> {/* TEMPLATES-SHARE-PATCH-2 */}
+            <TplShareDot style={{ inset: 'auto', left: '50%', top: '50%', width: 40, height: 40, marginLeft: -20, marginTop: -20 }} /> {/* TEMPLATES-SHARE-PATCH-2 / 6 */}
           </button>
           <div style={{
             flex: '1 1 0%',
