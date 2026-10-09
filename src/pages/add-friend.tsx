@@ -14751,7 +14751,7 @@ function SavedMessagesScreen({
         });
         if (extra.length) setItems(prev => {
           const ids = new Set(prev.map(x => x.id));
-          const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id) && !prev.some(y => y.senderName === x.senderName && y.text === x.text && y.mediaUrl === x.mediaUrl));
+          const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id) && !prev.some(y => (!!x.mediaUrl && y.mediaUrl === x.mediaUrl) || (y.senderName === x.senderName && y.text === x.text && y.mediaUrl === x.mediaUrl)));
           if (fresh.length) {
             try {
               const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -14808,8 +14808,18 @@ function SavedMessagesScreen({
       id: `sm-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       createdAt: Date.now(),
     };
-    const shared = partial.kind === 'image' || partial.kind === 'video';
-    if (!shared) persist([...loadSavedMessages(userId), row]);
+    // FIX: photos/videos used to be skipped here and only appeared after the server echoed them back (/api/saved-room pull),
+    // which never happens when the room does not exist yet or the request is slow → upload hit 100% but nothing showed.
+    // Now my own media row is added immediately (persisted only in my own vault, not when I'm inside a friend's room).
+    // The pull below de-dupes by mediaUrl, so there is no double bubble when the server echoes it back.
+    const inFriendRoom = !!joinedOwner && String(joinedOwner) !== String(userId);
+    const isMedia = partial.kind === 'image' || partial.kind === 'video';
+    // blob: URLs die on reload, so they stay in memory only (never written to localStorage)
+    if (isMedia && (inFriendRoom || String(partial.mediaUrl || '').startsWith('blob:'))) {
+      setItems(prev => [...prev, { ...row, senderName: userUsername || userName || null }].slice(-500));
+    } else {
+      persist([...loadSavedMessages(userId), row]);
+    }
     if (roomOwner && (partial.text || partial.mediaUrl)) {
       void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? `img:${partial.mediaUrl || ''}` : partial.kind === 'video' ? `vid:${partial.mediaUrl || ''}` : (partial.text || '') }) });
     }
