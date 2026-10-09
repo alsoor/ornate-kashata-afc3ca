@@ -179,27 +179,31 @@ function TplShareToast() {
 }
 
 /* ───────────── receiver: tile inside the Saved Messages chat ───────────── */
-export function TplSharedTile({ text }: { text?: string | null }) {
+export function TplSharedTile({ text, lookup }: { text?: string | null; lookup?: (postId: string) => string | null }) {
   const p = parseShare(text);
+  const [bad, setBad] = useState(false);
   if (!p) return null;
   const isVid = p.kind === 'video';
+  // the live Templates / chat store wins over the stored link (always the real file); the stored link is the fallback
+  let u = '';
+  try { u = (lookup ? lookup(p.postId) : null) || p.u || ''; } catch { u = p.u || ''; }
   const open = (e: { stopPropagation: () => void }) => {
     e.stopPropagation();
     markRead(p.sid);
-    window.dispatchEvent(new CustomEvent('stooorna:tpl-open-in-saved', { detail: { postId: p.postId } }));
+    window.dispatchEvent(new CustomEvent('stooorna:tpl-open-in-saved', { detail: { postId: p.postId, u, kind: p.kind, from: p.from } }));
   };
   const box: CSSProperties = {
     display: 'block', position: 'relative', width: 'min(60vw, 240px)', height: 280, padding: 0, border: 'none', background: '#000',
     cursor: 'pointer', borderRadius: 10, overflow: 'hidden', WebkitTapHighlightColor: 'transparent',
   };
-  if (p.u) {
+  if (u && !bad) {
     return (
       <button type="button" onClick={open} style={box}>
         {isVid ? (
-          <video src={p.u} muted playsInline preload="metadata" controls={false} disablePictureInPicture
+          <video src={u} muted playsInline preload="metadata" controls={false} disablePictureInPicture onError={() => setBad(true)}
             style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: '#000' }} />
         ) : (
-          <img src={p.u} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
+          <img src={u} alt="" draggable={false} onError={() => setBad(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
         )}
         {isVid ? (
           <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
@@ -209,7 +213,7 @@ export function TplSharedTile({ text }: { text?: string | null }) {
       </button>
     );
   }
-  // older shares without a stored link: plain tile
+  // no usable thumbnail: plain tile (still opens the post)
   return (
     <button type="button" onClick={open} style={{ ...box, height: 96, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'linear-gradient(135deg,#06171a,#0b2a30)', color: '#7ee8f5', fontWeight: 800, fontSize: '1rem' }}>
       <span>{isVid ? '▶' : '🖼'}</span><span>{isVid ? 'فيديو' : 'صورة'}</span>

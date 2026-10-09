@@ -14761,18 +14761,31 @@ function SavedMsgDeleteFx({ enabled, onDelete, onShare, children }: {
   );
 }
 
-// TEMPLATES-SHARE-PATCH-3: a shared Templates post opened from Saved Messages = the real Templates feed above the chat
-// (like / comments / favorite / share all work, same stores as Templates). X returns to the chat.
-function TplSharedFeedHost({ postId, myId, myName, myUsername, myAvatar, onClose }: {
-  postId: string; myId: string; myName: string | null; myUsername: string | null; myAvatar: string | null; onClose: () => void;
+// TEMPLATES-SHARE-PATCH-4: find a shared post's file in Templates or in the live chat (used by the Saved Messages tile)
+function tplLookupMediaUrl(postId: string): string | null {
+  try {
+    const r = (loadTemplatesCache() as PublicLiveComment[]).find(x => x.id === postId) || loadPublicLiveComments().find(x => x.id === postId);
+    return r && r.imageUrl ? String(r.imageUrl) : null;
+  } catch { return null; }
+}
+
+// TEMPLATES-SHARE-PATCH-4: a shared post opened from Saved Messages = the real Templates feed above the chat
+// (like / comments / favorite / share work, same stores as Templates; posts from Templates AND the live chat). X returns to the chat.
+function TplSharedFeedHost({ postId, fallback, myId, myName, myUsername, myAvatar, onClose }: {
+  postId: string; fallback?: { u?: string; kind?: string; from?: string } | null;
+  myId: string; myName: string | null; myUsername: string | null; myAvatar: string | null; onClose: () => void;
 }) {
   const [rows, setRows] = useState<PublicLiveComment[]>(() => loadTemplatesCache() as PublicLiveComment[]);
+  const [chatRows, setChatRows] = useState<PublicLiveComment[]>(() => loadPublicLiveComments());
   const rowsRef = useRef<PublicLiveComment[]>(rows);
   rowsRef.current = rows;
+  const chatRef = useRef<PublicLiveComment[]>(chatRows);
+  chatRef.current = chatRows;
   const [synced, setSynced] = useState(false);
   const [commentsId, setCommentsId] = useState<string | null>(null);
   const [favIds, setFavIds] = useState<string[]>(() => loadLiveMediaFavs(myId));
   const commit = (next: PublicLiveComment[]) => { rowsRef.current = next; saveTemplatesCache(next as any); setRows(next); };
+  const commitChat = (next: PublicLiveComment[]) => { chatRef.current = next; setChatRows(next); };
   useEffect(() => {
     if (!myId) return;
     let off = false;
@@ -14780,22 +14793,55 @@ function TplSharedFeedHost({ postId, myId, myName, myUsername, myAvatar, onClose
     const run = async () => {
       try {
         const list = (await syncTemplates(myId)) as PublicLiveComment[];
-        if (!off) { setRows(prev => (sig(prev) === sig(list) ? prev : list)); setSynced(true); }
-      } catch { if (!off) setSynced(true); }
+        if (!off) setRows(prev => (sig(prev) === sig(list) ? prev : list));
+      } catch { /* cached rows */ }
+      try {
+        const c = await fetchLiveChatFromServer();
+        if (!off && c) setChatRows(prev => (sig(prev) === sig(c) ? prev : c));
+      } catch { /* cached rows */ }
+      if (!off) setSynced(true);
     };
     void run();
-    const iv = window.setInterval(run, 4000);
+    const iv = window.setInterval(run, 5000);
     return () => { off = true; window.clearInterval(iv); };
   }, [myId]);
-  const posts = rows.filter(isLiveMediaPost).slice().reverse();
+  const tplIds = new Set(rows.map(r => r.id));
+  const all = (() => {
+    const m = new Map<string, PublicLiveComment>();
+    for (const c of chatRows) m.set(c.id, c);
+    for (const r of rows) m.set(r.id, r);
+    return [...m.values()].sort((a, b) => a.createdAt - b.createdAt);
+  })();
+  let posts = all.filter(isLiveMediaPost).slice().reverse();
+  if (!posts.some(p => p.id === postId) && fallback?.u) {
+    // not in any store (yet / anymore): show the shared file itself so the post still opens
+    const from = String(fallback.from || '').replace(/^@/, '');
+    posts = [{
+      id: postId, userId: '', name: from || null, username: from || null, avatarUrl: null,
+      text: fallback.kind === 'image' ? LIVE_PHOTO_CAPTION : LIVE_VIDEO_CAPTION,
+      imageUrl: fallback.u, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
+    } as PublicLiveComment, ...posts];
+  }
   const hasPost = posts.some(p => p.id === postId);
   const toggleLike = (id: string) => {
     if (!myId) return;
-    const cur = rowsRef.current.find(r => r.id === id);
+    if (tplIds.has(id)) {
+      const cur = rowsRef.current.find(r => r.id === id);
+      if (!cur) return;
+      const has = cur.likes.includes(myId);
+      commit(rowsRef.current.map(r => (r.id === id ? { ...r, likes: has ? r.likes.filter(x => x !== myId) : [...r.likes, myId] } : r)));
+      void likeTemplateRow(id, !has);
+      return;
+    }
+    const cur = chatRef.current.find(r => r.id === id);
     if (!cur) return;
     const has = cur.likes.includes(myId);
-    commit(rowsRef.current.map(r => (r.id === id ? { ...r, likes: has ? r.likes.filter(x => x !== myId) : [...r.likes, myId] } : r)));
-    void likeTemplateRow(id, !has);
+    const likes = has ? cur.likes.filter(x => x !== myId) : [...cur.likes, myId];
+    commitChat(chatRef.current.map(r => (r.id === id ? { ...r, likes } : r)));
+    void fetch('/api/live-chat', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'like', likeId: id, commentId: id, id, userId: myId, room: LIVE_CHAT_ROOM, roomId: LIVE_CHAT_ROOM, likes, text: cur.text }),
+    }).catch(() => { /* offline */ });
   };
   const toggleFav = (id: string) => {
     setFavIds(prev => {
@@ -14807,17 +14853,23 @@ function TplSharedFeedHost({ postId, myId, myName, myUsername, myAvatar, onClose
   const sendComment = (parentId: string, body: string) => {
     const t = body.trim().slice(0, 500);
     if (!myId || !t || liveChatTextIsBlocked(t)) return;
+    const inTpl = tplIds.has(parentId);
     const row: PublicLiveComment = {
-      id: `tplc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `${inTpl ? 'tplc' : 'c'}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar,
       text: `↩${parentId}\u200b${t}`, imageUrl: null, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
     };
-    markTemplatePending(row.id);
-    commit([...rowsRef.current, row]);
-    void postTemplateRow(row as any);
+    if (inTpl) {
+      markTemplatePending(row.id);
+      commit([...rowsRef.current, row]);
+      void postTemplateRow(row as any);
+    } else {
+      commitChat([...chatRef.current, row]);
+      void postLiveChatToServer(row);
+    }
   };
   const nameOf = (c: PublicLiveComment) => (c.username ? `@${String(c.username).replace(/^@/, '')}` : (c.name || 'مستخدم'));
-  const commentCountOf = (id: string) => rows.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
+  const commentCountOf = (id: string) => all.reduce((n, x) => (parseMediaComment(x.text)?.parentId === id ? n + 1 : n), 0);
   const commentsPost = commentsId ? (posts.find(p => p.id === commentsId) || null) : null;
   if (typeof document === 'undefined') return null;
   if (!hasPost) {
@@ -14850,7 +14902,7 @@ function TplSharedFeedHost({ postId, myId, myName, myUsername, myAvatar, onClose
         <LiveMediaCommentsSheet
           key={commentsPost.id}
           post={commentsPost}
-          comments={rows}
+          comments={all}
           myId={myId}
           myAvatar={myAvatar}
           nameOf={nameOf}
@@ -14904,10 +14956,10 @@ function SavedMessagesScreen({
     setItems(withMemOnly(loadSavedMessages(userId)));
   }, [open, userId]);
   const tplUnread = useTplShareUnread(); // TEMPLATES-SHARE-PATCH-2
-  const [tplSharedId, setTplSharedId] = useState<string | null>(null); // TEMPLATES-SHARE-PATCH-3
+  const [tplSharedId, setTplSharedId] = useState<{ postId: string; u?: string; kind?: string; from?: string } | null>(null); // TEMPLATES-SHARE-PATCH-3
   useEffect(() => {
     if (!open) { setTplSharedId(null); return; }
-    const f = (e: Event) => { const id = String((e as CustomEvent).detail?.postId || ''); if (id) setTplSharedId(id); };
+    const f = (e: Event) => { const d = (e as CustomEvent).detail || {}; const id = String(d.postId || ''); if (id) setTplSharedId({ postId: id, u: d.u ? String(d.u) : undefined, kind: d.kind, from: d.from }); };
     window.addEventListener('stooorna:tpl-open-in-saved', f);
     return () => window.removeEventListener('stooorna:tpl-open-in-saved', f);
   }, [open]);
@@ -15255,7 +15307,7 @@ function SavedMessagesScreen({
             overscrollBehavior: 'contain',
           }}
         >
-          {tplSharedId ? <TplSharedFeedHost postId={tplSharedId} myId={userId} myName={userName} myUsername={userUsername} myAvatar={userAvatar} onClose={() => setTplSharedId(null)} /> : null} {/* TEMPLATES-SHARE-PATCH-3 */}
+          {tplSharedId ? <TplSharedFeedHost postId={tplSharedId.postId} fallback={tplSharedId} myId={userId} myName={userName} myUsername={userUsername} myAvatar={userAvatar} onClose={() => setTplSharedId(null)} /> : null} {/* TEMPLATES-SHARE-PATCH-3 */}
           {/* Top-center pill: profile circle + Saved Messages — tap closes → back to public chat */}
           <div
             style={{
@@ -15477,7 +15529,7 @@ function SavedMessagesScreen({
                     direction: 'ltr',
                   }}
                 >
-                  {m.kind === 'text' && isTplShareText(m.text) && <TplSharedTile text={m.text} />} {/* TEMPLATES-SHARE-PATCH */}
+                  {m.kind === 'text' && isTplShareText(m.text) && <TplSharedTile text={m.text} lookup={tplLookupMediaUrl} />} {/* TEMPLATES-SHARE-PATCH */}
                   {m.kind === 'text' && !isTplShareText(m.text) && (
                     <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: 1.45, whiteSpace: 'pre-wrap', color: '#111', display: 'flex', gap: 6, alignItems: 'flex-start' }}>
                       {m.senderName ? <img src={m.avatarUrl || ''} alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover', background: '#123', flexShrink: 0 }} /> : null}

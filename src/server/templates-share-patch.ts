@@ -55,7 +55,7 @@ export function registerTemplatesShareRoutes(
       id: `tshare_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       toUserId, fromUserId: me,
       fromName: clip(u.name, 80), fromUsername: clip(u.username, 60), fromAvatar: clip(u.avatarUrl || u.image, 500),
-      postId, kind, mediaUrl: clip(b.mediaUrl, 800), at: Date.now(),
+      postId, kind, mediaUrl: clip(b.mediaUrl, 3000), at: Date.now(),
     };
     rows.push(row);
     persist();
