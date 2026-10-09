@@ -18310,6 +18310,19 @@ export function PublicLiveCommentsPanel({
   // stacked public media feed: which post's comments sheet is open + my favorites (kept on this device)
   const [commentsMediaId, setCommentsMediaId] = useState<string | null>(null);
   const [feedStartId, setFeedStartId] = useState<string | null>(null); // big stacked feed opened from the small grid
+  // Templates photo/video viewer open (big stacked feed or single viewer) → tell the page to hide the bottom dock bar
+  const tplMediaViewing = !!feedStartId || !!openMediaId;
+  const tplMediaWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (!tplMediaViewing && !tplMediaWasOpenRef.current) return; // don't fire "closed" on first mount (other panel instances)
+    tplMediaWasOpenRef.current = tplMediaViewing;
+    try { window.dispatchEvent(new CustomEvent('stooorna:tpl-media-viewer', { detail: { open: tplMediaViewing } })); } catch { /* */ }
+  }, [tplMediaViewing]);
+  useEffect(() => () => {
+    if (tplMediaWasOpenRef.current) {
+      try { window.dispatchEvent(new CustomEvent('stooorna:tpl-media-viewer', { detail: { open: false } })); } catch { /* */ }
+    }
+  }, []);
   const [mediaFavIds, setMediaFavIds] = useState<string[]>(() => loadLiveMediaFavs(String(user?.id || '')));
   useEffect(() => { setMediaFavIds(loadLiveMediaFavs(myId)); }, [myId]);
   const toggleMediaFav = (id: string) => {
@@ -24826,6 +24839,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [liveChatBusy, setLiveChatBusy] = useState(false);
   // الشات العام مرفوع/مفتوح → نخفي صف الأيقونات (Friends / Call / Live / Settings)، وترجع عند الخروج منه.
   const [chatLifted, setChatLifted] = useState(false);
+  // Templates photo/video viewer open → the bottom dock bar (Call / LIVE / Templates / Settings) is hidden completely
+  const [tplMediaOpen, setTplMediaOpen] = useState(false);
+  useEffect(() => {
+    const onViewer = (e: Event) => setTplMediaOpen(!!(e as CustomEvent).detail?.open);
+    window.addEventListener('stooorna:tpl-media-viewer', onViewer as EventListener);
+    return () => window.removeEventListener('stooorna:tpl-media-viewer', onViewer as EventListener);
+  }, []);
   useEffect(() => {
     const onSavedClosed = () => {
       // Closing Saved Messages must land on public live chat, not blank/header-only home.
@@ -24845,7 +24865,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Settings bubble open → the bottom bar (white strip + Call/Chat/LIVE/Templates/Settings) is hidden completely.
   // Boolean selector: this component only re-renders when Settings opens/closes, not on every dock tap.
   const dockSettingsOpen = useSyncExternalStore(dockSubscribe, () => dockGet()?.kind === 'settings', () => false);
-  const bottomHeaderShown = !guestMode && !chatLifted && !isFriendManagement && !visitorProfileOpen && !dockSettingsOpen;
+  const bottomHeaderShown = !guestMode && !chatLifted && !isFriendManagement && !visitorProfileOpen && !dockSettingsOpen && !tplMediaOpen;
   useEffect(() => {
     try {
       document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(52px + env(safe-area-inset-bottom, 0px))' : '0px');
@@ -27901,7 +27921,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
         )}
-        {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && (
+        {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && !tplMediaOpen && (
           <BottomHeaderPortal enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
             position: 'fixed', left: 0, right: 0, bottom: 0,
