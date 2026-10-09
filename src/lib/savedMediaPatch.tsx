@@ -81,6 +81,7 @@ export async function prepareSavedMedia(
   file: File,
   kind: SavedMediaKind,
   uploader?: (f: File) => Promise<string | null | undefined>,
+  signal?: AbortSignal,
 ): Promise<string> {
   const up = kind === 'image' ? await shrinkPhoto(file) : file;
   const isPermanent = (u: unknown): u is string => typeof u === 'string' && !!u && !/^(blob:|data:)/i.test(u);
@@ -101,15 +102,16 @@ export async function prepareSavedMedia(
   const attempts: Array<() => Promise<Response>> = [
     // 2) raw body (what /api/posts/media really parses)
     () => fetch('/api/posts/media', {
-      method: 'POST', credentials: 'include',
+      method: 'POST', credentials: 'include', signal,
       headers: { 'Content-Type': mime, 'X-File-Ext': `.${ext}`, 'X-Media-Type': kind },
       body: up,
     }),
     // 3) multipart fallbacks
-    () => { const fd = new FormData(); fd.append('file', up, name); fd.append('media', up, name); fd.append('type', kind); fd.append('mediaType', kind); return fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd }); },
-    () => { const fd = new FormData(); fd.append('file', up, name); fd.append('type', kind); return fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd }); },
+    () => { const fd = new FormData(); fd.append('file', up, name); fd.append('media', up, name); fd.append('type', kind); fd.append('mediaType', kind); return fetch('/api/posts/media', { method: 'POST', credentials: 'include', signal, body: fd }); },
+    () => { const fd = new FormData(); fd.append('file', up, name); fd.append('type', kind); return fetch('/api/files/upload', { method: 'POST', credentials: 'include', signal, body: fd }); },
   ];
   for (const run of attempts) {
+    if (signal?.aborted) return '';
     const ctrl = new AbortController();
     const timer = window.setTimeout(() => ctrl.abort(), ms);
     try {
@@ -127,6 +129,38 @@ export async function prepareSavedMedia(
     }
   }
   return '';
+}
+
+/** Hard limit for the whole preparation (shrink + upload). After `maxMs` everything is cut so the user can simply try again. */
+export async function prepareSavedMediaWithin(
+  file: File,
+  kind: SavedMediaKind,
+  uploader?: (f: File) => Promise<string | null | undefined>,
+  maxMs = 40000,
+): Promise<{ url: string; timedOut: boolean }> {
+  const ctrl = new AbortController();
+  let timer = 0;
+  const timeout = new Promise<'timeout'>(res => { timer = window.setTimeout(() => res('timeout'), maxMs); });
+  const work = prepareSavedMedia(file, kind, uploader, ctrl.signal).catch(() => '');
+  const r = await Promise.race([work, timeout]);
+  window.clearTimeout(timer);
+  if (r === 'timeout') { ctrl.abort(); return { url: '', timedOut: true }; }
+  return { url: String(r || ''), timedOut: false };
+}
+
+/* ───────────── location (same picker as before — this only lets it travel through the room and show in the chat) ───────────── */
+const LOC = '\u2063SMLOC\u2063';
+export function encodeSavedLocation(lat: number, lng: number, label: string): string {
+  return `${LOC}${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}|${String(label || '').slice(0, 300)}`;
+}
+export function decodeSavedLocation(raw?: unknown): { lat: number; lng: number; label: string } | null {
+  const s = String(raw ?? '');
+  if (!s.startsWith(LOC)) return null;
+  const m = s.slice(LOC.length).match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)\|([\s\S]*)$/);
+  if (!m) return null;
+  const lat = Number(m[1]); const lng = Number(m[2]);
+  if (!isFinite(lat) || !isFinite(lng)) return null;
+  return { lat, lng, label: m[3] };
 }
 
 /** "جاري المعاينة…" shown inside the writing rectangle while the photo / video is being prepared (put it in the position:relative rectangle) */

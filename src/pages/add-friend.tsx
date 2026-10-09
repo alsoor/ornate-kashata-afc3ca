@@ -147,7 +147,7 @@ import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoT
 import { useLiveEmojiBurstSync } from '@/lib/liveEmojiBurst'; // EMOJI-BURST-PATCH
 import '@/lib/templatesShieldPatch'; // TEMPLATES-SHIELD: blocks screenshots / save-image inside Templates
 import { TplShareButton, TplSharedTile, isTplShareText, TplShareDot, useTplShareUnread, tplZ, playTplMessageTone } from '@/lib/templatesSharePatch'; // TEMPLATES-SHARE-PATCH TEMPLATES-SHARE-PATCH-2 TEMPLATES-SHARE-PATCH-5
-import { prepareSavedMedia, encodeSavedMediaLink, decodeSavedMediaLink, SavedPreviewLabel } from '@/lib/savedMediaPatch'; // SAVED-MEDIA-PATCH
+import { prepareSavedMedia, prepareSavedMediaWithin, encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeSavedMediaLink, SavedPreviewLabel } from '@/lib/savedMediaPatch'; // SAVED-MEDIA-PATCH
 import { markDeleted, deletedChecker, encodeDeleteCmd, decodeDeleteCmd, rawMediaUrl, isInviteDone, markInviteDone, noteKick, inviteIsKickEcho } from '@/lib/savedRoomGuardPatch'; // SAVED-ROOM-GUARD-PATCH
 import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
 import { StoryModerationBell, StoryModerationWatcher } from '@/components/StoryModeration';
@@ -15076,6 +15076,8 @@ function SavedMessagesScreen({
           const isImg = raw.startsWith('img:') || dl?.kind === 'image';
           const isVid = raw.startsWith('vid:') || dl?.kind === 'video';
           const url = dl ? dl.url : (isImg || isVid ? raw.slice(4) : '');
+          const loc = decodeSavedLocation(raw); // SAVED-MEDIA-PATCH: shared location → map bubble (same as the one I send)
+          if (loc) return { id: String(m.id), kind: 'location' as SavedMsg['kind'], text: loc.label, lat: loc.lat, lng: loc.lng, mediaUrl: null, senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() };
           return { id: String(m.id), kind: (isVid ? 'video' : isImg ? 'image' : 'text') as SavedMsg['kind'], text: isImg || isVid ? '' : raw, mediaUrl: url || null, senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() };
         });
         const goneNow = deletedChecker(userId);
@@ -15084,7 +15086,7 @@ function SavedMessagesScreen({
           const ids = new Set(prev.map(x => x.id));
           // SAVED-DUP-FIX: my own text is added locally first, then the server echoes it back (with my name + avatar) → was shown twice.
           const meUn = cleanUn(userUsername || userName || '');
-          const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id) && !prev.some(y => (!!x.mediaUrl && y.mediaUrl === x.mediaUrl) || (y.senderName === x.senderName && y.text === x.text && y.mediaUrl === x.mediaUrl) || (x.kind === 'text' && y.kind === 'text' && !!meUn && cleanUn(x.senderName) === meUn && (!y.senderName || cleanUn(y.senderName) === meUn) && String(y.text || '') === String(x.text || ''))));
+          const fresh = extra.filter((x: SavedMsg) => !ids.has(x.id) && !prev.some(y => (!!x.mediaUrl && y.mediaUrl === x.mediaUrl) || (y.senderName === x.senderName && y.text === x.text && y.mediaUrl === x.mediaUrl) || (x.kind === 'location' && y.kind === 'location' && Math.abs((x.lat || 0) - (y.lat || 0)) < 0.00001 && Math.abs((x.lng || 0) - (y.lng || 0)) < 0.00001 && !!meUn && cleanUn(x.senderName) === meUn) || (x.kind === 'text' && y.kind === 'text' && !!meUn && cleanUn(x.senderName) === meUn && (!y.senderName || cleanUn(y.senderName) === meUn) && String(y.text || '') === String(x.text || ''))));
           if (fresh.length) {
             try {
               const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -15149,7 +15151,7 @@ function SavedMessagesScreen({
     const inFriendRoom = !!joinedOwner && String(joinedOwner) !== String(userId);
     const isMedia = partial.kind === 'image' || partial.kind === 'video';
     // blob: URLs die on reload, so they stay in memory only (never written to localStorage)
-    if ((isMedia && (inFriendRoom || String(partial.mediaUrl || '').startsWith('blob:'))) || (inFriendRoom && partial.kind === 'text')) { // SAVED-DUP-FIX
+    if ((isMedia && (inFriendRoom || String(partial.mediaUrl || '').startsWith('blob:'))) || (inFriendRoom && (partial.kind === 'text' || partial.kind === 'location'))) { // SAVED-DUP-FIX
       const memRow: SavedMsg = { ...row, senderName: userUsername || userName || null, avatarUrl: userAvatar || null };
       memOnlyRef.current = [...memOnlyRef.current, memRow].slice(-100);
       setItems(prev => [...prev, memRow].slice(-500));
@@ -15157,7 +15159,7 @@ function SavedMessagesScreen({
       persist([...loadSavedMessages(userId), row]);
     }
     if (roomOwner && (partial.text || (partial.mediaUrl && !String(partial.mediaUrl).startsWith('blob:')))) { // SAVED-IMG-FIX
-      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? encodeSavedMediaLink(partial.mediaUrl || '', 'image') : partial.kind === 'video' ? encodeSavedMediaLink(partial.mediaUrl || '', 'video') : (partial.text || '') }) });
+      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'location' && partial.lat != null && partial.lng != null ? encodeSavedLocation(partial.lat, partial.lng, partial.text || '') : partial.kind === 'image' ? encodeSavedMediaLink(partial.mediaUrl || '', 'image') : partial.kind === 'video' ? encodeSavedMediaLink(partial.mediaUrl || '', 'video') : (partial.text || '') }) });
     }
   };
 
@@ -15196,8 +15198,9 @@ function SavedMessagesScreen({
       // SAVED-MEDIA-PATCH: "جاري المعاينة…" is shown while the photo/video is prepared + uploaded, then it is sent automatically
       let mediaUrl = blobUrl;
       if (paint) {
-        const permanent = await prepareSavedMedia(file, kind as 'image' | 'video', async (f) => (await uploadLiveChatMedia(f, String(userId), kind as 'image' | 'video')).url); // uses the same uploader as the public chat (not modified)
-        if (permanent) mediaUrl = permanent;
+        const prep = await prepareSavedMediaWithin(file, kind as 'image' | 'video', async (f) => (await uploadLiveChatMedia(f, String(userId), kind as 'image' | 'video')).url, 40000); // max 40s, same uploader as the public chat (not modified)
+        if (prep.timedOut) { setToast('انتهت المهلة (40 ثانية)، حاول مرة ثانية'); return; } // nothing is sent, the chat is free again
+        if (prep.url) mediaUrl = prep.url;
         else if (!!joinedOwner || roomMembers.length > 0) setToast('تعذر رفع الملف للطرف الآخر، حاول مرة ثانية');
       } else {
         try {
