@@ -5196,7 +5196,15 @@ function GlobalBottomNavigation() {
       || isConversation
       || secretChatOpen
       || friendChatOpen
-      || !!miniChat;
+      || !!miniChat
+      // الأقسام السفلية: الشريط يختفي عند الدخول عليها
+      || isChatsPanel
+      || friendsPanelOpen
+      || companyChatOpen
+      || userChatOpen
+      || liveKindOpen
+      || homeCallPickerOpen
+      || homeCallLogOpen;
     return (
   <nav aria-label="Main navigation" style={{
     position: 'fixed',
@@ -5705,6 +5713,8 @@ export default function RootLayout({
     if (!isHomePath(location.pathname)) setStoryPageActive(false);
     else if (isStoryProfileRoute(location.pathname, location.search)) setStoryPageActive(true);
   }, [location.pathname, location.search]);
+  // قسم المحادثات: الشريط السفلي مخفي هناك، فنلغي المساحة المحجوزة له
+  const isChatsPanelRoute = new URLSearchParams(location.search).get('panel') === 'chats' || location.pathname === '/chats';
   const isSettingsPage = location.pathname === '/settings' || location.pathname.startsWith('/settings');
   const [settingsClosing, setSettingsClosing] = useState(false);
   const [textPostsOverlayOpen, setTextPostsOverlayOpen] = useState(() => {
@@ -5772,7 +5782,7 @@ export default function RootLayout({
       boxSizing: 'border-box'
     } : {
       minHeight: '100dvh',
-      paddingBottom: storyPageActive ? 0 : 'calc(52px + env(safe-area-inset-bottom))',
+      paddingBottom: (storyPageActive || isChatsPanelRoute) ? 0 : 'calc(52px + env(safe-area-inset-bottom))',
       boxSizing: 'border-box'
     }}>
         {isSettingsPage ? (
