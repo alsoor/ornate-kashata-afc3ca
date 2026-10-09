@@ -147,6 +147,7 @@ import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoT
 import { useLiveEmojiBurstSync } from '@/lib/liveEmojiBurst'; // EMOJI-BURST-PATCH
 import '@/lib/templatesShieldPatch'; // TEMPLATES-SHIELD: blocks screenshots / save-image inside Templates
 import { TplShareButton, TplSharedTile, isTplShareText, TplShareDot, useTplShareUnread, tplZ, playTplMessageTone } from '@/lib/templatesSharePatch'; // TEMPLATES-SHARE-PATCH TEMPLATES-SHARE-PATCH-2 TEMPLATES-SHARE-PATCH-5
+import { prepareSavedMedia, encodeSavedMediaLink, decodeSavedMediaLink, SavedPreviewLabel } from '@/lib/savedMediaPatch'; // SAVED-MEDIA-PATCH
 import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
 import { StoryModerationBell, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
@@ -15050,9 +15051,10 @@ function SavedMessagesScreen({
         } catch { /* */ }
         const extra = (room.messages || []).map((m: any) => {
           const raw = String(m.text || '');
-          const isImg = raw.startsWith('img:');
-          const isVid = raw.startsWith('vid:');
-          const url = isImg || isVid ? raw.slice(4) : '';
+          const dl = decodeSavedMediaLink(raw); // SAVED-MEDIA-PATCH: a media link message is shown as photo / video, never as text
+          const isImg = raw.startsWith('img:') || dl?.kind === 'image';
+          const isVid = raw.startsWith('vid:') || dl?.kind === 'video';
+          const url = dl ? dl.url : (isImg || isVid ? raw.slice(4) : '');
           return { id: String(m.id), kind: (isVid ? 'video' : isImg ? 'image' : 'text') as SavedMsg['kind'], text: isImg || isVid ? '' : raw, mediaUrl: url || null, senderName: m.name || '', avatarUrl: m.avatarUrl || null, createdAt: Number(m.at) || Date.now() };
         });
         if (extra.length) setItems(prev => {
@@ -15132,7 +15134,7 @@ function SavedMessagesScreen({
       persist([...loadSavedMessages(userId), row]);
     }
     if (roomOwner && (partial.text || (partial.mediaUrl && !String(partial.mediaUrl).startsWith('blob:')))) { // SAVED-IMG-FIX
-      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? `img:${partial.mediaUrl || ''}` : partial.kind === 'video' ? `vid:${partial.mediaUrl || ''}` : (partial.text || '') }) });
+      void fetch('/api/saved-room/message', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ownerId: roomOwner, userId, name: userUsername || userName, avatarUrl: userAvatar, text: partial.kind === 'image' ? encodeSavedMediaLink(partial.mediaUrl || '', 'image') : partial.kind === 'video' ? encodeSavedMediaLink(partial.mediaUrl || '', 'video') : (partial.text || '') }) });
     }
   };
 
@@ -15158,52 +15160,29 @@ function SavedMessagesScreen({
     setBusy(true);
     try {
       const blobUrl = URL.createObjectURL(file);
-      if (paint) {
-        await new Promise<void>((resolve) => {
-          const started = Date.now();
-          const tick = () => {
-            const n = Math.min(92, Math.round(((Date.now() - started) / 800) * 92));
-            setUploadPct(n);
-            if (n >= 92) resolve();
-            else window.setTimeout(tick, 40);
-          };
-          tick();
-        });
-      }
+      // SAVED-MEDIA-PATCH: "جاري المعاينة…" is shown while the photo/video is prepared + uploaded, then it is sent automatically
       let mediaUrl = blobUrl;
-      // SAVED-IMG-FIX: phone photos (HEIC / several MB) timed out or were rejected, so the friend never got them → shrink to JPEG first.
-      let upFile: File = file;
-      if (kind === 'image' && (file.size > 900_000 || /heic|heif/i.test(file.type + file.name))) {
-        try {
-          const bmp = await createImageBitmap(file);
-          const sc = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-          const cv = document.createElement('canvas');
-          cv.width = Math.max(1, Math.round(bmp.width * sc)); cv.height = Math.max(1, Math.round(bmp.height * sc));
-          cv.getContext('2d')?.drawImage(bmp, 0, 0, cv.width, cv.height);
-          try { bmp.close(); } catch { /* */ }
-          const jb: Blob | null = await new Promise(res => cv.toBlob(res, 'image/jpeg', 0.82));
-          if (jb && jb.size > 0) upFile = new File([jb], `${(file.name || 'photo').replace(/\.[^.]+$/, '') || 'photo'}.jpg`, { type: 'image/jpeg', lastModified: Date.now() });
-        } catch { upFile = file; }
-      }
-      for (const url of ['/api/posts/media', '/api/files/upload', '/api/posts/media']) {
-        if (mediaUrl !== blobUrl) break;
+      if (paint) {
+        const permanent = await prepareSavedMedia(file, kind as 'image' | 'video', async (f) => (await uploadLiveChatMedia(f, String(userId), kind as 'image' | 'video')).url); // uses the same uploader as the public chat (not modified)
+        if (permanent) mediaUrl = permanent;
+        else if (!!joinedOwner || roomMembers.length > 0) setToast('تعذر رفع الملف للطرف الآخر، حاول مرة ثانية');
+      } else {
         try {
           const fd = new FormData();
-          fd.append('file', upFile, upFile.name);
-          fd.append('media', upFile, upFile.name);
+          fd.append('file', file);
           fd.append('type', kind);
           const ctrl = new AbortController();
-          const timer = window.setTimeout(() => ctrl.abort(), kind === 'video' ? 15000 : 30000);
-          const r = await fetch(url, { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
+          const timer = window.setTimeout(() => ctrl.abort(), 15000);
+          let r = await fetch('/api/posts/media', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
+          if (!r.ok) r = await fetch('/api/files/upload', { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
           window.clearTimeout(timer);
           if (r.ok) {
             const d = await r.json().catch(() => ({} as any));
             const permanent = d?.url || d?.mediaUrl || d?.path;
             if (permanent && typeof permanent === 'string' && !permanent.startsWith('blob:')) mediaUrl = permanent;
           }
-        } catch { /* try next endpoint, else keep local preview */ }
+        } catch { /* keep local preview */ }
       }
-      if (paint && mediaUrl === blobUrl && (!!joinedOwner || roomMembers.length > 0)) setToast('تعذر رفع الملف للطرف الآخر، حاول مرة ثانية');
       if (paint) {
         setUploadPct(100);
         await new Promise(r => window.setTimeout(r, 180));
@@ -15783,8 +15762,7 @@ function SavedMessagesScreen({
                 border: '1px solid #3a3a3a', borderRadius: 999, padding: '4px 8px 4px 14px',
                 minHeight: 38, background: '#000000', position: 'relative', overflow: 'hidden',
               }}>
-                {uploadPct != null && <div aria-hidden style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${uploadPct}%`, background: '#eab308', pointerEvents: 'none' }} />}
-                {uploadPct != null && <span style={{ position: 'relative', zIndex: 1, color: '#111', fontWeight: 800, fontSize: '0.72rem', marginRight: 6 }}>{uploadPct}%</span>}
+                {uploadPct != null && <SavedPreviewLabel />} {/* SAVED-MEDIA-PATCH */}
                 <input
                   ref={inputRef}
                   value={text}
