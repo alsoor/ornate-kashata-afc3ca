@@ -820,7 +820,7 @@ function GlobalBottomNavigation() {
   const [liveKindOpen, setLiveKindOpen] = useState(false);
   const [friendsPanelOpen, setFriendsPanelOpen] = useState(false);
   const [storyMediaOpen, setStoryMediaOpen] = useState(false);
-  void friendsPanelOpen; void storyMediaOpen; // were read only by the removed bottom-bar plus button
+  void friendsPanelOpen; // storyMediaOpen now hides the bottom bar (see hideBottomBar)
   const settingsSheetOpen = location.pathname === '/settings' || location.pathname.startsWith('/settings');
 
   // ── Auto-hide bottom bar on scroll ──────────────────────────────────────
@@ -5203,6 +5203,7 @@ function GlobalBottomNavigation() {
       || companyChatOpen
       || userChatOpen
       || liveKindOpen
+      || storyMediaOpen // صور/فيديو Templates: الشريط السفلي يختفي عند فتحها
       || homeCallPickerOpen
       || homeCallLogOpen;
     return (
@@ -5733,6 +5734,25 @@ export default function RootLayout({
     return () => window.removeEventListener('stooorna:text-posts-state', onTextPosts);
   }, []);
 
+  // صور/فيديو Templates: عند فتح العارض نخفي الشريط السفلي ونلغي المساحة المحجوزة له
+  const [storyMediaOpenRoot, setStoryMediaOpenRoot] = useState(false);
+  useEffect(() => {
+    const onOpen = () => setStoryMediaOpenRoot(true);
+    const onClose = () => setStoryMediaOpenRoot(false);
+    window.addEventListener('stooorna:story-media-opened', onOpen);
+    window.addEventListener('stooorna:story-media-closed', onClose);
+    window.addEventListener('stooorna:close-story-media', onClose);
+    return () => {
+      window.removeEventListener('stooorna:story-media-opened', onOpen);
+      window.removeEventListener('stooorna:story-media-closed', onClose);
+      window.removeEventListener('stooorna:close-story-media', onClose);
+    };
+  }, []);
+  useEffect(() => {
+    document.body.classList.toggle('stooorna-story-media-open', storyMediaOpenRoot);
+    return () => document.body.classList.remove('stooorna-story-media-open');
+  }, [storyMediaOpenRoot]);
+
   const closeSettingsSheet = () => {
     if (settingsClosing) return;
     setSettingsClosing(true);
@@ -5782,7 +5802,7 @@ export default function RootLayout({
       boxSizing: 'border-box'
     } : {
       minHeight: '100dvh',
-      paddingBottom: (storyPageActive || isChatsPanelRoute) ? 0 : 'calc(52px + env(safe-area-inset-bottom))',
+      paddingBottom: (storyPageActive || isChatsPanelRoute || storyMediaOpenRoot) ? 0 : 'calc(52px + env(safe-area-inset-bottom))',
       boxSizing: 'border-box'
     }}>
         {isSettingsPage ? (
