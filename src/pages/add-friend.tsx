@@ -20456,7 +20456,7 @@ export function PublicLiveCommentsPanel({
               size={34}
               style={{ flexShrink: 0, border: 'none', pointerEvents: 'none' }}
             />
-            <TplShareDot style={{ inset: 'auto', left: '50%', top: '50%', width: 40, height: 40, marginLeft: -20, marginTop: -20 }} /> {/* TEMPLATES-SHARE-PATCH-2 / 6 */}
+            <TplShareDot style={{ inset: 0, width: 34, height: 34, WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px))', mask: 'radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px))' }} /> {/* TEMPLATES-SHARE-PATCH-2 / 6 (ring exactly the avatar size) */}
           </button>
           <div style={{
             flex: '1 1 0%',
