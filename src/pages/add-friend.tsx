@@ -17374,6 +17374,8 @@ function LiveMediaDeleteBtn({ onConfirm, variant, style }: { onConfirm: () => vo
 
 // True while the Templates gallery bubble is actually on screen (it now stays mounted, hidden, so videos must pause when it is hidden).
 let tplGalleryVisible = false;
+// Transparent 1x1 poster: stops Android WebView / Chrome from drawing its default gray "play" placeholder before the first frame.
+const TPL_BLANK_POSTER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 function setTplGalleryVisible(v: boolean) {
   if (tplGalleryVisible === v) return;
   tplGalleryVisible = v;
@@ -17405,6 +17407,9 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
     io.observe(el);
     return () => io.disconnect();
   }, [isVideo, near]);
+  // The <video> stays invisible until its first frame is decoded, so no placeholder / play sheet is ever visible.
+  const [frameReady, setFrameReady] = useState(false);
+  useEffect(() => { setFrameReady(false); }, [c.imageUrl]);
   const [shown, setShown] = useState(() => tplGalleryVisible);
   useEffect(() => {
     const f = (e: Event) => setShown(!!(e as CustomEvent).detail?.open);
@@ -17438,7 +17443,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
       >
         {isVideo ? (
           near
-            ? <video ref={ref} src={c.imageUrl || ''} autoPlay loop muted playsInline controls={false} disablePictureInPicture disableRemotePlayback preload="auto" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: 'transparent' }} />
+            ? <video ref={ref} src={c.imageUrl || ''} poster={TPL_BLANK_POSTER} autoPlay loop muted playsInline controls={false} disablePictureInPicture disableRemotePlayback preload="auto" onLoadedData={() => setFrameReady(true)} onPlaying={() => setFrameReady(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: 'transparent', opacity: frameReady ? 1 : 0, transition: 'opacity 120ms linear' }} />
             : <div aria-hidden="true" style={{ width: '100%', height: '100%', background: 'linear-gradient(160deg, #10201c 0%, #0b1512 100%)' }} />
         ) : (
           <img src={c.imageUrl || ''} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none' }} />
@@ -17625,7 +17630,7 @@ function LiveMediaViewer({ post, comments, myId, myAvatar, nameOf, liked, onLike
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: mediaBottom, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'bottom 0.25s ease', cursor: 'pointer' }}
       >
         {isVideo
-          ? <video key={post.id} ref={vref} src={post.imageUrl || ''} loop playsInline disablePictureInPicture style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+          ? <video key={post.id} ref={vref} src={post.imageUrl || ''} poster={TPL_BLANK_POSTER} loop playsInline controls={false} disablePictureInPicture style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
           : <img src={post.imageUrl || ''} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
         {showControls ? (
           <div
@@ -17989,7 +17994,7 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
         style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: isVideo ? 'pointer' : 'default' }}
       >
         {isVideo ? (
-          <video ref={vref} src={c.imageUrl || ''} loop playsInline preload="metadata" disablePictureInPicture style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
+          <video ref={vref} src={c.imageUrl || ''} poster={TPL_BLANK_POSTER} loop playsInline controls={false} preload="metadata" disablePictureInPicture style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
         ) : (
           <img src={c.imageUrl || ''} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
         )}
@@ -19405,6 +19410,19 @@ export function PublicLiveCommentsPanel({
     setProfilePeer(vc);
     try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: true } })); } catch { /* */ }
   };
+  // Templates page closed → any photo/video viewer left over is closed too, so the bottom bar can never stay hidden.
+  useEffect(() => {
+    if (!tplBubble) { setFeedStartId(null); setOpenMediaId(null); }
+  }, [tplBubble]);
+  // Visitor-profile flag self-heal: if this panel's profile sheet is gone, tell the page (the bar hides while it is "open").
+  const profileWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (profilePeer) { profileWasOpenRef.current = true; return; }
+    if (profileWasOpenRef.current) {
+      profileWasOpenRef.current = false;
+      try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: false } })); } catch { /* */ }
+    }
+  }, [profilePeer]);
   const mediaViewer = openMedia ? (
     <LiveMediaViewer
       post={openMedia}
@@ -19622,6 +19640,20 @@ export function PublicLiveCommentsPanel({
   // When header is forced open (e.g. after system gallery) but Saved Messages is closed,
   // keep Templates/media alive and skip the chat portal. If Saved Messages is open, fall through
   // so the public chat stays mounted underneath — closing Saved Messages returns to live chat, not "outside".
+  const profileSheetEl = (profilePeer && profilePeer.userId) ? (
+    <FriendStoryProfile
+      authorId={profilePeer.userId}
+      authorName={profilePeer.name}
+      authorUsername={profilePeer.username}
+      authorAvatarUrl={profilePeer.avatarUrl}
+      onClose={() => {
+        setProfilePeer(null);
+        try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: false } })); } catch { /* */ }
+      }}
+      onOpenPost={() => {}}
+      sheetMode
+    />
+  ) : null;
   if (headerOpen && !savedOpen && !overlayOpen) {
     return (
       <>
@@ -19631,6 +19663,7 @@ export function PublicLiveCommentsPanel({
         {mediaViewer}
         {mediaFeedOverlay}
         {mediaCommentsSheet}
+        {profileSheetEl}
       </>
     );
   }
@@ -20594,20 +20627,7 @@ export function PublicLiveCommentsPanel({
 
       </div>
     </div>
-    {profilePeer && profilePeer.userId ? (
-      <FriendStoryProfile
-        authorId={profilePeer.userId}
-        authorName={profilePeer.name}
-        authorUsername={profilePeer.username}
-        authorAvatarUrl={profilePeer.avatarUrl}
-        onClose={() => {
-          setProfilePeer(null);
-          try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: false } })); } catch { /* */ }
-        }}
-        onOpenPost={() => {}}
-        sheetMode
-      />
-    ) : null}
+    {profileSheetEl}
     {locPickerOpen ? <React.Suspense fallback={null}><LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendLocation} /></React.Suspense> : null}
     {locView ? <React.Suspense fallback={null}><LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={(locView as any).name} senderAvatar={(locView as any).avatar} onClose={() => setLocView(null)} /></React.Suspense> : null}
     <SavedMessagesScreen
@@ -25047,6 +25067,37 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [chatLifted, setChatLifted] = useState(false);
   // Templates photo/video viewer open → the bottom dock bar (Call / LIVE / Templates / Settings) is hidden completely
   const [tplMediaOpen, setTplMediaOpen] = useState(false);
+  // Leaving Templates: bottom bar is re-mounted (dockBarKey) behind a 1-second refresh overlay so the page re-activates.
+  const [tplRefreshing, setTplRefreshing] = useState(false);
+  const [dockBarKey, setDockBarKey] = useState(0);
+  const tplRefreshBusyRef = useRef(false);
+  const runTplExitRefresh = useCallback(() => {
+    if (tplRefreshBusyRef.current) return;
+    tplRefreshBusyRef.current = true;
+    setTplMediaOpen(false);
+    setTplRefreshing(true);
+    setDockBarKey(k => k + 1);
+    try { void refreshDockFriends(); } catch { /* */ }
+    window.setTimeout(() => {
+      setTplMediaOpen(false);
+      setTplRefreshing(false);
+      setDockBarKey(k => k + 1);
+      tplRefreshBusyRef.current = false;
+      try { window.dispatchEvent(new CustomEvent('stooorna:templates-refreshed')); } catch { /* */ }
+    }, 1000);
+  }, []);
+  // Any way of leaving Templates (X, backdrop, tapping the dock icon again, publish flow) ends up here.
+  useEffect(() => {
+    let prevKind = dockGet()?.kind;
+    const unsub = dockSubscribe(() => {
+      const k = dockGet()?.kind;
+      if (prevKind === 'templates' && k !== 'templates') runTplExitRefresh();
+      prevKind = k;
+    });
+    const onExit = () => runTplExitRefresh();
+    window.addEventListener('stooorna:templates-bubble-close', onExit);
+    return () => { unsub(); window.removeEventListener('stooorna:templates-bubble-close', onExit); };
+  }, [runTplExitRefresh]);
   useEffect(() => {
     const onViewer = (e: Event) => setTplMediaOpen(!!(e as CustomEvent).detail?.open);
     window.addEventListener('stooorna:tpl-media-viewer', onViewer as EventListener);
@@ -25077,7 +25128,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       document.documentElement.style.setProperty('--stooorna-bottom-bar-h', bottomHeaderShown ? 'calc(52px + env(safe-area-inset-bottom, 0px))' : '0px');
     } catch { /* */ }
     return () => { try { document.documentElement.style.setProperty('--stooorna-bottom-bar-h', '0px'); } catch { /* */ } };
-  }, [bottomHeaderShown]);
+  }, [bottomHeaderShown, dockBarKey]);
   // Quick "+" menu below the header: no longer touches headerOpen at all. Clicking it
   // hides the "+" itself and reveals the Settings/Friends/Call/Chat/Live row; closing
   // the menu (backdrop tap or picking an item) brings the "+" back.
@@ -28129,11 +28180,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             <button type="button" aria-label="Close notification" onClick={() => setNoticeTop(null)} style={{ width: 28, height: 28, borderRadius: '50%', border: '1px solid #fff', background: 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>×</button>
           </div>
         )}
+        {tplRefreshing && typeof document !== 'undefined' ? createPortal(
+          <div aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: 13500, background: '#04120f', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto' }}>
+            <style>{'@keyframes stooornaTplRefreshSpin { to { transform: rotate(360deg); } }'}</style>
+            <div style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.18)', borderTopColor: '#ffffff', animation: 'stooornaTplRefreshSpin 0.7s linear infinite' }} />
+          </div>,
+          document.body,
+        ) : null}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
         )}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && !tplMediaOpen && (
-          <BottomHeaderPortal enabled={!guestMode}>
+          <BottomHeaderPortal key={dockBarKey} enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
             position: 'fixed', left: 0, right: 0, bottom: 0,
             zIndex: 12050,
