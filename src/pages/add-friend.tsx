@@ -15052,7 +15052,7 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
               onClick={() => setNoteOpen(false)}
               style={{ position: 'absolute', top: 10, left: 10, width: 28, height: 28, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.06)', color: '#555', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
             ><X size={16} /></button>
-            <p style={{ margin: '0 0 12px', textAlign: 'center', color: '#111', fontWeight: 900, fontSize: '1.05rem' }}>ملاحظة :</p>
+            <p style={{ margin: '0 0 12px', textAlign: 'center', color: '#111', fontWeight: 900, fontSize: '1.05rem' }}> :ملاحظة </p>
             {!!ownerNote.text && (
               <p dir="auto" style={{ margin: '0 0 12px', textAlign: 'center', color: '#1f2937', fontSize: '0.92rem', lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                 {ownerNote.text}
