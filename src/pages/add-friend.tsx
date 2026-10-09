@@ -10256,9 +10256,14 @@ export interface FriendStoryProfileProps {
   riseFromBottom?: boolean;
   /** يُخفي زر «Voice Live / Video Live» — يُستخدم عند فتح البروفايل من داخل البث نفسه (المشاهد أصلاً داخل البث) */
   hideLiveButton?: boolean;
+  /** Base z-index of the profile layer (backdrop < panel < its own sub-windows). Defaults to the old 13040 base;
+   * the public chat passes a value above all of its own overlays so the profile always opens ON TOP of it. */
+  zBase?: number;
 }
-export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false, riseFromBottom = false, hideLiveButton = false }: FriendStoryProfileProps) {
+export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false, riseFromBottom = false, hideLiveButton = false, zBase }: FriendStoryProfileProps) {
   const navigate = useNavigate();
+  // Layering (all relative to Z): backdrop = Z, panel = Z+1, followers list = Z+60, nested profile = Z+200, media lightbox = Z+300
+  const Z = typeof zBase === 'number' ? zBase : 13040;
   const { user } = useSession();
   const liveKind = useLiveBroadcastKind(authorId);
   const liveActive = liveKind != null;
@@ -10469,7 +10474,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 20100,
+        zIndex: Z,
         background: 'rgba(0,0,0,0.32)',
       }}
     />
@@ -10487,7 +10492,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           bottom: 0,
           right: 0,
           left: 42,
-          zIndex: 13041,
+          zIndex: Z + 1,
           background: PAGE_BG,
           display: 'flex',
           flexDirection: 'column' as const,
@@ -10505,7 +10510,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         style: {
           position: 'fixed' as const,
           inset: 0,
-          zIndex: 13040,
+          zIndex: Z,
           background: PAGE_BG,
           display: 'flex',
           flexDirection: 'column' as const,
@@ -10672,6 +10677,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 if (username) qs.set('hostUsername', username);
                 if (avatarUrl) qs.set('hostAvatar', avatarUrl);
                 const path = liveKind === 'camera' ? '/live-camera' : '/live';
+                if (typeof zBase === 'number') { try { onClose(); } catch { /* */ } }
                 navigate(`${path}?${qs.toString()}`);
               }}
               aria-label={liveActive ? (liveKind === 'camera' ? 'Video Live' : 'Voice Live') : 'Voice Live'}
@@ -10784,7 +10790,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             transition={{ duration: 0.38, ease: [0.32, 0.72, 0, 1] }}
             onClick={() => setMediaLightbox(null)}
             style={{
-              position: 'fixed', inset: 0, zIndex: 12280, background: '#000',
+              position: 'fixed', inset: 0, zIndex: Z + 300, background: '#000',
               display: 'flex', flexDirection: 'column',
             }}
           >
@@ -10919,7 +10925,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               loading={theirFollowersLoading}
               errorText={theirFollowersError}
               title="المتابعون"
-              zIndex={13100}
+              zIndex={Z + 60}
               onOpenProfile={f => {
                 setTheirFollowersOpen(false);
                 setSubProfile({ id: f.friendId, name: f.name, username: f.username, avatarUrl: f.avatarUrl ?? null });
@@ -10940,6 +10946,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               authorUsername={subProfile.username}
               authorAvatarUrl={subProfile.avatarUrl}
               sheetMode
+              zBase={Z + 200}
               onClose={() => setSubProfile(null)}
               onOpenPost={onOpenPost}
               onToggleLike={onToggleLike}
@@ -19881,6 +19888,7 @@ export function PublicLiveCommentsPanel({
       authorName={profilePeer.name}
       authorUsername={profilePeer.username}
       authorAvatarUrl={profilePeer.avatarUrl}
+      zBase={150000}
       onClose={() => {
         setProfilePeer(null);
         try { window.dispatchEvent(new CustomEvent('stooorna:visitor-profile', { detail: { open: false } })); } catch { /* */ }
