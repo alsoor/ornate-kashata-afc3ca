@@ -8118,7 +8118,8 @@ function deleteAdOnServer(id: string) {
   if (!uid) { try { uid = String((loadFeedAdsMeta().find((a: any) => String(a.id) === adId) || {}).userId || ''); } catch { /* */ } }
   const list = readPendingAdDeletes();
   if (!list.some(x => x.id === adId)) { list.push({ id: adId, userId: uid }); writePendingAdDeletes(list); }
-  void flushPendingAdDeletes();
+  // Refresh the page as soon as the server delete finishes so the ad disappears everywhere immediately
+  void flushPendingAdDeletes().finally(() => { try { window.location.reload(); } catch { /* */ } });
 }
 function saveFeedAdsMeta(list: any[], localOnly = false) {
   const next = Array.isArray(list) ? list.slice(0, 120) : [];
