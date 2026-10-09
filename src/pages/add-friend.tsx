@@ -7988,6 +7988,66 @@ function loadFeedAdsMeta(): any[] {
 }
 
 
+/** Full-screen player for an owner-note video. Loads the file as a blob first (works even if the server has no Range support),
+ *  no native controls / no play badge. One tap anywhere closes. */
+function NoteFullVideo({ url, onClose }: { url: string; onClose: () => void }) {
+  const [src, setSrc] = useState<string>('');
+  const vRef = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    let dead = false;
+    let objUrl = '';
+    const raw = resolveMediaUrl(url);
+    if (!raw) return;
+    if (/^(blob:|data:)/i.test(raw)) { setSrc(raw); return; }
+    (async () => {
+      try {
+        const r = await fetch(raw, { credentials: 'include' });
+        if (!r.ok) throw new Error(String(r.status));
+        let b = await r.blob();
+        if (!b.type || !/^video\//i.test(b.type)) b = new Blob([b], { type: 'video/mp4' });
+        objUrl = URL.createObjectURL(b);
+        if (!dead) setSrc(objUrl);
+      } catch {
+        if (!dead) setSrc(raw);
+      }
+    })();
+    return () => { dead = true; if (objUrl) { try { URL.revokeObjectURL(objUrl); } catch { /* */ } } };
+  }, [url]);
+  useEffect(() => {
+    const v = vRef.current;
+    if (!v || !src) return;
+    const go = () => {
+      const pr = v.play();
+      if (pr && typeof pr.catch === 'function') pr.catch(() => { v.muted = true; v.play().catch(() => { /* */ }); });
+    };
+    if (v.readyState >= 2) go(); else v.addEventListener('loadeddata', go, { once: true });
+    return () => v.removeEventListener('loadeddata', go);
+  }, [src]);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 14300, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
+    >
+      {src ? (
+        <video
+          ref={vRef}
+          src={src}
+          autoPlay
+          playsInline
+          controls={false}
+          preload="auto"
+          disablePictureInPicture
+          controlsList="nodownload nofullscreen noremoteplayback"
+          onClick={e => { e.stopPropagation(); onClose(); }}
+          style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', background: '#000' }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
 // ── OWNER-NOTE: ملاحظة المالك على اسم STOOORNA ──
 // تُحفظ على السيرفر عبر نفس مسارات الإعلانات (/api/ads) بمعرّف يبدأ بـ note- (فيها رفع صورة/فيديو/PDF وحذف)،
 // لكنها تعيش بمخزن مستقل: لا تدخل قائمة إعلانات الفيد ولا بطاقات الهوم. ملاحظة واحدة فقط — الجديدة تحلّ مكان القديمة.
@@ -14973,46 +15033,17 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
                 {ownerNote.text}
               </p>
             )}
-            {ownerNote.mediaType === 'image' && ownerNote.mediaUrl && (
+            {!!ownerNote.mediaType && !!ownerNote.mediaUrl && (
               <button
                 type="button"
-                onClick={e => { e.stopPropagation(); setNoteMediaView({ kind: 'image', url: ownerNote.mediaUrl! }); }}
-                style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 12, overflow: 'hidden', margin: '0 0 12px', WebkitTapHighlightColor: 'transparent' }}
+                onClick={e => {
+                  e.stopPropagation();
+                  if (ownerNote.mediaType === 'pdf') setNotePdfOpen(true);
+                  else setNoteMediaView({ kind: ownerNote.mediaType as 'image' | 'video', url: ownerNote.mediaUrl! });
+                }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '14px 14px', borderRadius: 12, border: '1px solid rgba(249,115,22,0.55)', background: 'rgba(249,115,22,0.10)', cursor: 'pointer', margin: '0 0 12px', color: '#ea580c', fontWeight: 900, fontSize: '0.95rem', letterSpacing: 2, WebkitTapHighlightColor: 'transparent' }}
               >
-                <img src={ownerNote.mediaUrl} alt="" draggable={false} style={{ display: 'block', width: '100%', maxHeight: '45vh', objectFit: 'contain', borderRadius: 12, background: '#f3f4f6', pointerEvents: 'none' }} />
-              </button>
-            )}
-            {ownerNote.mediaType === 'video' && ownerNote.mediaUrl && (
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); setNoteMediaView({ kind: 'video', url: ownerNote.mediaUrl! }); }}
-                style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: '#000', cursor: 'pointer', borderRadius: 12, overflow: 'hidden', margin: '0 0 12px', position: 'relative', WebkitTapHighlightColor: 'transparent' }}
-              >
-                {/* No native controls / play icon / fullscreen / 3-dots — thumbnail only; full player opens on tap */}
-                <video
-                  src={ownerNote.mediaUrl.startsWith('data:') ? ownerNote.mediaUrl : `${ownerNote.mediaUrl}#t=0.001`}
-                  muted
-                  playsInline
-                  preload="metadata"
-                  controls={false}
-                  disablePictureInPicture
-                  controlsList="nodownload nofullscreen noremoteplayback"
-                  poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-                  style={{ display: 'block', width: '100%', maxHeight: '45vh', borderRadius: 12, background: '#000', pointerEvents: 'none', objectFit: 'cover' }}
-                />
-              </button>
-            )}
-            {ownerNote.mediaType === 'pdf' && ownerNote.mediaUrl && (
-              <button
-                type="button"
-                onClick={() => setNotePdfOpen(true)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 12, border: '1px solid #e5e7eb', background: '#f9fafb', cursor: 'pointer', margin: '0 0 12px', color: '#111', textAlign: 'left' }}
-              >
-                <FileText size={24} color="#f97316" />
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontWeight: 800, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ownerNote.mediaName || 'PDF'}</span>
-                  <span style={{ display: 'block', color: '#6b7280', fontSize: '0.7rem', marginTop: 2 }}>PDF · اضغط للفتح</span>
-                </span>
+                SHOW
               </button>
             )}
             <button
@@ -15036,39 +15067,24 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
         document.body
       )}
       {noteOpen && noteMediaView && typeof document !== 'undefined' && createPortal(
-        <div
-          role="dialog"
-          aria-modal="true"
-          onClick={() => setNoteMediaView(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 14300,
-            background: 'rgba(0,0,0,0.96)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
-          }}
-        >
-          {noteMediaView.kind === 'image' ? (
+        noteMediaView.kind === 'image' ? (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setNoteMediaView(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 14300, background: 'rgba(0,0,0,0.96)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
+          >
             <img
-              src={noteMediaView.url}
+              src={resolveMediaUrl(noteMediaView.url)}
               alt=""
               draggable={false}
               onClick={e => { e.stopPropagation(); setNoteMediaView(null); }}
               style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }}
             />
-          ) : (
-            <video
-              src={noteMediaView.url}
-              autoPlay
-              playsInline
-              controls={false}
-              poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-              disablePictureInPicture
-              controlsList="nodownload nofullscreen noremoteplayback"
-              onClick={e => { e.stopPropagation(); setNoteMediaView(null); }}
-              style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', background: '#000' }}
-            />
-          )}
-        </div>,
+          </div>
+        ) : (
+          <NoteFullVideo url={noteMediaView.url} onClose={() => setNoteMediaView(null)} />
+        ),
         document.body
       )}
       {noteOpen && notePdfOpen && ownerNote?.mediaType === 'pdf' && ownerNote.mediaUrl && typeof document !== 'undefined' && createPortal(
