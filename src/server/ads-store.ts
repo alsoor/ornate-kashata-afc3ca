@@ -101,6 +101,18 @@ async function removeAd(id: string) {
 }
 
 export function registerAdsStoreRoutes(app: Express) {
+  // ── رقم نسخة خفيف: يتغير مع أي نشر/حذف، والتطبيق يسحب القائمة فقط لما يتغير ──
+  app.get("/api/ads/version", async (_req: Request, res: Response) => {
+    try {
+      await ensure();
+      const [rows] = (await pool.query("SELECT COUNT(*) AS c, COALESCE(MAX(updated_at), 0) AS m FROM stooorna_ads WHERE ready = 1")) as any;
+      res.set("Cache-Control", "no-store");
+      res.json({ ok: true, ver: `${rows[0].c}:${rows[0].m}` });
+    } catch {
+      res.status(500).json({ ok: false });
+    }
+  });
+
   // ── قائمة الإعلانات (لكل المستخدمين) ──
   app.get("/api/ads", async (_req: Request, res: Response) => {
     try {

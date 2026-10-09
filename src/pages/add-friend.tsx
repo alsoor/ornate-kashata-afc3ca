@@ -8051,6 +8051,18 @@ async function syncAdsFromServer() {
     if (me) for (const a of next) if (String(a.userId) === me && !synced.has(String(a.id))) void pushAdToServer(a);
   } catch { /* keep local ads if the route is late */ }
 }
+let adsLastVer = '';
+/** فحص خفيف: إذا تغيّر رقم نسخة الإعلانات في السيرفر (نشر أو حذف) نسحب القائمة فوراً */
+async function checkAdsVersion() {
+  try {
+    const r = await fetch('/api/ads/version', { credentials: 'include', cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json().catch(() => ({} as any));
+    if (!d?.ver || d.ver === adsLastVer) return;
+    await syncAdsFromServer();
+    adsLastVer = String(d.ver);
+  } catch { /* */ }
+}
 async function pushAdToServer(ad: any) {
   const id = String(ad?.id || '');
   if (!id || adsInFlight.has(id)) return;
@@ -8075,6 +8087,7 @@ async function pushAdToServer(ad: any) {
       if (!up.ok) return; // نعيد المحاولة في المزامنة القادمة
     }
     markAdSynced(id);
+    adsLastVer = '';
   } catch { /* retry on next sync */ } finally { adsInFlight.delete(id); }
 }
 /** حذف رسمي من السيرفر (يختفي من عند كل المستخدمين). إذا فشل الاتصال يُعاد تلقائياً. */
@@ -10148,6 +10161,7 @@ export function OwnerAdsPanel({ onClose }: { onClose: () => void }) {
                       campaignEndsAt,
                     };
                     const next = [ad, ...list.filter(a => isAdLive(a, now))].slice(0, 80);
+                    try { (window as any).__stooornaAdsMe = String(user.id); } catch { /* */ }
                     saveFeedAdsMeta(next);
                                             setAdPublishProgress(100);
                     setBusinessAdTitle('');
@@ -22703,9 +22717,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     void syncAdsFromServer();
     // ADS-SERVER-SYNC: الإعلان المحذوف يختفي عند الكل بدون رفرش (كل 20 ثانية + عند الرجوع للتطبيق)
     const syncId = window.setInterval(() => { if (document.visibilityState === 'visible') void syncAdsFromServer(); }, 20000);
-    const onVis = () => { if (document.visibilityState === 'visible') void syncAdsFromServer(); };
+    const verId = window.setInterval(() => { if (document.visibilityState === 'visible') void checkAdsVersion(); }, 3000);
+    const onVis = () => { if (document.visibilityState === 'visible') { adsLastVer = ''; void checkAdsVersion(); } };
     document.addEventListener('visibilitychange', onVis);
-    return () => { window.removeEventListener('stooorna:feed-ads', onAds); window.clearInterval(syncId); document.removeEventListener('visibilitychange', onVis); };
+    return () => { window.removeEventListener('stooorna:feed-ads', onAds); window.clearInterval(syncId); window.clearInterval(verId); document.removeEventListener('visibilitychange', onVis); };
   }, [user?.id]);
   // Countdown + auto republish cycle (24h live → 4h wait → auto Publish)
   useEffect(() => {
