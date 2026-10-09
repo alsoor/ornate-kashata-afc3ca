@@ -7984,24 +7984,110 @@ function loadFeedAdsMeta(): any[] {
 }
 
 
+// ── ADS-SERVER-SYNC: السيرفر هو المرجع. الإعلان يظهر للجميع، والحذف رسمي ويختفي من عند الكل ──
+const ADS_SYNCED_KEY = 'stooorna_ads_synced_ids';
+const ADS_PENDING_DEL_KEY = 'stooorna_ads_pending_del';
+const adsInFlight = new Set<string>();
+function readSyncedAdIds(): Set<string> {
+  try { const a = JSON.parse(localStorage.getItem(ADS_SYNCED_KEY) || '[]'); return new Set(Array.isArray(a) ? a.map(String) : []); } catch { return new Set(); }
+}
+function writeSyncedAdIds(ids: Set<string>) {
+  try { localStorage.setItem(ADS_SYNCED_KEY, JSON.stringify(Array.from(ids).slice(-300))); } catch { /* */ }
+}
+function markAdSynced(id: string) { const s2 = readSyncedAdIds(); s2.add(String(id)); writeSyncedAdIds(s2); }
+function readPendingAdDeletes(): Array<{ id: string; userId: string }> {
+  try { const a = JSON.parse(localStorage.getItem(ADS_PENDING_DEL_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch { return []; }
+}
+function writePendingAdDeletes(list: Array<{ id: string; userId: string }>) {
+  try { localStorage.setItem(ADS_PENDING_DEL_KEY, JSON.stringify(list.slice(-100))); } catch { /* */ }
+}
+function adsMyId(): string { try { return String((window as any).__stooornaAdsMe || ''); } catch { return ''; } }
+
+async function flushPendingAdDeletes() {
+  const list = readPendingAdDeletes();
+  if (!list.length) return;
+  const left: Array<{ id: string; userId: string }> = [];
+  for (const it of list) {
+    try {
+      const r = await fetch(`/api/ads/${encodeURIComponent(it.id)}?userId=${encodeURIComponent(it.userId)}`, { method: 'DELETE', credentials: 'include' });
+      if (!r.ok && r.status !== 404 && r.status !== 403) left.push(it);
+    } catch { left.push(it); }
+  }
+  writePendingAdDeletes(left);
+}
+
 async function syncAdsFromServer() {
   try {
-    const r = await fetch('/api/ads', { credentials: 'include' });
+    await flushPendingAdDeletes();
+    const r = await fetch('/api/ads', { credentials: 'include', cache: 'no-store' });
     const d = await r.json().catch(() => ({} as any));
     if (!r.ok || !Array.isArray(d.ads)) return;
+    const me = adsMyId();
+    const synced = readSyncedAdIds();
+    const pendingDel = new Set(readPendingAdDeletes().map(x => x.id));
+    const serverAds = (d.ads as any[]).filter(a => a && a.id && !pendingDel.has(String(a.id)));
+    const serverIds = new Set(serverAds.map(a => String(a.id)));
     const prev = loadFeedAdsMeta();
-    const byId = new Map(prev.map((a: any) => [String(a.id), a]));
-    for (const ad of d.ads) byId.set(String(ad.id), { ...byId.get(String(ad.id)), ...ad });
-    saveFeedAdsMeta(Array.from(byId.values()));
+    const byId = new Map<string, any>();
+    const dropped: string[] = [];
+    for (const a of prev) {
+      const id = String(a?.id || '');
+      if (!id) continue;
+      // يبقى محلياً: إعلان موجود في السيرفر، أو إعلاني أنا لم يوصل للسيرفر بعد (ينرفع تحت)
+      if (serverIds.has(id) || (me && String(a.userId) === me && !synced.has(id) && !pendingDel.has(id))) byId.set(id, a);
+      else dropped.push(id);
+    }
+    for (const ad of serverAds) {
+      const id = String(ad.id);
+      byId.set(id, { ...byId.get(id), ...ad });
+      synced.add(id);
+    }
+    writeSyncedAdIds(synced);
+    for (const id of dropped) { void stooornaAdMediaDelete(id); adMediaMem.delete(id); } // انحذف من السيرفر → نفضّي نسخته من هذا الجهاز
+    const next = Array.from(byId.values()).sort((a, b) => (new Date(b.createdAt || 0).getTime() || 0) - (new Date(a.createdAt || 0).getTime() || 0));
+    const sig = (list: any[]) => JSON.stringify(list.map(a => [a.id, a.endsAt, a.expiresAt, a.nextEligibleAt, a.lastAutoPublishAt, a.campaignEndsAt, a.title, a.body, typeof a.mediaUrl === 'string' && a.mediaUrl.startsWith('data:') ? 'd' : a.mediaUrl || '']));
+    if (sig(next) !== sig(prev)) saveFeedAdsMeta(next, true);
+    // رفع أي إعلان من عندي ما وصل للسيرفر
+    if (me) for (const a of next) if (String(a.userId) === me && !synced.has(String(a.id))) void pushAdToServer(a);
   } catch { /* keep local ads if the route is late */ }
 }
-function pushAdToServer(ad: any) {
-  void fetch('/api/ads', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad }) }).catch(() => {});
+async function pushAdToServer(ad: any) {
+  const id = String(ad?.id || '');
+  if (!id || adsInFlight.has(id)) return;
+  adsInFlight.add(id);
+  try {
+    let data = '';
+    if (typeof ad.mediaUrl === 'string' && ad.mediaUrl.startsWith('data:')) data = ad.mediaUrl;
+    else if (typeof ad.pdfUrl === 'string' && ad.pdfUrl.startsWith('data:')) data = ad.pdfUrl;
+    else if (ad.mediaType) data = (await stooornaAdMediaGet(id)) || '';
+    const meta = { ...ad, mediaUrl: null, pdfUrl: null };
+    const r = await fetch('/api/ads', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ad: meta, hasMedia: !!data }) });
+    if (!r.ok) return;
+    const j = await r.json().catch(() => ({} as any));
+    if (j?.deleted) return; // انحذف قبل — لا نرجعه
+    if (data && j?.ready === false) {
+      const blob = await (await fetch(data)).blob();
+      const up = await fetch(`/api/ads/${encodeURIComponent(id)}/media?userId=${encodeURIComponent(String(ad.userId || ''))}`, {
+        method: 'PUT', credentials: 'include',
+        headers: { 'Content-Type': blob.type || String(ad.mediaMime || 'application/octet-stream') },
+        body: blob,
+      });
+      if (!up.ok) return; // نعيد المحاولة في المزامنة القادمة
+    }
+    markAdSynced(id);
+  } catch { /* retry on next sync */ } finally { adsInFlight.delete(id); }
 }
+/** حذف رسمي من السيرفر (يختفي من عند كل المستخدمين). إذا فشل الاتصال يُعاد تلقائياً. */
 function deleteAdOnServer(id: string) {
-  void fetch(`/api/ads/${encodeURIComponent(id)}`, { method: 'DELETE', credentials: 'include' }).catch(() => {});
+  const adId = String(id || '');
+  if (!adId) return;
+  let uid = adsMyId();
+  if (!uid) { try { uid = String((loadFeedAdsMeta().find((a: any) => String(a.id) === adId) || {}).userId || ''); } catch { /* */ } }
+  const list = readPendingAdDeletes();
+  if (!list.some(x => x.id === adId)) { list.push({ id: adId, userId: uid }); writePendingAdDeletes(list); }
+  void flushPendingAdDeletes();
 }
-function saveFeedAdsMeta(list: any[]) {
+function saveFeedAdsMeta(list: any[], localOnly = false) {
   const next = Array.isArray(list) ? list.slice(0, 120) : [];
   try { (window as any).__stooornaFeedAds = next; } catch { /* */ }
   try {
@@ -8023,12 +8109,16 @@ function saveFeedAdsMeta(list: any[]) {
     } catch { /* */ }
   }
   try { window.dispatchEvent(new CustomEvent('stooorna:feed-ads', { detail: next })); } catch { /* */ }
-  try {
-    const prevIds: string[] = (saveFeedAdsMeta as any).__prevIds || [];
-    for (const ad of next) pushAdToServer(ad);
-    for (const id of prevIds) if (!next.some((a: any) => String(a.id) === id)) deleteAdOnServer(id);
-    (saveFeedAdsMeta as any).__prevIds = next.map((a: any) => String(a.id));
-  } catch { /* */ }
+  // ADS-SERVER-SYNC: نرفع للسيرفر فقط إعلاناتي الجديدة اللي ما وصلت بعد (ما نعيد رفع إعلانات غيري ولا نرجّع محذوف)
+  if (!localOnly) {
+    try {
+      const me = adsMyId();
+      if (me) {
+        const synced = readSyncedAdIds();
+        for (const ad of next) if (String(ad.userId) === me && !synced.has(String(ad.id))) void pushAdToServer(ad);
+      }
+    } catch { /* */ }
+  }
 }
 
 function isAdLive(a: any, now = Date.now()): boolean {
@@ -19126,7 +19216,7 @@ export function PublicLiveCommentsPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typersSig]);
   useEffect(() => () => { onTypersChangeRef.current?.({ count: 0, name: '' }); }, []);
-  const mentionSeenRef = useRef<Set<string>>(new Set());
+  const mentionSeenRef = useRef<Set<string>>((() => { try { const a = JSON.parse(localStorage.getItem('stooorna_mention_seen_ids') || '[]'); return new Set<string>(Array.isArray(a) ? a.map(String) : []); } catch { return new Set<string>(); } })());
   const mentionMountedAt = useRef(Date.now());
   const [mentionPending, setMentionPending] = useState(false);
   useEffect(() => {
@@ -19142,6 +19232,7 @@ export function PublicLiveCommentsPanel({
       if ((Number(c.createdAt) || 0) < mentionMountedAt.current - 60_000) continue; // old history is not a new mention
       if (re.test(String(c.text || ''))) hit = true;
     }
+    try { localStorage.setItem('stooorna_mention_seen_ids', JSON.stringify(Array.from(mentionSeenRef.current).slice(-400))); } catch { /* */ }
     if (hit) setMentionPending(true);
   }, [comments, myUsername, myId]);
   // opening the chat = I saw it → the shine stops
@@ -22608,9 +22699,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   useEffect(() => {
     const onAds = () => setFeedAdsTick(x => x + 1);
     window.addEventListener('stooorna:feed-ads', onAds);
+    try { (window as any).__stooornaAdsMe = user?.id ? String(user.id) : ''; } catch { /* */ }
     void syncAdsFromServer();
-    return () => window.removeEventListener('stooorna:feed-ads', onAds);
-  }, []);
+    // ADS-SERVER-SYNC: الإعلان المحذوف يختفي عند الكل بدون رفرش (كل 20 ثانية + عند الرجوع للتطبيق)
+    const syncId = window.setInterval(() => { if (document.visibilityState === 'visible') void syncAdsFromServer(); }, 20000);
+    const onVis = () => { if (document.visibilityState === 'visible') void syncAdsFromServer(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => { window.removeEventListener('stooorna:feed-ads', onAds); window.clearInterval(syncId); document.removeEventListener('visibilitychange', onVis); };
+  }, [user?.id]);
   // Countdown + auto republish cycle (24h live → 4h wait → auto Publish)
   useEffect(() => {
     const tick = () => {
@@ -25458,10 +25554,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     if (!user?.id) return;
     let since = 0;
     const seen = new Set<string>();
+    // ONE-TIME-PATCH: ids already shown survive closing/reopening the app → each mention/call shows exactly once
+    const SEEN_KEY = 'stooorna_notice_seen_v1';
+    const shownBefore = (() => { try { const a = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); return new Set<string>(Array.isArray(a) ? a.map(String) : []); } catch { return new Set<string>(); } })();
+    const rememberShown = (id: string) => { shownBefore.add(id); try { localStorage.setItem(SEEN_KEY, JSON.stringify(Array.from(shownBefore).slice(-400))); } catch { /* */ } };
     const pull = async () => {
       try {
         const username = String((user as any)?.username || '').replace(/^@/, '');
-        const r = await fetch(`/api/notifications?userId=${encodeURIComponent(String(user.id))}&username=${encodeURIComponent(username)}&since=${since}`, { credentials: 'include', cache: 'no-store' });
+        const r = await fetch(`/api/notifications?userId=${encodeURIComponent(String(user.id))}&username=${encodeURIComponent(username)}&since=${since}&consume=1`, { credentials: 'include', cache: 'no-store' });
         if (!r.ok) return;
         const d = await r.json();
         const rows = (d.notifications || []) as Array<any>;
@@ -25469,6 +25569,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (!n?.id || seen.has(n.id)) continue;
           seen.add(n.id);
           since = Math.max(since, Number(n.at) || 0);
+          if (n.type !== 'invite') { if (shownBefore.has(String(n.id))) continue; rememberShown(String(n.id)); }
           if (String(n.title || '').includes('طرد')) { try { const seen = sessionStorage.getItem('stooorna_kick_seen') || ''; if (!seen.includes(n.id)) { sessionStorage.setItem('stooorna_kick_seen', seen + n.id); setKickedBox(true); } } catch { /* */ } void fetch('/api/notifications/read', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: n.id }) }); continue; }
           if (n.type === 'invite' && !n.read) {
             const ownerId = String(n.room || '').replace('saved:', '');
@@ -30698,6 +30799,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     const id = String(feedAdViewer.id);
                     void (async () => {
                       try { await stooornaAdMediaDelete(id); } catch { /* */ }
+                      deleteAdOnServer(id);
                       saveFeedAdsMeta(loadFeedAdsMeta().filter((x: any) => String(x.id) !== id));
                       setFeedAdsTick(t => t + 1);
                       setFeedAdViewer(null);
@@ -30916,6 +31018,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                               e.stopPropagation();
                               const id = String(a.id);
                               await stooornaAdMediaDelete(id);
+                              deleteAdOnServer(id);
                               const next = loadFeedAdsMeta().filter((x: any) => String(x.id) !== id);
                               saveFeedAdsMeta(next);
                               setFeedAdsTick(t => t + 1);
@@ -30999,6 +31102,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       onClick={async () => {
                         const id = String(a.id);
                         await stooornaAdMediaDelete(id);
+                        deleteAdOnServer(id);
                         const next = loadFeedAdsMeta().filter((x: any) => String(x.id) !== id);
                         saveFeedAdsMeta(next);
                         setFeedAdsTick(t => t + 1);
@@ -34316,6 +34420,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               void (async () => {
                 const id = String(ad.id);
                 try { await stooornaAdMediaDelete(id); } catch { /* */ }
+                deleteAdOnServer(id);
                 saveFeedAdsMeta(loadFeedAdsMeta().filter((x: any) => String(x.id) !== id));
                 setFeedAdsTick(t => t + 1);
                 setFeedAdViewer((v: any) => (v && String(v.id) === id ? null : v));

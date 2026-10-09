@@ -19,6 +19,7 @@ import { registerNotificationRoutes, notifyMentionsFromText } from "./notificati
 import { registerSavedRoomRoutes } from "./saved-room-patch.js";
 import { registerForgotPasswordRoutes, registerLiveIconRoutes } from "./forgot-password-patch.js"; // FORGOT-PASSWORD-PATCH
 import { registerAdsRoutes } from "./ads-patch.js"; // ADS-PATCH
+import { registerAdsStoreRoutes } from "./ads-store.js"; // ADS-STORE-PATCH (MySQL, visible to everyone, real delete)
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -387,6 +388,7 @@ app.get('/api/status/comment-likes', getStatusCommentLikes);
 
 // <api-registrations>
 registerForgotPasswordRoutes(app, { db: dbClientModule as unknown as Record<string, any> }); // FORGOT-PASSWORD-PATCH before auth catch-all
+registerAdsStoreRoutes(app); // ADS-STORE-PATCH — must come BEFORE the old ads routes (first match wins)
 registerAdsRoutes(app, { db: dbClientModule as unknown as Record<string, any> }); // ADS-PATCH
 registerLiveIconRoutes(app);
 app.get("/api/auth/:action", auth_action_get_0);

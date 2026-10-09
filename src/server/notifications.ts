@@ -47,6 +47,24 @@ const save = () => {
 };
 
 export function pushNotification(row: Omit<AppNotice, "id" | "at" | "read"> & { id?: string }) {
+  // ONE-TIME-PATCH: never notify someone about their own mention
+  const _to = String(row.toUsername || "").replace(/^@/, "").toLowerCase();
+  const _from = String(row.fromName || "").replace(/^@/, "").toLowerCase();
+  if (row.type === "mention" && _to && _from && _to === _from) return { id: "", type: row.type, toUserId: "", toUsername: _to, fromUserId: "", fromName: "", title: "", body: "", room: "", messageId: "", href: "/", at: Date.now(), read: true } as AppNotice;
+  if (row.type === "mention" && row.fromUserId && row.toUserId && String(row.fromUserId) === String(row.toUserId)) return { id: "", type: row.type, toUserId: "", toUsername: _to, fromUserId: "", fromName: "", title: "", body: "", room: "", messageId: "", href: "/", at: Date.now(), read: true } as AppNotice;
+  // ONE-TIME-PATCH: the same message can reach us twice (server chat hook + the client POST) → keep only one notice per message per person
+  if (row.type !== "invite") {
+    const _mid = String(row.messageId || "");
+    const _body = String(row.body || "").slice(0, 180);
+    const _now = Date.now();
+    const dup = mem().find(x =>
+      x.type === row.type &&
+      x.toUsername.toLowerCase() === _to &&
+      (_mid
+        ? x.messageId === _mid
+        : (x.fromName === String(row.fromName || "") && x.body === _body && _now - x.at < 15000)));
+    if (dup) return dup;
+  }
   const n: AppNotice = {
     id: row.id || `nt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     type: row.type,
@@ -89,13 +107,24 @@ export function registerNotificationRoutes(app: Express) {
     const userId = String(req.query.userId || "");
     const username = String(req.query.username || "").replace(/^@/, "").toLowerCase();
     const since = Number(req.query.since || 0);
+    const consume = String(req.query.consume || "") === "1";
     const rows = mem().filter(n => {
       if (n.at <= since) return false;
+      if (n.type !== "invite" && n.read) return false; // ONE-TIME-PATCH: already delivered/seen → never again
       if (userId && n.toUserId && n.toUserId === userId) return true;
       if (username && n.toUsername && n.toUsername.toLowerCase() === username) return true;
       return false;
     });
-    res.json({ ok: true, notifications: rows.slice(-30) });
+    const out = rows.slice(-30);
+    if (consume) {
+      // the app asked to consume: each notice is handed over exactly once
+      let touched = false;
+      for (const n of out) if (n.type !== "invite" && !n.read) { n.read = true; touched = true; }
+      if (touched) save();
+      res.json({ ok: true, notifications: out.map(n => ({ ...n, read: false })) });
+      return;
+    }
+    res.json({ ok: true, notifications: out });
   });
   app.post("/api/notifications", (req: Request, res: Response) => {
     const body = (req.body || {}) as any;
