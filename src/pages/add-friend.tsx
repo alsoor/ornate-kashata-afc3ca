@@ -14470,8 +14470,24 @@ function AdminBellServerSync({ myUserId }: { myUserId: string | null }) {
   );
 }
 
-function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?: number }) {
+function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string | null; size?: number; onSoftRefresh?: () => void }) {
   const uid = String(userId || '');
+  // STOOORNA title: single tap = admin notices (as the old bell did), double tap = in-page soft refresh + wave
+  const lastTapRef = useRef(0);
+  const tapTimerRef = useRef<number | null>(null);
+  const [waving, setWaving] = useState(false);
+  const [waveKey, setWaveKey] = useState(0);
+  const waveTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (tapTimerRef.current) window.clearTimeout(tapTimerRef.current);
+    if (waveTimerRef.current) window.clearTimeout(waveTimerRef.current);
+  }, []);
+  const triggerWave = () => {
+    setWaveKey(k => k + 1);
+    setWaving(true);
+    if (waveTimerRef.current) window.clearTimeout(waveTimerRef.current);
+    waveTimerRef.current = window.setTimeout(() => { setWaving(false); waveTimerRef.current = null; }, 1700);
+  };
   const visitorCount = useSiteVisitorCount(uid || null);
   const [open, setOpen] = useState(false);
   const [hapticOff, setHapticOff] = useState(() => {
@@ -14524,7 +14540,18 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
         onClick={e => {
           // after a long-press (haptic switch) the browser still fires a click on release — ignore it
           if ((e.currentTarget as any)._hapticFired) { (e.currentTarget as any)._hapticFired = false; return; }
-          openPanel();
+          const now = Date.now();
+          if (tapTimerRef.current && now - lastTapRef.current < 320) {
+            // double tap → wave the name + refresh the page's data from inside (no reload: calls / live / media untouched)
+            window.clearTimeout(tapTimerRef.current);
+            tapTimerRef.current = null;
+            lastTapRef.current = 0;
+            triggerWave();
+            try { onSoftRefresh?.(); } catch { /* */ }
+            return;
+          }
+          lastTapRef.current = now;
+          tapTimerRef.current = window.setTimeout(() => { tapTimerRef.current = null; openPanel(); }, 320);
         }}
         onContextMenu={e => e.preventDefault()}
         onPointerDown={e => {
@@ -14545,16 +14572,45 @@ function HeaderAdminBell({ userId, size = 30 }: { userId?: string | null; size?:
         onPointerCancel={e => { const t = (e.currentTarget as any)._hapticHold; if (t) window.clearTimeout(t); }}
         aria-label="Admin notices"
         style={{
-          width: size, height: size, borderRadius: '50%',
-          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : 'rgba(255,255,255,0.35)'}`,
-          background: unread ? 'rgba(239,68,68,0.16)' : hapticOff ? 'rgba(249,115,22,0.2)' : 'rgba(255,255,255,0.08)',
+          minWidth: size, height: size, borderRadius: 999,
+          border: `1.5px solid ${unread ? 'rgba(239,68,68,0.95)' : hapticOff ? 'rgba(249,115,22,0.85)' : 'transparent'}`,
+          background: unread ? 'rgba(239,68,68,0.16)' : hapticOff ? 'rgba(249,115,22,0.2)' : 'transparent',
           color: '#ffffff',
           boxShadow: unread ? '0 0 10px rgba(239,68,68,0.55)' : 'none',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer', padding: 0,
+          cursor: 'pointer', padding: '0 12px',
+          WebkitTapHighlightColor: 'transparent', outline: 'none',
         }}
       >
-        <Bell size={15} strokeWidth={2.2} />
+        <style>{`
+@keyframes stooornaNameShine {
+  0%, 40%, 100% { color: #ffffff; text-shadow: 0 0 0 rgba(226,232,240,0); }
+  12% { color: #c3cedd; text-shadow: 0 0 9px rgba(241,245,249,0.95), 0 0 2px rgba(255,255,255,0.9); }
+  24% { color: #ffffff; text-shadow: 0 0 4px rgba(226,232,240,0.45); }
+}
+@keyframes stooornaNameWave {
+  0% { transform: translateY(0) rotate(0deg); }
+  20% { transform: translateY(-6px) rotate(-8deg); }
+  40% { transform: translateY(4px) rotate(6deg); }
+  60% { transform: translateY(-5px) rotate(-5deg); }
+  80% { transform: translateY(2px) rotate(3deg); }
+  100% { transform: translateY(0) rotate(0deg); }
+}`}</style>
+        <span aria-hidden style={{ display: 'inline-flex', alignItems: 'center', direction: 'ltr', whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none' }}>
+          {'STOOORNA'.split('').map((ch, i) => (
+            <span
+              key={`${i}-${waveKey}`}
+              style={{
+                display: 'inline-block',
+                color: '#ffffff',
+                fontSize: '0.8rem', fontWeight: 800, lineHeight: 1, letterSpacing: '0.12em',
+                animation: waving
+                  ? `stooornaNameShine 2.8s linear ${i * 0.11}s infinite, stooornaNameWave 1.05s ease-in-out ${i * 0.07}s 1`
+                  : `stooornaNameShine 2.8s linear ${i * 0.11}s infinite`,
+              }}
+            >{ch}</span>
+          ))}
+        </span>
       </button>
       <span
         aria-hidden
@@ -27965,8 +28021,24 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
               {/* Bell only — centered at top of story page */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 30 }}>
-                <div style={{ position: 'relative', width: 30, height: 30, flexShrink: 0 }}>
-                  <HeaderAdminBell userId={user?.id} size={30} />
+                <div style={{ position: 'relative', minWidth: 30, height: 30, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <HeaderAdminBell
+                    userId={user?.id}
+                    size={30}
+                    onSoftRefresh={() => {
+                      // Internal soft refresh: only re-fetches data. No page reload → calls, live, music and media sessions are never touched.
+                      try { void hydrateVipDirectory(); void hydrateBusinessDirectory(); } catch { /* */ }
+                      void loadCompanies();
+                      if (user) {
+                        void loadFriends();
+                        void loadHighlights();
+                        void loadSecretChats();
+                        try { void fetchStoryCommentThreads(); } catch { /* */ }
+                      }
+                      setFeedAdsTick(t => t + 1);
+                      try { window.dispatchEvent(new CustomEvent('stooorna:refresh-text-feed')); } catch { /* */ }
+                    }}
+                  />
                   <div style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
                     <StoryModerationBell userId={user?.id} size={30} />
                   </div>
