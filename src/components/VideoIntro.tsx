@@ -38,6 +38,19 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   const [phase, setPhase] = useState<'play' | 'shatter'>('play');
   const [ready, setReady] = useState(false);   // first picture of the video is loaded -> start the circular opening
   const [opened, setOpened] = useState(false);   // opening finished -> the video starts playing
+  const [shown, setShown] = useState(false);     // the video is really playing -> swap the still picture for the video
+  const stillRef = useRef<HTMLCanvasElement | null>(null);
+
+  /** paint the first picture of the video on a canvas: the opening animation uses this still, so the (paused) video itself is never visible */
+  const grabStill = useCallback(() => {
+    const v = videoRef.current, c = stillRef.current;
+    if (!v || !c || !v.videoWidth) return;
+    try {
+      c.width = v.videoWidth; c.height = v.videoHeight;
+      c.getContext('2d')!.drawImage(v, 0, 0, c.width, c.height);
+    } catch { /* ignore */ }
+    setReady(true);
+  }, []);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const snapRef = useRef<HTMLCanvasElement | null>(null);
@@ -58,11 +71,11 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
     if (!v) return;
     v.controls = false;
     v.muted = true;
-    if (v.readyState >= 2) setReady(true);
+    if (v.readyState >= 2) grabStill();
     // if the video can never load/start, don't leave a black screen
     const giveUp = window.setTimeout(() => { if (v.paused && v.currentTime === 0) { skippedThisSession = true; setDismissed(true); } }, 9000);
     return () => window.clearTimeout(giveUp);
-  }, [visible]);
+  }, [visible, grabStill]);
 
   /** called when the opening finishes: plays by itself (muted = always allowed), then tries to turn the sound on */
   const startPlay = useCallback(() => {
@@ -214,12 +227,15 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
                 disablePictureInPicture
                 disableRemotePlayback
                 {...({ controlsList: 'nodownload nofullscreen noremoteplayback' } as Record<string, string>)}
-                onLoadedData={() => setReady(true)}
+                onLoadedData={grabStill}
+                onPlaying={() => setShown(true)}
                 onTimeUpdate={onTime}
                 onEnded={() => { setEnded(true); setT(999); shatter(false); }}
                 onError={() => { console.error('Intro video failed to load - check that', INTRO_VIDEO_SRC, 'exists in /public'); skippedThisSession = true; setDismissed(true); }}
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: '#000' }}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: '#000', opacity: shown ? 1 : 0 }}
               />
+              {/* still of the first picture (shown instead of the paused video, so no grey play icon can ever appear) */}
+              <canvas ref={stillRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: shown ? 'none' : 'block', pointerEvents: 'none', background: '#000' }} />
 
               {/* flicker / flash on the video */}
               <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'screen', animation: 'stIntroFlash 3.4s steps(1, end) infinite', background: 'radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.55), rgba(0,188,212,0.18) 55%, transparent 80%)' }} />
