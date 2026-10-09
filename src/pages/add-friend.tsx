@@ -146,7 +146,7 @@ import { publishLiveChatVideoDelete, onLiveChatVideoDeleted, applyLiveChatVideoT
 // Templates (الصور/الفيديو بالخارج): مخزن مستقل تماماً عن الشات العام — لا يتأثر بتنظيف الـ24 ساعة
 import { useLiveEmojiBurstSync } from '@/lib/liveEmojiBurst'; // EMOJI-BURST-PATCH
 import '@/lib/templatesShieldPatch'; // TEMPLATES-SHIELD: blocks screenshots / save-image inside Templates
-import { TplShareButton, TplSharedTile, isTplShareText, TplShareDot, useTplShareUnread, tplZ } from '@/lib/templatesSharePatch'; // TEMPLATES-SHARE-PATCH TEMPLATES-SHARE-PATCH-2
+import { TplShareButton, TplSharedTile, isTplShareText, TplShareDot, useTplShareUnread, tplZ, playTplMessageTone } from '@/lib/templatesSharePatch'; // TEMPLATES-SHARE-PATCH TEMPLATES-SHARE-PATCH-2 TEMPLATES-SHARE-PATCH-5
 import { TEMPLATES_CACHE_KEY, loadTemplatesCache, saveTemplatesCache, syncTemplates, postTemplateRow, likeTemplateRow, deleteTemplateRow, markTemplatePending, markTemplateDeleted } from '@/lib/liveTemplatesStore';
 import { StoryModerationBell, StoryModerationWatcher } from '@/components/StoryModeration';
 import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationChanged, deleteStoryOnServer, ingestModMessageRows } from '@/lib/storyModeration';
@@ -25868,6 +25868,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (n.type === 'invite' && !n.read) {
             const ownerId = String(n.room || '').replace('saved:', '');
             setSavedInvite({ id: n.id, fromName: n.fromName || 'Someone', ownerId, fromAvatar: n.fromAvatar || '' });
+            playTplMessageTone(); // TEMPLATES-SHARE-PATCH-5
             continue;
           }
           if (n.type === 'call' && document.visibilityState === 'visible') continue;
@@ -25875,6 +25876,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             try { sessionStorage.setItem('stooorna_missed_call', JSON.stringify({ title: n.title || 'كان عندك اتصال', body: n.body || '' })); } catch { /* */ }
           }
           setNoticeTop({ id: n.id, title: n.title || 'Stooorna', body: n.body || '', messageId: n.messageId || '', kind: n.type || '' });
+          if (n.type !== 'call') playTplMessageTone(); // TEMPLATES-SHARE-PATCH-5
           if (n.type !== 'invite' && typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
             const sys = new Notification(n.title || 'Stooorna', { body: n.body || '', tag: n.id });
             sys.onclick = () => {

@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
+import { useSession } from '@/lib/auth/auth-client';
 import { Check, X } from 'lucide-react';
 
 const MARK = '\u2063TPLSHARE\u2063';
@@ -28,6 +29,51 @@ function parseShare(t?: string | null): SharePayload | null {
   try { return JSON.parse(String(t).slice(MARK.length)) as SharePayload; } catch { return null; }
 }
 
+
+/* ───────────── message tone (any notification) ───────────── */
+let toneCtx: AudioContext | null = null;
+let lastToneAt = 0;
+function getToneCtx(): AudioContext | null {
+  try {
+    if (!toneCtx) {
+      const C = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!C) return null;
+      toneCtx = new C();
+    }
+    return toneCtx;
+  } catch { return null; }
+}
+/** short two-note "message received" tone (WebAudio, no file needed). Safe to call from anywhere; never throws. */
+export function playTplMessageTone() {
+  try {
+    const now = Date.now();
+    if (now - lastToneAt < 700) return; // several notifications at once = one tone
+    lastToneAt = now;
+    const c = getToneCtx();
+    if (!c) return;
+    const go = () => {
+      const t0 = c.currentTime;
+      ([[880, 0], [1318.5, 0.15]] as Array<[number, number]>).forEach(([f, d]) => {
+        const o = c.createOscillator();
+        const g = c.createGain();
+        o.type = 'sine';
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, t0 + d);
+        g.gain.exponentialRampToValueAtTime(0.25, t0 + d + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.34);
+        o.connect(g); g.connect(c.destination);
+        o.start(t0 + d); o.stop(t0 + d + 0.36);
+      });
+    };
+    if (c.state === 'suspended') void c.resume().then(go).catch(() => { /* blocked until a tap */ }); else go();
+  } catch { /* sound is optional */ }
+}
+if (typeof window !== 'undefined') {
+  // browsers / the Android WebView only allow sound after the first touch — unlock the audio engine then
+  const unlock = () => { const c = getToneCtx(); if (c && c.state === 'suspended') void c.resume().catch(() => { /* */ }); };
+  window.addEventListener('pointerdown', unlock, { once: true, passive: true });
+  window.addEventListener('keydown', unlock, { once: true });
+}
 
 /* ───────────── unread marker (orange blink) ───────────── */
 const UNREAD_KEY = 'stooorna_tpl_share_unread_';
@@ -99,6 +145,20 @@ async function pullInbox() {
     try { seen = JSON.parse(localStorage.getItem(SEEN_KEY + uid) || '[]'); } catch { /* */ }
     const fresh = d.items.filter((x: any) => !seen.includes(String(x.id)));
     if (!fresh.length) return;
+    if (fresh.some((x: any) => !x.fromUsername || !x.fromAvatar)) {
+      try {
+        const fr = await fetch('/api/friends', { credentials: 'include' });
+        const fd = fr.ok ? await fr.json() : null;
+        const acc: any[] = Array.isArray(fd?.accepted) ? fd.accepted : [];
+        for (const x of fresh) {
+          const f = acc.find(a => String(a.friendId) === String(x.fromUserId));
+          if (!f) continue;
+          if (!x.fromUsername) x.fromUsername = String(f.username || '');
+          if (!x.fromName) x.fromName = String(f.name || '');
+          if (!x.fromAvatar) x.fromAvatar = String(f.avatarUrl || '');
+        }
+      } catch { /* keep what we have */ }
+    }
     let list: any[] = [];
     try { list = JSON.parse(localStorage.getItem(SAVED_KEY + uid) || '[]'); if (!Array.isArray(list)) list = []; } catch { list = []; }
     for (const x of fresh) {
@@ -130,11 +190,23 @@ startPoller();
 
 
 /* ───────────── top notification when a share arrives (outside Saved Messages) ───────────── */
+function ToastAvatar({ src, name }: { src: string; name: string }) {
+  const [bad, setBad] = useState(false);
+  const box: CSSProperties = { width: 40, height: 40, borderRadius: '50%', flexShrink: 0, boxShadow: '0 0 0 2px #f97316' };
+  if (src && !bad) return <img src={src} alt="" onError={() => setBad(true)} style={{ ...box, objectFit: 'cover', background: '#0e3a42' }} />;
+  return (
+    <span style={{ ...box, background: '#0e3a42', color: '#7ee8f5', fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      {String(name || '?').replace(/^@/, '').slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
 function TplShareToast() {
   const [t, setT] = useState<{ from: string; avatar: string; count: number } | null>(null);
   useEffect(() => {
     let timer = 0;
     const onArrive = (e: Event) => {
+      playTplMessageTone();
       let inSaved = false;
       try { inSaved = sessionStorage.getItem('stooorna_saved_open') === '1'; } catch { /* */ }
       if (inSaved) return;
@@ -161,11 +233,7 @@ function TplShareToast() {
         style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 10, width: '100%', maxWidth: 420, background: '#06171a', border: '1px solid #f97316', borderRadius: 16, padding: '8px 10px', boxShadow: '0 8px 28px rgba(0,0,0,0.5)' }}
       >
         <button type="button" onClick={open} style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 10, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'right', color: '#fff' }}>
-          {t.avatar ? (
-            <img src={t.avatar} alt="" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, boxShadow: '0 0 0 2px #f97316' }} />
-          ) : (
-            <span style={{ width: 38, height: 38, borderRadius: '50%', background: '#f97316', flexShrink: 0 }} />
-          )}
+          <ToastAvatar src={t.avatar} name={t.from} />
           <span style={{ minWidth: 0, fontWeight: 700, fontSize: '0.88rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {t.from ? `@${t.from.replace(/^@/, '')} ` : ''}{t.count > 1 ? `شارك ${t.count} منشورات` : 'شارك منشور'}
           </span>
@@ -253,6 +321,7 @@ export function TplShareButton({ post, isVideo }: { post: { id: string; imageUrl
 }
 
 function TplShareBubble({ post, isVideo, onClose }: { post: { id: string; imageUrl?: string | null; text?: string | null }; isVideo?: boolean; onClose: () => void }) {
+  const { user: me } = useSession();
   const [friends, setFriends] = useState<Friend[] | null>(null);
   const [sending, setSending] = useState<string>('');
   const [done, setDone] = useState(false);
@@ -278,7 +347,10 @@ function TplShareBubble({ post, isVideo, onClose }: { post: { id: string; imageU
     try {
       const r = await fetch('/api/templates-share/send', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ toUserId: f.friendId, postId: post.id, kind, mediaUrl: url }),
+        body: JSON.stringify({
+          toUserId: f.friendId, postId: post.id, kind, mediaUrl: url,
+          fromName: (me as any)?.name || '', fromUsername: (me as any)?.username || '', fromAvatar: (me as any)?.avatarUrl || (me as any)?.image || '',
+        }),
       });
       if (!r.ok) throw new Error('fail');
       setDone(true);

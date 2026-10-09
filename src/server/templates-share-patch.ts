@@ -54,7 +54,7 @@ export function registerTemplatesShareRoutes(
     const row: ShareRow = {
       id: `tshare_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       toUserId, fromUserId: me,
-      fromName: clip(u.name, 80), fromUsername: clip(u.username, 60), fromAvatar: clip(u.avatarUrl || u.image, 500),
+      fromName: clip(u.name || b.fromName, 80), fromUsername: clip(u.username || b.fromUsername, 60), fromAvatar: clip(u.avatarUrl || u.image || b.fromAvatar, 500),
       postId, kind, mediaUrl: clip(b.mediaUrl, 3000), at: Date.now(),
     };
     rows.push(row);
