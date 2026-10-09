@@ -15,10 +15,32 @@ import { pool } from "./db/client.js";
 const CHUNK = 1024 * 1024; // 1MB لكل صف حتى لا نتجاوز max_allowed_packet
 const DAY = 24 * 3600 * 1000;
 
+/** Rename a table with an incompatible (legacy) shape out of the way so the correct one can be created. */
+async function healTable(table: string, mustHaveColumn: string) {
+  const [exists] = (await pool.query(
+    "SELECT COUNT(*) AS c FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?", [table],
+  )) as any;
+  if (!Number(exists[0]?.c)) return;
+  const [has] = (await pool.query(
+    "SELECT COUNT(*) AS c FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+    [table, mustHaveColumn],
+  )) as any;
+  if (Number(has[0]?.c)) return;
+  const legacy = `${table}_legacy_${Date.now()}`;
+  console.warn(`[ads] table ${table} has a legacy shape -> renamed to ${legacy}`);
+  await pool.query(`RENAME TABLE ${table} TO ${legacy}`);
+}
+
 let readyP: Promise<void> | null = null;
 function ensure(): Promise<void> {
   if (!readyP) {
     readyP = (async () => {
+      // SCHEMA-HEAL: the old ads-patch.ts created a table with the SAME name (stooorna_ads) but different columns
+      // (userId, mediaUrl, endsAt ...). CREATE TABLE IF NOT EXISTS then skips, every INSERT/SELECT fails with 500,
+      // and no ad ever reaches other users. If the existing table has the old shape, rename it aside and recreate.
+      await healTable("stooorna_ads", "meta");
+      await healTable("stooorna_ad_media", "ad_id");
+      await healTable("stooorna_ads_deleted", "deleted_at");
       await pool.query(`CREATE TABLE IF NOT EXISTS stooorna_ads (
         id VARCHAR(96) NOT NULL PRIMARY KEY,
         user_id VARCHAR(96) NOT NULL,
