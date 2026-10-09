@@ -7988,41 +7988,55 @@ function loadFeedAdsMeta(): any[] {
 }
 
 
-/** Full-screen player for an owner-note video. Loads the file as a blob first (works even if the server has no Range support),
- *  no native controls / no play badge. One tap anywhere closes. */
+/** Full-screen player for an owner-note video. The file is turned into a blob first (data: URLs and servers without Range
+ *  support both fail as a plain <video src> on Android WebView). No native controls, no placeholder/play badge:
+ *  the <video> stays invisible until a real frame is decoded. One tap anywhere closes. */
 function NoteFullVideo({ url, onClose }: { url: string; onClose: () => void }) {
   const [src, setSrc] = useState<string>('');
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
   const vRef = useRef<HTMLVideoElement | null>(null);
+  const triedDirect = useRef(false);
+  const rawRef = useRef('');
+  const asVideoBlob = (b: Blob): Blob => (b.type && /^video\//i.test(b.type) ? b : new Blob([b], { type: 'video/mp4' }));
   useEffect(() => {
     let dead = false;
     let objUrl = '';
+    triedDirect.current = false;
+    setReady(false); setFailed(false); setSrc('');
     const raw = resolveMediaUrl(url);
-    if (!raw) return;
-    if (/^(blob:|data:)/i.test(raw)) { setSrc(raw); return; }
+    rawRef.current = raw;
+    if (!raw) { setFailed(true); return; }
     (async () => {
       try {
-        const r = await fetch(raw, { credentials: 'include' });
-        if (!r.ok) throw new Error(String(r.status));
-        let b = await r.blob();
-        if (!b.type || !/^video\//i.test(b.type)) b = new Blob([b], { type: 'video/mp4' });
-        objUrl = URL.createObjectURL(b);
-        if (!dead) setSrc(objUrl);
+        if (/^blob:/i.test(raw)) { if (!dead) setSrc(raw); return; }
+        let blob: Blob;
+        if (/^data:/i.test(raw)) {
+          blob = adDataUrlToBlob(raw);
+        } else {
+          const r = await fetch(raw, { credentials: 'include' });
+          if (!r.ok) throw new Error(String(r.status));
+          const ct = String(r.headers.get('content-type') || '');
+          if (/text\/html|application\/json/i.test(ct)) throw new Error('not-video');
+          blob = await r.blob();
+        }
+        if (!blob.size) throw new Error('empty');
+        objUrl = URL.createObjectURL(asVideoBlob(blob));
+        if (!dead) setSrc(objUrl); else URL.revokeObjectURL(objUrl);
       } catch {
-        if (!dead) setSrc(raw);
+        if (dead) return;
+        if (/^data:/i.test(raw)) setFailed(true);
+        else { triedDirect.current = true; setSrc(raw); }
       }
     })();
     return () => { dead = true; if (objUrl) { try { URL.revokeObjectURL(objUrl); } catch { /* */ } } };
   }, [url]);
-  useEffect(() => {
+  const startPlay = () => {
     const v = vRef.current;
-    if (!v || !src) return;
-    const go = () => {
-      const pr = v.play();
-      if (pr && typeof pr.catch === 'function') pr.catch(() => { v.muted = true; v.play().catch(() => { /* */ }); });
-    };
-    if (v.readyState >= 2) go(); else v.addEventListener('loadeddata', go, { once: true });
-    return () => v.removeEventListener('loadeddata', go);
-  }, [src]);
+    if (!v) return;
+    const pr = v.play();
+    if (pr && typeof pr.catch === 'function') pr.catch(() => { v.muted = true; v.play().catch(() => { /* */ }); });
+  };
   return (
     <div
       role="dialog"
@@ -8030,20 +8044,31 @@ function NoteFullVideo({ url, onClose }: { url: string; onClose: () => void }) {
       onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 14300, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
     >
-      {src ? (
+      {src && !failed ? (
         <video
+          key={src}
           ref={vRef}
           src={src}
           autoPlay
           playsInline
           controls={false}
           preload="auto"
+          poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
           disablePictureInPicture
           controlsList="nodownload nofullscreen noremoteplayback"
+          onLoadedData={() => { setReady(true); startPlay(); }}
+          onCanPlay={startPlay}
+          onError={() => {
+            // blob failed -> try the plain URL once, then give up (never leave the grey placeholder visible)
+            if (!triedDirect.current && src.startsWith('blob:') && rawRef.current && !/^(data:|blob:)/i.test(rawRef.current)) {
+              triedDirect.current = true; setReady(false); setSrc(rawRef.current);
+            } else { setFailed(true); }
+          }}
           onClick={e => { e.stopPropagation(); onClose(); }}
-          style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', background: '#000' }}
+          style={{ maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', background: '#000', opacity: ready ? 1 : 0 }}
         />
       ) : null}
+      {failed ? <span style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.85rem', fontWeight: 700 }}>تعذّر تشغيل الفيديو</span> : null}
     </div>
   );
 }
