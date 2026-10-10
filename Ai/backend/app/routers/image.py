@@ -55,7 +55,7 @@ async def _gemini(model: str, key: str, body: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         data = {}
     if r.status_code >= 400:
-        raise RuntimeError((data.get("error") or {}).get("message") or f"Gemini HTTP {r.status_code}")
+        raise RuntimeError(f"Gemini {r.status_code}: " + str((data.get("error") or {}).get("message") or "request failed"))
     return data
 
 
@@ -178,4 +178,16 @@ async def image_edit(
     except HTTPException:
         raise
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(502, f"Image error: {e}") from e
+        msg = str(e)
+        low = msg.lower()
+        if "quota" in low or "billing" in low or "resource_exhausted" in low or "limit: 0" in low or "gemini 429" in low:
+            raise HTTPException(
+                429,
+                "Gemini image models need billing enabled on the API key's Google project "
+                "(free tier has no image generation) - or the quota is used up. | " + msg[:80],
+            ) from e
+        if "api key" in low or "gemini 401" in low or "gemini 403" in low:
+            raise HTTPException(502, "GEMINI_API_KEY was rejected by Google (invalid or not allowed). | " + msg[:80]) from e
+        if "not found" in low or "gemini 404" in low:
+            raise HTTPException(502, "Image model name not found - check GEMINI_IMAGE_MODEL. | " + msg[:80]) from e
+        raise HTTPException(502, f"Image error: {msg}") from e
