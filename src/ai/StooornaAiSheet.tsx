@@ -148,6 +148,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const avatar = user?.avatarUrl || user?.image || null;
   const displayName = user?.name || user?.username || 'You';
@@ -695,11 +696,23 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             zIndex: 5,
           }}
         >
+          {/* Files picker (+ button): documents / any file */}
           <input
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/*,.pdf,.txt,.doc,.docx,.csv,.json,.md,.zip"
+            style={{ display: 'none' }}
+            onChange={e => {
+              addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          {/* Photos picker (image button): images only */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            multiple
+            accept="image/*"
             style={{ display: 'none' }}
             onChange={e => {
               addFiles(e.target.files);
@@ -765,7 +778,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             <button
               type="button"
               aria-label="Attach photo"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => imageInputRef.current?.click()}
               style={{
                 width: 36, height: 36, borderRadius: '50%', border: 'none',
                 background: 'transparent', color: '#fff', cursor: 'pointer',
