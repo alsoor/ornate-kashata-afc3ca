@@ -66,6 +66,16 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  useEffect(() => {
+    if (!currentChatId || messages.length === 0) return;
+    const title = (messages[0]?.content || 'Chat').slice(0, 40);
+    setChats(prev => {
+      const exists = prev.find(c => c.id === currentChatId);
+      if (exists) return prev.map(c => c.id === currentChatId ? { ...c, messages, title } : c);
+      return [{ id: currentChatId, title, messages }, ...prev];
+    });
+  }, [messages, currentChatId]);
+
   const createNewChat = useCallback(() => {
     if (messages.length > 0 && currentChatId) {
       setChats(prev => {
@@ -86,6 +96,56 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     setCurrentChatId(chat.id);
     setMessages(chat.messages);
     setShowHistory(false);
+  };
+
+  const deleteChat = (chatId: string) => {
+    setChats(prev => prev.filter(c => c.id !== chatId));
+    if (currentChatId === chatId) {
+      setMessages([]);
+      setCurrentChatId(null);
+    }
+  };
+
+  const clearAllHistory = () => {
+    setChats([]);
+  };
+
+  const deleteCurrentConversation = () => {
+    if (currentChatId) {
+      setChats(prev => prev.filter(c => c.id !== currentChatId));
+    }
+    setMessages([]);
+    setCurrentChatId(null);
+    setShowHistory(false);
+  };
+
+  const localReply = (userText: string, hasFiles: boolean) => {
+    const t = userText.toLowerCase().trim();
+    if (hasFiles) {
+      return 'استلمت المرفق. حالياً المعاينة تعمل على جهازك. عند تشغيل خادم Ai يمكنني تحليل الصور والملفات بالكامل.';
+    }
+    if (/^(hi|hello|hey|السلام|مرحبا|هلا|اهلا|أهلا)/i.test(t)) {
+      return 'مرحباً! أنا Stooorna Ai. اسألني عن التطبيق، الأفكار، الجداول، أو أرفق صورة/ملف.';
+    }
+    if (t.includes('من انت') || t.includes('من أنت') || t.includes('who are you')) {
+      return 'أنا Stooorna Ai — مساعد داخل تطبيق Stooorna. أعمل محلياً الآن، ويمكن ربطي بـ Ollama أو OpenAI لاحقاً.';
+    }
+    if (t.includes('جدول') || t.includes('table')) {
+      return 'قل مثلاً: create table أو اكتب «جدول» وسأعرض جدولاً جاهزاً.';
+    }
+    if (t.includes('صورة') || t.includes('image') || t.includes('generate')) {
+      return 'يمكنك إرفاق صورة من زر الصورة، أو اطلب وصفاً وسأساعدك بصياغة الطلب.';
+    }
+    if (t.includes('اشتراك') || t.includes('subscribe') || t.includes('سعر')) {
+      return 'يمكنك لاحقاً ربط اشتراكات (Stripe/Polar) داخل Stooorna. المساعد يعمل مجاناً محلياً عبر Ollama إن شغّلت الخادم.';
+    }
+    // generic helpful echo
+    return (
+      `فهمت: «${userText.slice(0, 280)}»\n\n` +
+      `هذا رد محلي سريع (الخادم غير متصل). للردود الأقوى شغّل:\n` +
+      `Ai/backend → bash scripts/dev.sh\n` +
+      `أو استخدم Ollama على جهازك.`
+    );
   };
 
   const revokeAttachmentUrls = (list: Attachment[]) => {
@@ -139,7 +199,22 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       attachments: pending.length ? pending : undefined,
       timestamp: Date.now(),
     };
-    setMessages(prev => [...prev, userMsg]);
+    let chatId = currentChatId;
+    if (!chatId) {
+      chatId = `chat-${Date.now()}`;
+      setCurrentChatId(chatId);
+    }
+    setMessages(prev => {
+      const next = [...prev, userMsg];
+      // keep history list in sync
+      const title = (next[0]?.content || 'Chat').slice(0, 40);
+      setChats(prevChats => {
+        const exists = prevChats.find(c => c.id === chatId);
+        if (exists) return prevChats.map(c => c.id === chatId ? { ...c, messages: next, title } : c);
+        return [{ id: chatId!, title, messages: next }, ...prevChats];
+      });
+      return next;
+    });
     setInput('');
     setAttachments([]);
     setIsTyping(true);
@@ -198,16 +273,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         timestamp: Date.now(),
       };
       setMessages(prev => [...prev, aiMsg]);
-    } catch (err: any) {
+    } catch {
+      // Offline / server down → useful local reply (no scary error)
+      await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
       const aiMsg: Message = {
         id: `a-${Date.now()}`,
         role: 'assistant',
-        content:
-          `تعذر الاتصال بخادم Stooorna Ai.\n\n` +
-          `تأكد أن الخدمة تعمل:\n` +
-          `  cd Ai/backend && bash scripts/dev.sh\n` +
-          `أو: docker compose -f Ai/docker/docker-compose.yml up\n\n` +
-          `التفاصيل: ${err?.message || err}`,
+        content: localReply(content, pending.length > 0),
         type: 'text',
         timestamp: Date.now(),
       };
@@ -366,24 +438,72 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               padding: 8,
             }}
           >
-            <p style={{ margin: '4px 8px 8px', fontWeight: 700, fontSize: 13, color: '#333' }}>Previous chats</p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 4px 8px' }}>
+              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#333' }}>Previous chats</p>
+              {chats.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearAllHistory}
+                  style={{ border: 'none', background: 'transparent', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: '4px 6px' }}
+                >
+                  Delete all
+                </button>
+              )}
+            </div>
             {chats.length === 0 && (
               <p style={{ margin: 8, color: '#888', fontSize: 12 }}>No history yet</p>
             )}
             {chats.map(c => (
-              <button
+              <div
                 key={c.id}
-                type="button"
-                onClick={() => loadChat(c)}
                 style={{
-                  width: '100%', textAlign: 'left', padding: '8px 10px',
-                  border: 'none', background: 'transparent', borderRadius: 8,
-                  cursor: 'pointer', fontSize: 13, color: '#222',
+                  display: 'flex', alignItems: 'center', gap: 4,
+                  borderRadius: 8, padding: '2px 2px',
+                  background: c.id === currentChatId ? 'rgba(0,0,0,0.04)' : 'transparent',
                 }}
               >
-                {c.title}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => loadChat(c)}
+                  style={{
+                    flex: 1, textAlign: 'left', padding: '8px 10px',
+                    border: 'none', background: 'transparent', borderRadius: 8,
+                    cursor: 'pointer', fontSize: 13, color: '#222',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {c.title || 'Chat'}
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete chat"
+                  title="Delete"
+                  onClick={(e) => { e.stopPropagation(); deleteChat(c.id); }}
+                  style={{
+                    width: 28, height: 28, border: 'none', borderRadius: 8,
+                    background: 'transparent', color: '#ef4444', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    fontSize: 16, lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
             ))}
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={deleteCurrentConversation}
+                style={{
+                  width: '100%', marginTop: 8, padding: '8px 10px',
+                  border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8,
+                  background: 'rgba(239,68,68,0.06)', color: '#ef4444',
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                }}
+              >
+                Delete current chat
+              </button>
+            )}
           </div>
         )}
 
