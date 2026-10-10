@@ -448,7 +448,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [cameraOpen, setCameraOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -884,6 +884,14 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     abortRef.current = null;
     setIsTyping(false);
   };
+
+  // MULTILINE-INPUT: the text box grows with the lines (up to ~5 lines) and shrinks back after sending
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 129)}px`;
+  }, [input, open]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -1371,7 +1379,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
           <div
             style={{
-              display: 'flex', alignItems: 'center', gap: 8,
+              display: 'flex', alignItems: 'flex-end', gap: 8,
               background: `linear-gradient(180deg, ${DARK_GREEN} 0%, ${DARKER_GREEN} 100%)`,
               borderRadius: 24, padding: '6px 6px 6px 10px',
               border: '1px solid rgba(255,255,255,0.08)',
@@ -1390,18 +1398,23 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               <Plus size={20} strokeWidth={2.2} />
             </button>
 
-            <input
+            {/* MULTILINE-INPUT: the keyboard arrow adds a new line; only the send icon sends */}
+            <textarea
               ref={inputRef}
+              rows={1}
               value={input}
+              enterKeyHint="enter"
               onChange={e => setInput(e.target.value)}
               placeholder={listening ? (voiceNote || 'Listening…') : voiceNote || 'Ask anything'}
               style={{
                 flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                color: '#fff', fontSize: 15, padding: '8px 0',
+                color: '#fff', fontSize: 15, lineHeight: '21px', padding: '8px 0',
+                resize: 'none', overflowY: 'auto', maxHeight: 129, minWidth: 0,
+                fontFamily: 'inherit', display: 'block',
               }}
             />
 
-            <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginRight: 4 }}>Fast</span>
+            <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginRight: 4, marginBottom: 13 }}>Fast</span>
 
             <button
               type="button"
