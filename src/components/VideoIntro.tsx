@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { type StoreLinks, readStoreLinks, fetchStoreLinks, openAppUrl, openStoreUrl, STORE_LINKS_EVENT } from '@/lib/storeLinks';
 
 /** The video lives in  /public/intro.mp4 */
 export const INTRO_VIDEO_SRC = '/intro.mp4';
@@ -63,6 +64,17 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   useEffect(() => () => { if (pressedLogin) markIntroRegistered(); }, []);
 
   const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered();
+
+  // App Store / Google Play links of the owner (set in the owner settings) -> used by the white "Open App" banner
+  const [storeLinks, setStoreLinks] = useState<StoreLinks>(() => readStoreLinks());
+  useEffect(() => {
+    if (!visible) return;
+    let live = true;
+    void fetchStoreLinks().then(l => { if (live) setStoreLinks(l); });
+    const onLinks = () => setStoreLinks(readStoreLinks());
+    window.addEventListener(STORE_LINKS_EVENT, onLinks);
+    return () => { live = false; window.removeEventListener(STORE_LINKS_EVENT, onLinks); };
+  }, [visible]);
 
   // setup: silent, no controls. The video waits (showing its first picture) while the circular opening runs.
   useEffect(() => {
@@ -180,6 +192,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
 
   if (!visible) return null;
 
+  const openUrl = openAppUrl(storeLinks);
   const shimmer = (t >= SHIMMER_FROM || ended) && phase === 'play';
   const circ = 2 * Math.PI * RING.r;
   const stW = Math.max(window.innerWidth, window.innerHeight * 9 / 16), stH = Math.max(window.innerHeight, window.innerWidth * 16 / 9);
@@ -267,6 +280,24 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
               border: '3px solid #7df3ff', boxShadow: '0 0 24px 6px rgba(0,188,212,0.7), inset 0 0 24px 4px rgba(0,188,212,0.5)',
               animation: 'stIntroRim 1.7s cubic-bezier(.22,.75,.2,1) both',
             }} />
+          )}
+
+          {/* white "Open App" banner: smaller, sits right above the red "Log in" banner; opens the owner's App Store / Google Play link */}
+          {openUrl && (
+            <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(max(26px, env(safe-area-inset-bottom) + 16px) + 54px)', padding: '0 22px', display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+              <button
+                type="button"
+                onClick={() => openStoreUrl(openUrl)}
+                aria-label="Open App"
+                style={{
+                  pointerEvents: 'auto', width: 140, height: 34, borderRadius: 6, cursor: 'pointer', border: 'none',
+                  background: '#ffffff', color: '#000000', fontSize: 13, fontWeight: 800, letterSpacing: '0.03em',
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                }}
+              >
+                Open App
+              </button>
+            </div>
           )}
 
           {/* red "Log in" banner: there from the start, at the bottom (ends up under STOOORNA) */}

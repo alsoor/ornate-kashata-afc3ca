@@ -19,6 +19,7 @@ import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUs
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
 import AppUploadSection from '@/components/AppUploadSection';
+import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, normalizeStoreUrl, setStoreLink, setBannerShown } from '@/lib/storeLinks';
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
@@ -75,6 +76,145 @@ function OwnerLiveIconsControls() {
       }} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: priv ? 'rgba(250,204,21,0.12)' : 'rgba(255,255,255,0.04)', border: `1px solid ${priv ? 'rgba(250,204,21,0.45)' : 'rgba(255,255,255,0.12)'}`, color: priv ? '#facc15' : 'rgba(220,220,220,0.9)', fontWeight: 800, fontSize: '0.82rem' }}>
         {priv ? 'زر البث الخاص: شغّال — الشحن والهدايا تظهر لك فقط' : 'زر البث الخاص: متوقف'}
       </button>
+    </div>
+  );
+}
+
+/** Owner only: App Store / Google Play links opened by the white "Open App" banner on the welcome video. */
+function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
+  const [draft, setDraft] = useState<StoreLinks>(() => readStoreLinks());
+  const [note, setNote] = useState<Record<StoreKind, { text: string; bad: boolean }>>({
+    appStore: { text: '', bad: false },
+    googlePlay: { text: '', bad: false },
+  });
+  const [busy, setBusy] = useState<StoreKind | null>(null);
+  const [show, setShow] = useState<boolean>(() => readStoreLinks().showBanner);
+  const [showNote, setShowNote] = useState('');
+
+  useEffect(() => {
+    let live = true;
+    void fetchStoreLinks().then(l => { if (live) { setDraft(l); setShow(l.showBanner); } });
+    return () => { live = false; };
+  }, []);
+
+  const say = (kind: StoreKind, text: string, bad = false) => setNote(n => ({ ...n, [kind]: { text, bad } }));
+
+  const save = async (kind: StoreKind) => {
+    const value = normalizeStoreUrl(draft[kind]);
+    if (!value) { say(kind, 'Enter a valid link (https://...)', true); return; }
+    setBusy(kind);
+    const r = await setStoreLink(kind, value);
+    setBusy(null);
+    setDraft(d => ({ ...d, [kind]: value }));
+    say(kind, r.synced ? 'Saved' : 'Saved on this device only - the server did not confirm', !r.synced);
+  };
+
+  const remove = async (kind: StoreKind) => {
+    if (!window.confirm('Delete this link?')) return;
+    setBusy(kind);
+    const r = await setStoreLink(kind, '');
+    setBusy(null);
+    setDraft(d => ({ ...d, [kind]: '' }));
+    say(kind, r.synced ? 'Deleted' : 'Deleted on this device only - the server did not confirm', !r.synced);
+  };
+
+  const toggleBanner = async () => {
+    const next = !show;
+    setShow(next);
+    const r = await setBannerShown(next);
+    setShowNote(r.synced ? (next ? 'Banner is ON' : 'Banner is OFF') : 'Changed on this device only - the server did not confirm');
+  };
+
+  const field = (kind: StoreKind, title: string, placeholder: string) => (
+    <div key={kind} style={{
+      background: T.surface, border: '1px solid ' + T.surfaceBorder, borderRadius: 14,
+      padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      <span style={{ fontSize: '0.86rem', fontWeight: 700, color: T.text }}>{title}</span>
+      <input
+        type="url"
+        inputMode="url"
+        dir="ltr"
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        value={draft[kind]}
+        onChange={e => { const v = e.target.value; setDraft(d => ({ ...d, [kind]: v })); say(kind, ''); }}
+        placeholder={placeholder}
+        aria-label={title + ' link'}
+        style={{
+          width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10,
+          border: '1px solid ' + T.surfaceBorder, background: 'transparent', color: T.text,
+          fontSize: '0.82rem', outline: 'none',
+        }}
+      />
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          type="button"
+          disabled={busy === kind}
+          onClick={() => { void save(kind); }}
+          style={{
+            flex: 1, height: 38, borderRadius: 10, border: 'none', cursor: 'pointer',
+            background: T.primary, color: '#041414', fontWeight: 800, fontSize: '0.82rem',
+            opacity: busy === kind ? 0.6 : 1,
+          }}
+        >
+          Save
+        </button>
+        <button
+          type="button"
+          disabled={busy === kind}
+          onClick={() => { void remove(kind); }}
+          aria-label={'Delete ' + title + ' link'}
+          style={{
+            height: 38, padding: '0 14px', borderRadius: 10, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)',
+            color: '#ef4444', fontWeight: 800, fontSize: '0.82rem', opacity: busy === kind ? 0.6 : 1,
+          }}
+        >
+          <Trash2 size={15} />
+          Delete
+        </button>
+      </div>
+      {note[kind].text && (
+        <span style={{ fontSize: '0.7rem', color: note[kind].bad ? '#f87171' : '#4ade80' }}>{note[kind].text}</span>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <span style={{ color: T.textMuted, fontSize: '0.68rem', padding: '0 4px' }}>
+        Open App links - iPhone opens the App Store link, Android opens the Google Play link
+      </span>
+      <div style={{
+        background: T.surface, border: '1px solid ' + T.surfaceBorder, borderRadius: 14,
+        padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontSize: '0.86rem', fontWeight: 700, color: T.text }}>Show "Open App" banner on the video</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={show}
+            aria-label="Show Open App banner"
+            onClick={() => { void toggleBanner(); }}
+            style={{
+              width: 46, height: 26, borderRadius: 13, border: 'none', padding: 0, cursor: 'pointer', position: 'relative', flexShrink: 0,
+              background: show ? '#22c55e' : 'rgba(148,163,184,0.45)', transition: 'background .2s',
+            }}
+          >
+            <span style={{
+              position: 'absolute', top: 3, left: show ? 23 : 3, width: 20, height: 20, borderRadius: '50%',
+              background: '#ffffff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
+            }} />
+          </button>
+        </div>
+        {showNote && <span style={{ fontSize: '0.7rem', color: showNote.startsWith('Changed') ? '#f87171' : '#4ade80' }}>{showNote}</span>}
+      </div>
+      {field('appStore', 'App Store', 'https://apps.apple.com/app/...')}
+      {field('googlePlay', 'Google Play', 'https://play.google.com/store/apps/details?id=...')}
     </div>
   );
 }
@@ -9982,6 +10122,7 @@ export default function SettingsPage() {
 
                 {/* App Upload (Android / iOS boxes + live icons switch) — right under User Control */}
                 <AppUploadSection T={T} />
+                <OwnerStoreLinks T={T} />
 
                 <OwnerLiveIconsControls />
 
