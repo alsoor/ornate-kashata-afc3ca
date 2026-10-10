@@ -185,9 +185,12 @@ async function handleImageRequest(
   const form = await prepareForm(init.body as FormData);
   const urls = candidates(urlOf(input));
   let last: Response | null = null;
+  let lastUrl = '';
+  const tried: string[] = [];
   let lastErr: unknown;
 
   for (const url of urls) {
+    tried.push(url);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const res = await nativeFetch(url, { ...init, method: 'POST', body: form });
@@ -196,6 +199,7 @@ async function handleImageRequest(
           return await normalize(res);
         }
         last = res;
+        lastUrl = url;
         if (res.status === 404 || res.status === 405) break;      // route missing here → next endpoint
         if (res.status >= 500 && attempt === 0) { await sleep(900); continue; }
         break;
@@ -207,7 +211,16 @@ async function handleImageRequest(
       }
     }
   }
-  if (last) return last;
+  if (last) {
+    // Short, readable error instead of dumping an HTML page into the chat.
+    const short = tried.map(u => { try { const x = new URL(u); return x.host + x.pathname; } catch { return u; } }).join(' , ');
+    let host = lastUrl;
+    try { host = new URL(lastUrl).host; } catch { /* */ }
+    return new Response(
+      JSON.stringify({ detail: `${last.status} at ${host} (tried: ${short})` }),
+      { status: last.status, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
   throw lastErr ?? new Error('image request failed');
 }
 
