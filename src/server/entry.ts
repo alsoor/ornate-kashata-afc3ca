@@ -21,6 +21,7 @@ import { registerSavedRoomRoutes } from "./saved-room-patch.js";
 import { registerForgotPasswordRoutes, registerLiveIconRoutes } from "./forgot-password-patch.js"; // FORGOT-PASSWORD-PATCH
 import { registerAdsRoutes } from "./ads-patch.js"; // ADS-PATCH
 import { registerAdsStoreRoutes } from "./ads-store.js"; // ADS-STORE-PATCH (MySQL, visible to everyone, real delete)
+import { registerAiIconRoutes } from "./ai-icon-patch.js"; // AI-ICON-PATCH (owner switch: hide Stooorna Ai icon)
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -1234,6 +1235,7 @@ registerTemplatesRoutes(app, {
   isAdmin: (u) => session.isAdmin(u as any),
 });
 registerTemplatesShareRoutes(app, { dataDir: join(ASSETS_DIR, "_private", "templates-share"), getUser: (req) => session.user(req) as any }); // TEMPLATES-SHARE-PATCH
+registerAiIconRoutes(app, { pool: templatesPool, dataDir: join(ASSETS_DIR, "_private", "ai-icon"), getUser: (req) => session.user(req) as any, isAdmin: (u) => session.isAdmin(u as any) }); // AI-ICON-PATCH
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
 const needUser = async (req: Request, res: Response) => {
