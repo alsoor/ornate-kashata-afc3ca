@@ -322,6 +322,7 @@ const BINARY_ROUTES = [
   /^\/api\/users\/me\/avatar/,
   /^\/api\/users\/me\/cover/,
   /^\/api\/posts\/media$/,
+  /^\/api\/app-settings\/intro-video$/,
 ];
 
 app.use((req, res, next) => {
@@ -1315,7 +1316,7 @@ app.post("/api/app-settings/live-icons", guarded(async (req, res) => {
 // ── STORE-LINKS-PATCH: owner-set App Store / Google Play links + on/off switch for the white "Open App" banner on the welcome video ──
 // GET  /api/app-settings/store-links -> { ok, appStore, googlePlay, showBanner }  (public, never cached)
 // POST /api/app-settings/store-links { appStore?, googlePlay?, showBanner? } (owner/admin only) — saved to disk like the live-icons switches
-type StoreLinksCfg = { appStore: string; googlePlay: string; showBanner: boolean };
+type StoreLinksCfg = { appStore: string; googlePlay: string; showBanner: boolean; showIntro: boolean; videoUrl: string };
 const STORE_LINKS_FILE = () => join(ASSETS_DIR, "stooorna-store-links.json");
 const cleanStoreUrl = (v: unknown): string | null => {
   const s = String(v ?? "").trim();
@@ -1328,10 +1329,15 @@ const cleanStoreUrl = (v: unknown): string | null => {
     return null;
   }
 };
+const cleanVideoUrl = (v: unknown): string | null => {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  return /^\/(airo-assets|assets|uploads|media)\/intro\/[A-Za-z0-9._-]+\.(mp4|webm|mov|jpg|png|webp|gif|pdf)$/i.test(s) ? s : null;
+};
 const storeLinksCfg = (): StoreLinksCfg => {
   const g = globalThis as typeof globalThis & { __stooornaStoreLinks?: StoreLinksCfg };
   if (!g.__stooornaStoreLinks) {
-    const c: StoreLinksCfg = { appStore: "", googlePlay: "", showBanner: true };
+    const c: StoreLinksCfg = { appStore: "", googlePlay: "", showBanner: true, showIntro: true, videoUrl: "" };
     try {
       const p = STORE_LINKS_FILE();
       if (existsSync(p)) {
@@ -1339,6 +1345,8 @@ const storeLinksCfg = (): StoreLinksCfg => {
         c.appStore = cleanStoreUrl(raw?.appStore) || "";
         c.googlePlay = cleanStoreUrl(raw?.googlePlay) || "";
         if (raw?.showBanner === false) c.showBanner = false;
+        if (raw?.showIntro === false) c.showIntro = false;
+        c.videoUrl = cleanVideoUrl(raw?.videoUrl) || "";
       }
     } catch (e) {
       console.error("[store-links] load failed", e);
@@ -1377,7 +1385,43 @@ app.post("/api/app-settings/store-links", guarded(async (req, res) => {
     cfg.showBanner = body.showBanner;
     touched = true;
   }
+  if ("showIntro" in body) {
+    if (typeof body.showIntro !== "boolean") return deny(res, 400, "showIntro_must_be_boolean");
+    cfg.showIntro = body.showIntro;
+    touched = true;
+  }
+  if ("videoUrl" in body) {
+    const v = cleanVideoUrl(body.videoUrl);
+    if (v === null) return deny(res, 400, "videoUrl_invalid");
+    cfg.videoUrl = v;
+    touched = true;
+  }
   if (!touched) return deny(res, 400, "nothing_to_update");
+  saveStoreLinksCfg();
+  res.json({ ok: true, ...cfg });
+}));
+
+// POST /api/app-settings/intro-video  (owner/admin only, raw video body, Content-Type video/*) -> { ok, videoUrl, ... }
+// The file is saved under ASSETS_DIR/intro/ and becomes the welcome video for everybody (until reset).
+app.post("/api/app-settings/intro-video", guarded(async (req, res) => {
+  if (!(await needAdmin(req, res))) return;
+  const ct = String(req.headers["content-type"] || "").toLowerCase();
+  const EXT: Record<string, string> = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf",
+    "video/webm": "webm", "video/quicktime": "mov", "video/mp4": "mp4",
+  };
+  const mime = ct.split(";")[0].trim();
+  const ext = EXT[mime] || (mime.startsWith("video/") ? "mp4" : "");
+  if (!ext) return deny(res, 400, "video_image_or_pdf_required");
+  const buf = req.body as Buffer;
+  if (!Buffer.isBuffer(buf) || buf.length < 1024) return deny(res, 400, "empty_file");
+  const dir = join(ASSETS_DIR, "intro");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const name = `intro-${Date.now()}.${ext}`;
+  writeFileSync(join(dir, name), buf);
+  const cfg = storeLinksCfg();
+  cfg.videoUrl = `/airo-assets/intro/${name}`;
+  cfg.showIntro = true;
   saveStoreLinksCfg();
   res.json({ ok: true, ...cfg });
 }));

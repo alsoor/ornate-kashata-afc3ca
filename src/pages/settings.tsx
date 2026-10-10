@@ -19,7 +19,7 @@ import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUs
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
 import AppUploadSection from '@/components/AppUploadSection';
-import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, normalizeStoreUrl, setStoreLink, setBannerShown } from '@/lib/storeLinks';
+import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, normalizeStoreUrl, setStoreLink, setBannerShown, setIntroShown, uploadIntroVideo, resetIntroVideo } from '@/lib/storeLinks';
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
@@ -90,12 +90,52 @@ function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
   const [busy, setBusy] = useState<StoreKind | null>(null);
   const [show, setShow] = useState<boolean>(() => readStoreLinks().showBanner);
   const [showNote, setShowNote] = useState('');
+  const [introOn, setIntroOn] = useState<boolean>(() => readStoreLinks().showIntro);
+  const [videoUrl, setVideoUrl] = useState<string>(() => readStoreLinks().videoUrl);
+  const [introNote, setIntroNote] = useState<{ text: string; bad: boolean }>({ text: '', bad: false });
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let live = true;
-    void fetchStoreLinks().then(l => { if (live) { setDraft(l); setShow(l.showBanner); } });
+    void fetchStoreLinks().then(l => { if (live) { setDraft(l); setShow(l.showBanner); setIntroOn(l.showIntro); setVideoUrl(l.videoUrl); } });
     return () => { live = false; };
   }, []);
+
+  const toggleIntro = async () => {
+    const next = !introOn;
+    setIntroOn(next);
+    const r = await setIntroShown(next);
+    setIntroNote(r.synced
+      ? { text: next ? 'الفيديو والبنرات شغّالة للجميع' : 'الفيديو والبنرات مخفية عن الجميع', bad: false }
+      : { text: 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', bad: true });
+  };
+
+  const pickVideo = async (file: File | null | undefined) => {
+    if (!file) return;
+    const okType = file.type.startsWith('video/') || /^image\/(jpeg|png|webp|gif)$/.test(file.type) || file.type === 'application/pdf';
+    if (!okType) { setIntroNote({ text: 'اختر فيديو أو صورة (JPG/PNG/WEBP/GIF) أو PDF', bad: true }); return; }
+    if (file.size > 48 * 1024 * 1024) { setIntroNote({ text: 'الفيديو كبير (الحد 48MB)، صغّر حجمه', bad: true }); return; }
+    setUploading(true);
+    setIntroNote({ text: 'جاري الرفع...', bad: false });
+    const r = await uploadIntroVideo(file);
+    setUploading(false);
+    if (fileRef.current) fileRef.current.value = '';
+    if (r.ok) {
+      const l = readStoreLinks();
+      setVideoUrl(l.videoUrl); setIntroOn(true);
+      setIntroNote({ text: 'تم الرفع - يطلع للجميع', bad: false });
+    } else {
+      setIntroNote({ text: 'فشل الرفع (' + (r.error || 'error') + ')', bad: true });
+    }
+  };
+
+  const backToDefault = async () => {
+    if (!window.confirm('الرجوع للفيديو الأصلي؟')) return;
+    const r = await resetIntroVideo();
+    setVideoUrl('');
+    setIntroNote(r.synced ? { text: 'رجع الفيديو الأصلي', bad: false } : { text: 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', bad: true });
+  };
 
   const say = (kind: StoreKind, text: string, bad = false) => setNote(n => ({ ...n, [kind]: { text, bad } }));
 
@@ -188,6 +228,67 @@ function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
       <span style={{ color: T.textMuted, fontSize: '0.68rem', padding: '0 4px' }}>
         Open App links - iPhone opens the App Store link, Android opens the Google Play link
       </span>
+      {/* Welcome video: master switch (video + all banners) + "+" to upload your own video */}
+      <div style={{
+        background: T.surface, border: '1px solid ' + T.surfaceBorder, borderRadius: 14,
+        padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span style={{ fontSize: '0.86rem', fontWeight: 700, color: T.text }}>إظهار فيديو الترحيب والبنرات</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={introOn}
+            aria-label="Show welcome video"
+            onClick={() => { void toggleIntro(); }}
+            style={{
+              width: 46, height: 26, borderRadius: 13, border: 'none', padding: 0, cursor: 'pointer', position: 'relative', flexShrink: 0,
+              background: introOn ? '#22c55e' : 'rgba(148,163,184,0.45)', transition: 'background .2s',
+            }}
+          >
+            <span style={{
+              position: 'absolute', top: 3, left: introOn ? 23 : 3, width: 20, height: 20, borderRadius: '50%',
+              background: '#ffffff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
+            }} />
+          </button>
+        </div>
+        <input ref={fileRef} type="file" accept="video/*,image/jpeg,image/png,image/webp,image/gif,application/pdf" style={{ display: 'none' }} onChange={e => { void pickVideo(e.target.files && e.target.files[0]); }} />
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+            aria-label="Add welcome video"
+            style={{
+              flex: 1, height: 40, borderRadius: 10, border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              background: T.primary, color: '#041414', fontWeight: 800, fontSize: '0.82rem', opacity: uploading ? 0.6 : 1,
+            }}
+          >
+            <Plus size={16} />
+            {uploading ? 'جاري الرفع...' : (videoUrl ? 'تغيير الترحيب (فيديو / صورة / PDF)' : 'إضافة فيديو / صورة / PDF')}
+          </button>
+          {videoUrl && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => { void backToDefault(); }}
+              aria-label="Reset welcome video"
+              style={{
+                height: 40, padding: '0 14px', borderRadius: 10, cursor: 'pointer',
+                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)',
+                color: '#ef4444', fontWeight: 800, fontSize: '0.78rem',
+              }}
+            >
+              الأصلي
+            </button>
+          )}
+        </div>
+        <span style={{ fontSize: '0.68rem', color: T.textMuted }}>
+          {videoUrl ? 'الترحيب الحالي: ملف مرفوع منك' : 'الترحيب الحالي: الفيديو الأصلي'} - المفتاح يخفي الفيديو وبنر Log in وبنر Open App عن الجميع
+        </span>
+        {introNote.text && <span style={{ fontSize: '0.7rem', color: introNote.bad ? '#f87171' : '#4ade80' }}>{introNote.text}</span>}
+      </div>
       <div style={{
         background: T.surface, border: '1px solid ' + T.surfaceBorder, borderRadius: 14,
         padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6,

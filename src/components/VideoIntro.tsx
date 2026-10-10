@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type StoreLinks, readStoreLinks, fetchStoreLinks, openAppUrl, openStoreUrl, STORE_LINKS_EVENT } from '@/lib/storeLinks';
+import { type StoreLinks, introKind, readStoreLinks, fetchStoreLinks, openAppUrl, openStoreUrl, STORE_LINKS_EVENT } from '@/lib/storeLinks';
 
 /** The video lives in  /public/intro.mp4 */
 export const INTRO_VIDEO_SRC = '/intro.mp4';
@@ -63,18 +63,25 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   // the guest page disappears after "Log in" was pressed -> they went on to log in / sign up
   useEffect(() => () => { if (pressedLogin) markIntroRegistered(); }, []);
 
-  const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered();
-
-  // App Store / Google Play links of the owner (set in the owner settings) -> used by the white "Open App" banner
+  // owner settings (store links, master on/off switch, custom video) -> same endpoint for everybody
   const [storeLinks, setStoreLinks] = useState<StoreLinks>(() => readStoreLinks());
+  const [linksLoaded, setLinksLoaded] = useState(false); // wait for the server answer so a hidden intro never flashes
+  const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered() && linksLoaded && storeLinks.showIntro;
+  const videoSrc = storeLinks.videoUrl || INTRO_VIDEO_SRC;
+  const kind = introKind(videoSrc); // 'video' (default) | 'image' | 'pdf' -> whatever the owner uploaded
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  // an image / PDF has no first frame to wait for: start the opening as soon as the screen is up
+  useEffect(() => { if (visible && kind === 'pdf') setReady(true); }, [visible, kind]);
+
   useEffect(() => {
-    if (!visible) return;
+    if (authLoading || isLoggedIn || dismissed || wasRegistered()) return;
     let live = true;
-    void fetchStoreLinks().then(l => { if (live) setStoreLinks(l); });
+    const hardStop = window.setTimeout(() => { if (live) setLinksLoaded(true); }, 2500); // slow server: use the local copy
+    void fetchStoreLinks().then(l => { if (live) { setStoreLinks(l); setLinksLoaded(true); } });
     const onLinks = () => setStoreLinks(readStoreLinks());
     window.addEventListener(STORE_LINKS_EVENT, onLinks);
-    return () => { live = false; window.removeEventListener(STORE_LINKS_EVENT, onLinks); };
-  }, [visible]);
+    return () => { live = false; window.clearTimeout(hardStop); window.removeEventListener(STORE_LINKS_EVENT, onLinks); };
+  }, [authLoading, isLoggedIn, dismissed]);
 
   // setup: silent, no controls. The video waits (showing its first picture) while the circular opening runs.
   useEffect(() => {
@@ -114,12 +121,12 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
     if (phase !== 'play') return;
     skippedThisSession = true;
     if (byButton) pressedLogin = true;
-    const v = videoRef.current;
+    const v: HTMLVideoElement | HTMLImageElement | null = kind === 'image' ? imgRef.current : videoRef.current;
     const W = window.innerWidth, H = window.innerHeight;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     try {
-      if (!v) throw new Error('no video');
-      v.pause();
+      if (!v || kind === 'pdf') throw new Error('nothing to crumble');
+      if (v instanceof HTMLVideoElement) v.pause();
       const snap = document.createElement('canvas');
       snap.width = Math.round(W * dpr); snap.height = Math.round(H * dpr);
       const sctx = snap.getContext('2d')!;
@@ -131,7 +138,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
       setDismissed(true);
     }
     onLogin();
-  }, [phase, onLogin]);
+  }, [phase, onLogin, kind]);
 
   // the crumble animation
   useEffect(() => {
@@ -193,7 +200,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   if (!visible) return null;
 
   const openUrl = openAppUrl(storeLinks);
-  const shimmer = (t >= SHIMMER_FROM || ended) && phase === 'play';
+  const shimmer = kind === 'video' && (t >= SHIMMER_FROM || ended) && phase === 'play';
   const circ = 2 * Math.PI * RING.r;
   const stW = Math.max(window.innerWidth, window.innerHeight * 9 / 16), stH = Math.max(window.innerHeight, window.innerWidth * 16 / 9);
   const ringD = Math.round(0.14 * Math.hypot(stW, stH) / Math.SQRT2); // = the starting circle (7% radius)
@@ -230,9 +237,33 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
                 filter: ready && !opened ? 'url(#stIntroMelt)' : 'none',
               }}
             >
+              {kind === 'image' && (
+                <img
+                  ref={imgRef}
+                  src={videoSrc}
+                  alt=""
+                  draggable={false}
+                  onLoad={() => setReady(true)}
+                  onError={() => { skippedThisSession = true; setDismissed(true); }}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: '#000' }}
+                />
+              )}
+              {kind === 'pdf' && (
+                <>
+                  <iframe title="welcome" src={videoSrc + '#toolbar=0&navpanes=0'} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', background: '#111' }} />
+                  <button
+                    type="button"
+                    onClick={() => window.open(videoSrc, '_blank', 'noopener')}
+                    style={{ position: 'absolute', top: 'max(16px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', padding: '8px 18px', borderRadius: 6, border: 'none', cursor: 'pointer', background: '#ffffff', color: '#000', fontSize: 13, fontWeight: 800 }}
+                  >
+                    PDF
+                  </button>
+                </>
+              )}
+              {kind === 'video' && (<>
               <video
                 ref={videoRef}
-                src={INTRO_VIDEO_SRC}
+                src={videoSrc}
                 muted
                 controls={false}
                 playsInline
@@ -244,11 +275,12 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
                 onPlaying={() => setShown(true)}
                 onTimeUpdate={onTime}
                 onEnded={() => { setEnded(true); setT(999); shatter(false); }}
-                onError={() => { console.error('Intro video failed to load - check that', INTRO_VIDEO_SRC, 'exists in /public'); skippedThisSession = true; setDismissed(true); }}
+                onError={() => { console.error('Intro video failed to load - check that', videoSrc, 'exists in /public'); skippedThisSession = true; setDismissed(true); }}
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: '#000', opacity: shown ? 1 : 0 }}
               />
               {/* still of the first picture (shown instead of the paused video, so no grey play icon can ever appear) */}
               <canvas ref={stillRef} aria-hidden="true" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: shown ? 'none' : 'block', pointerEvents: 'none', background: '#000' }} />
+              </>)}
 
               {/* flicker / flash on the video */}
               <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'screen', animation: 'stIntroFlash 3.4s steps(1, end) infinite', background: 'radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.55), rgba(0,188,212,0.18) 55%, transparent 80%)' }} />
