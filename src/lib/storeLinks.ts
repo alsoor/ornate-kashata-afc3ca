@@ -6,7 +6,16 @@
  * A local copy is kept so the owner's own device always works, even before the route answers.
  */
 export type StoreKind = 'appStore' | 'googlePlay';
-export type StoreLinks = { appStore: string; googlePlay: string; showBanner: boolean; showIntro: boolean; videoUrl: string };
+export type IntroSlot = 'video' | 'photo' | 'pdf';
+export type StoreLinks = {
+  appStore: string; googlePlay: string; showBanner: boolean; showIntro: boolean;
+  slots: Record<IntroSlot, string>; // one stored file per type
+  active: IntroSlot | '';           // the one published as the welcome screen ('' = built-in video)
+  videoUrl: string;                 // = slots[active]
+};
+const EMPTY_SLOTS: Record<IntroSlot, string> = { video: '', photo: '', pdf: '' };
+/** How the last read of the server went: 'server' = answered with links, 'no-route' = answered with a page (route missing / not deployed), 'error' = no answer. */
+export let lastFetchStatus: 'unknown' | 'server' | 'no-route' | 'error' = 'unknown';
 
 const CACHE_KEY = 'stooorna_store_links';
 const ENDPOINT = '/api/app-settings/store-links';
@@ -25,13 +34,25 @@ export function normalizeStoreUrl(raw: unknown): string {
   }
 }
 
+function cleanIntroUrl(v: any): string {
+  return typeof v === 'string' && /^\/[^/\\]/.test(v) ? v : '';
+}
+
 function clean(src: any): StoreLinks {
+  const slots = {
+    video: cleanIntroUrl(src && src.slots && src.slots.video),
+    photo: cleanIntroUrl(src && src.slots && src.slots.photo),
+    pdf: cleanIntroUrl(src && src.slots && src.slots.pdf),
+  };
+  const active: IntroSlot | '' = src && (src.active === 'video' || src.active === 'photo' || src.active === 'pdf') && slots[src.active as IntroSlot] ? src.active : '';
   return {
     appStore: normalizeStoreUrl(src && src.appStore),
     googlePlay: normalizeStoreUrl(src && src.googlePlay),
     showBanner: !(src && src.showBanner === false),
     showIntro: !(src && src.showIntro === false),
-    videoUrl: typeof (src && src.videoUrl) === 'string' && /^\/[^/\\]/.test(src.videoUrl) ? src.videoUrl : '',
+    slots,
+    active,
+    videoUrl: active ? slots[active] : '',
   };
 }
 
@@ -40,7 +61,7 @@ export function readStoreLinks(): StoreLinks {
     const raw = localStorage.getItem(CACHE_KEY);
     if (raw) return clean(JSON.parse(raw));
   } catch { /* ignore */ }
-  return { appStore: '', googlePlay: '', showBanner: true, showIntro: true, videoUrl: '' };
+  return { appStore: '', googlePlay: '', showBanner: true, showIntro: true, slots: { ...EMPTY_SLOTS }, active: '', videoUrl: '' };
 }
 
 function writeStoreLinks(next: StoreLinks) {
@@ -54,30 +75,26 @@ export async function fetchStoreLinks(): Promise<StoreLinks> {
     const r = await fetch(ENDPOINT, { credentials: 'include', cache: 'no-store' });
     if (r.ok) {
       const d: any = await r.json().catch(() => null);
+      lastFetchStatus = d && typeof d === 'object' ? 'server' : 'no-route';
       const src = d && typeof d === 'object' ? (d.links && typeof d.links === 'object' ? d.links : d) : null;
       if (src && ('appStore' in src || 'googlePlay' in src)) {
         const next = clean(src);
-        const local = readStoreLinks();
-        // the server answered with empty links but this device still holds saved ones (a save that never reached the server): keep them
-        if (!next.appStore && !next.googlePlay && (local.appStore || local.googlePlay)) {
-          next.appStore = local.appStore; next.googlePlay = local.googlePlay;
-        }
         writeStoreLinks(next);
         return next;
       }
     }
-  } catch { /* ignore */ }
+  } catch { lastFetchStatus = 'error'; }
   return readStoreLinks();
 }
 
-async function pushStoreLinks(next: StoreLinks): Promise<{ ok: boolean; synced: boolean }> {
+async function pushStoreLinks(next: StoreLinks, extra: Record<string, unknown> = {}): Promise<{ ok: boolean; synced: boolean }> {
   writeStoreLinks(next);
   try {
     const r = await fetch(ENDPOINT, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(next),
+      body: JSON.stringify({ appStore: next.appStore, googlePlay: next.googlePlay, showBanner: next.showBanner, showIntro: next.showIntro, ...extra }),
     });
     const d: any = r.ok ? await r.json().catch(() => null) : null;
     return { ok: true, synced: !!d && typeof d === 'object' && d.ok !== false };
@@ -109,27 +126,62 @@ export function introKind(url: string): IntroKind {
   return 'video';
 }
 
-/** Uploads a new welcome video / image / PDF (owner only). It becomes the welcome screen for everybody. */
-export async function uploadIntroVideo(file: File): Promise<{ ok: boolean; error?: string }> {
+/** Uploads one file into its own slot (video / photo / pdf, owner only) and publishes it as the welcome screen. */
+export async function uploadIntroFile(slot: IntroSlot, file: File): Promise<{ ok: boolean; error?: string }> {
   try {
-    const r = await fetch('/api/app-settings/intro-video', {
+    const r = await fetch('/api/app-settings/intro-video?slot=' + slot, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': file.type || 'video/mp4' },
+      headers: { 'Content-Type': file.type || (slot === 'pdf' ? 'application/pdf' : slot === 'photo' ? 'image/jpeg' : 'video/mp4') },
       body: file,
     });
     const d: any = await r.json().catch(() => null);
     if (!r.ok || !d || d.ok === false) return { ok: false, error: (d && d.error) || ('HTTP ' + r.status) };
-    writeStoreLinks({ ...readStoreLinks(), videoUrl: String(d.videoUrl || ''), showIntro: true });
+    writeStoreLinks({ ...readStoreLinks(), ...clean(d) });
     return { ok: true };
   } catch {
     return { ok: false, error: 'network' };
   }
 }
 
-/** Goes back to the built-in /intro.mp4 video. */
-export async function resetIntroVideo(): Promise<{ ok: boolean; synced: boolean }> {
-  return pushStoreLinks({ ...readStoreLinks(), videoUrl: '' });
+/** Publishes one stored file as the welcome screen ('' = back to the built-in video). */
+export async function setIntroActive(active: IntroSlot | ''): Promise<{ ok: boolean; synced: boolean }> {
+  const cur = readStoreLinks();
+  const slotsOk = active === '' || !!cur.slots[active];
+  if (!slotsOk) return { ok: false, synced: false };
+  return pushStoreLinks({ ...cur, active, videoUrl: active ? cur.slots[active] : '' }, { active });
+}
+
+/** Deletes the stored file of one type. */
+export async function clearIntroSlot(slot: IntroSlot): Promise<{ ok: boolean; synced: boolean }> {
+  const cur = readStoreLinks();
+  const slots = { ...cur.slots, [slot]: '' };
+  const active = cur.active === slot ? '' : cur.active;
+  const next: StoreLinks = { ...cur, slots, active, videoUrl: active ? slots[active] : '' };
+  writeStoreLinks(next);
+  try {
+    const r = await fetch(ENDPOINT, {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clearSlot: slot }),
+    });
+    const d: any = r.ok ? await r.json().catch(() => null) : null;
+    return { ok: true, synced: !!d && typeof d === 'object' && d.ok !== false };
+  } catch {
+    return { ok: true, synced: false };
+  }
+}
+
+/** Asks the server directly (no local fallback) what it really holds. links = null when the server did not answer with links. */
+export async function verifyStoreLinks(): Promise<{ status: 'server' | 'no-route' | 'error'; links: StoreLinks | null }> {
+  try {
+    const r = await fetch(ENDPOINT, { credentials: 'include', cache: 'no-store' });
+    if (!r.ok) return { status: 'error', links: null };
+    const d: any = await r.json().catch(() => null);
+    if (!d || typeof d !== 'object') return { status: 'no-route', links: null };
+    return { status: 'server', links: clean(d) };
+  } catch {
+    return { status: 'error', links: null };
+  }
 }
 
 /** Switch: show / hide the white "Open App" banner on the welcome video. */
@@ -149,8 +201,8 @@ function platform(): 'ios' | 'android' | 'other' {
 export function openAppUrl(links: StoreLinks): string {
   if (!links.showIntro || !links.showBanner) return '';
   const p = platform();
-  if (p === 'ios') return links.appStore || links.googlePlay;
-  if (p === 'android') return links.googlePlay || links.appStore;
+  if (p === 'ios') return links.appStore;
+  if (p === 'android') return links.googlePlay;
   return links.googlePlay || links.appStore;
 }
 

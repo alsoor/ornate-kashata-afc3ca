@@ -19,7 +19,7 @@ import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUs
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
 import AppUploadSection from '@/components/AppUploadSection';
-import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, normalizeStoreUrl, setStoreLink, setBannerShown, setIntroShown, uploadIntroVideo, resetIntroVideo } from '@/lib/storeLinks';
+import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, normalizeStoreUrl, setStoreLink, setBannerShown, setIntroShown, uploadIntroFile, setIntroActive, clearIntroSlot, verifyStoreLinks, type IntroSlot } from '@/lib/storeLinks';
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
@@ -91,50 +91,54 @@ function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
   const [show, setShow] = useState<boolean>(() => readStoreLinks().showBanner);
   const [showNote, setShowNote] = useState('');
   const [introOn, setIntroOn] = useState<boolean>(() => readStoreLinks().showIntro);
-  const [videoUrl, setVideoUrl] = useState<string>(() => readStoreLinks().videoUrl);
-  const [introNote, setIntroNote] = useState<{ text: string; bad: boolean }>({ text: '', bad: false });
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [lk, setLk] = useState<StoreLinks>(() => readStoreLinks());
+  const [pubOpen, setPubOpen] = useState(false);
+  const [pubNote, setPubNote] = useState<{ text: string; bad: boolean }>({ text: '', bad: false });
+  const [uploading, setUploading] = useState<IntroSlot | null>(null);
+  const fileRefs = useRef<Record<IntroSlot, HTMLInputElement | null>>({ video: null, photo: null, pdf: null });
 
   useEffect(() => {
     let live = true;
-    void fetchStoreLinks().then(l => { if (live) { setDraft(l); setShow(l.showBanner); setIntroOn(l.showIntro); setVideoUrl(l.videoUrl); } });
+    void fetchStoreLinks().then(l => { if (live) { setDraft(l); setShow(l.showBanner); setIntroOn(l.showIntro); setLk(l); } });
     return () => { live = false; };
   }, []);
+
+  const refreshLk = () => { const l = readStoreLinks(); setLk(l); setIntroOn(l.showIntro); };
+  const pubSay = (text: string, bad = false) => setPubNote({ text, bad });
 
   const toggleIntro = async () => {
     const next = !introOn;
     setIntroOn(next);
     const r = await setIntroShown(next);
-    setIntroNote(r.synced
-      ? { text: next ? 'الفيديو والبنرات شغّالة للجميع' : 'الفيديو والبنرات مخفية عن الجميع', bad: false }
-      : { text: 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', bad: true });
+    pubSay(r.synced ? (next ? 'الترحيب والبنرات شغّالة للجميع' : 'الترحيب والبنرات مخفية عن الجميع') : 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', !r.synced);
   };
 
-  const pickVideo = async (file: File | null | undefined) => {
+  const ACCEPT: Record<IntroSlot, string> = { video: 'video/*', photo: 'image/jpeg,image/png,image/webp,image/gif', pdf: 'application/pdf' };
+  const pickFile = async (slot: IntroSlot, file: File | null | undefined) => {
     if (!file) return;
-    const okType = file.type.startsWith('video/') || /^image\/(jpeg|png|webp|gif)$/.test(file.type) || file.type === 'application/pdf';
-    if (!okType) { setIntroNote({ text: 'اختر فيديو أو صورة (JPG/PNG/WEBP/GIF) أو PDF', bad: true }); return; }
-    if (file.size > 48 * 1024 * 1024) { setIntroNote({ text: 'الفيديو كبير (الحد 48MB)، صغّر حجمه', bad: true }); return; }
-    setUploading(true);
-    setIntroNote({ text: 'جاري الرفع...', bad: false });
-    const r = await uploadIntroVideo(file);
-    setUploading(false);
-    if (fileRef.current) fileRef.current.value = '';
-    if (r.ok) {
-      const l = readStoreLinks();
-      setVideoUrl(l.videoUrl); setIntroOn(true);
-      setIntroNote({ text: 'تم الرفع - يطلع للجميع', bad: false });
-    } else {
-      setIntroNote({ text: 'فشل الرفع (' + (r.error || 'error') + ')', bad: true });
-    }
+    const okType = slot === 'video' ? file.type.startsWith('video/') : slot === 'photo' ? /^image\/(jpeg|png|webp|gif)$/.test(file.type) : file.type === 'application/pdf';
+    if (!okType) { pubSay(slot === 'video' ? 'اختر ملف فيديو' : slot === 'photo' ? 'اختر صورة (JPG / PNG / WEBP / GIF)' : 'اختر ملف PDF', true); return; }
+    if (file.size > 48 * 1024 * 1024) { pubSay('الملف كبير (الحد 48MB)', true); return; }
+    setUploading(slot);
+    pubSay('جاري الرفع...');
+    const r = await uploadIntroFile(slot, file);
+    setUploading(null);
+    const el = fileRefs.current[slot]; if (el) el.value = '';
+    if (r.ok) { refreshLk(); pubSay('تم الرفع والنشر - يطلع للجميع'); }
+    else pubSay('فشل الرفع (' + (r.error || 'error') + ')', true);
   };
 
-  const backToDefault = async () => {
-    if (!window.confirm('الرجوع للفيديو الأصلي؟')) return;
-    const r = await resetIntroVideo();
-    setVideoUrl('');
-    setIntroNote(r.synced ? { text: 'رجع الفيديو الأصلي', bad: false } : { text: 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', bad: true });
+  const publishSlot = async (slot: IntroSlot | '') => {
+    const r = await setIntroActive(slot);
+    refreshLk();
+    pubSay(r.synced ? (slot ? 'تم النشر' : 'رجع الفيديو الأصلي') : 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', !r.synced);
+  };
+
+  const removeSlot = async (slot: IntroSlot, label: string) => {
+    if (!window.confirm('حذف ' + label + '؟')) return;
+    const r = await clearIntroSlot(slot);
+    refreshLk();
+    pubSay(r.synced ? 'تم الحذف' : 'حُذف على هذا الجهاز فقط - السيرفر ما أكّد', !r.synced);
   };
 
   const say = (kind: StoreKind, text: string, bad = false) => setNote(n => ({ ...n, [kind]: { text, bad } }));
@@ -146,7 +150,10 @@ function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
     const r = await setStoreLink(kind, value);
     setBusy(null);
     setDraft(d => ({ ...d, [kind]: value }));
-    say(kind, r.synced ? 'Saved' : 'Saved on this device only - the server did not confirm', !r.synced);
+    const v = await verifyStoreLinks();
+    if (v.links && v.links[kind] === value) say(kind, 'Saved - the server confirmed it (visitors will see the banner)');
+    else if (v.status === 'no-route') say(kind, 'The server has no /api/app-settings/store-links route - upload the new entry.ts and redeploy', true);
+    else say(kind, 'Saved on this device only - the server did NOT save it (check you are logged in as the owner)', true);
   };
 
   const remove = async (kind: StoreKind) => {
@@ -155,7 +162,10 @@ function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
     const r = await setStoreLink(kind, '');
     setBusy(null);
     setDraft(d => ({ ...d, [kind]: '' }));
-    say(kind, r.synced ? 'Deleted' : 'Deleted on this device only - the server did not confirm', !r.synced);
+    const v = await verifyStoreLinks();
+    if (v.links && !v.links[kind]) say(kind, 'Deleted - the server confirmed it (the banner is gone for this device type)');
+    else if (v.status === 'no-route') say(kind, 'The server has no /api/app-settings/store-links route - upload the new entry.ts and redeploy', true);
+    else say(kind, 'Deleted on this device only - the server still holds the link (check you are logged in as the owner)', true);
   };
 
   const toggleBanner = async () => {
@@ -228,67 +238,106 @@ function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
       <span style={{ color: T.textMuted, fontSize: '0.68rem', padding: '0 4px' }}>
         Open App links - iPhone opens the App Store link, Android opens the Google Play link
       </span>
-      {/* Welcome video: master switch (video + all banners) + "+" to upload your own video */}
-      <div style={{
-        background: T.surface, border: '1px solid ' + T.surfaceBorder, borderRadius: 14,
-        padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          <span style={{ fontSize: '0.86rem', fontWeight: 700, color: T.text }}>إظهار فيديو الترحيب والبنرات</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={introOn}
-            aria-label="Show welcome video"
-            onClick={() => { void toggleIntro(); }}
-            style={{
-              width: 46, height: 26, borderRadius: 13, border: 'none', padding: 0, cursor: 'pointer', position: 'relative', flexShrink: 0,
-              background: introOn ? '#22c55e' : 'rgba(148,163,184,0.45)', transition: 'background .2s',
-            }}
-          >
-            <span style={{
-              position: 'absolute', top: 3, left: introOn ? 23 : 3, width: 20, height: 20, borderRadius: '50%',
-              background: '#ffffff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
-            }} />
-          </button>
-        </div>
-        <input ref={fileRef} type="file" accept="video/*,image/jpeg,image/png,image/webp,image/gif,application/pdf" style={{ display: 'none' }} onChange={e => { void pickVideo(e.target.files && e.target.files[0]); }} />
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => fileRef.current?.click()}
-            aria-label="Add welcome video"
-            style={{
-              flex: 1, height: 40, borderRadius: 10, border: 'none', cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-              background: T.primary, color: '#041414', fontWeight: 800, fontSize: '0.82rem', opacity: uploading ? 0.6 : 1,
-            }}
-          >
-            <Plus size={16} />
-            {uploading ? 'جاري الرفع...' : (videoUrl ? 'تغيير الترحيب (فيديو / صورة / PDF)' : 'إضافة فيديو / صورة / PDF')}
-          </button>
-          {videoUrl && (
-            <button
-              type="button"
-              disabled={uploading}
-              onClick={() => { void backToDefault(); }}
-              aria-label="Reset welcome video"
-              style={{
-                height: 40, padding: '0 14px', borderRadius: 10, cursor: 'pointer',
-                background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)',
-                color: '#ef4444', fontWeight: 800, fontSize: '0.78rem',
-              }}
-            >
-              الأصلي
-            </button>
-          )}
-        </div>
-        <span style={{ fontSize: '0.68rem', color: T.textMuted }}>
-          {videoUrl ? 'الترحيب الحالي: ملف مرفوع منك' : 'الترحيب الحالي: الفيديو الأصلي'} - المفتاح يخفي الفيديو وبنر Log in وبنر Open App عن الجميع
+      {/* Welcome screen: one button -> bubble "Publish" with Video / Photo / PDF, each on its own */}
+      <button
+        type="button"
+        onClick={() => { setPubOpen(true); setPubNote({ text: '', bad: false }); refreshLk(); }}
+        style={{
+          width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
+          background: 'rgba(249,115,22,0.14)', border: '1px solid rgba(249,115,22,0.55)', color: '#f97316',
+          fontWeight: 800, fontSize: '0.82rem',
+        }}
+      >
+        Publish · فيديو / صورة / PDF للترحيب
+        <span style={{ display: 'block', marginTop: 3, fontWeight: 600, fontSize: '0.68rem', color: 'rgba(253,186,116,0.85)' }}>
+          {introOn ? 'الترحيب شغّال' : 'الترحيب مخفي'} · المنشور الحالي: {lk.active === 'video' ? 'Video' : lk.active === 'photo' ? 'Photo' : lk.active === 'pdf' ? 'PDF' : 'الفيديو الأصلي'}
         </span>
-        {introNote.text && <span style={{ fontSize: '0.7rem', color: introNote.bad ? '#f87171' : '#4ade80' }}>{introNote.text}</span>}
-      </div>
+      </button>
+      {pubOpen && createPortal(
+        <div
+          onClick={() => setPubOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 10400, background: 'rgba(0,0,0,0.78)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 380, maxHeight: '88dvh', overflowY: 'auto', borderRadius: 18, background: 'linear-gradient(180deg, #1a0f08 0%, #0c0806 100%)', border: '1px solid rgba(249,115,22,0.55)', boxShadow: '0 12px 40px rgba(0,0,0,0.6)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: '1px solid rgba(249,115,22,0.3)' }}>
+              <p style={{ margin: 0, flex: 1, color: '#f97316', fontWeight: 900, fontSize: '1rem' }}>Publish</p>
+              <button type="button" onClick={() => setPubOpen(false)} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f97316', padding: 2 }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p style={{ margin: 0, color: 'rgba(253,186,116,0.8)', fontSize: '0.7rem', lineHeight: 1.5 }}>
+                كل زر بروحه: ارفع الملف وينشر للجميع على شاشة الترحيب (نفس تصميمها). المفتاح يخفي الترحيب والبنرات كلها.
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <span style={{ fontSize: '0.84rem', fontWeight: 800, color: 'rgba(250,235,225,0.95)' }}>إظهار الترحيب والبنرات</span>
+                <button
+                  type="button" role="switch" aria-checked={introOn} aria-label="Show welcome screen"
+                  onClick={() => { void toggleIntro(); }}
+                  style={{ width: 46, height: 26, borderRadius: 13, border: 'none', padding: 0, cursor: 'pointer', position: 'relative', flexShrink: 0, background: introOn ? '#22c55e' : 'rgba(148,163,184,0.45)', transition: 'background .2s' }}
+                >
+                  <span style={{ position: 'absolute', top: 3, left: introOn ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#ffffff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.35)' }} />
+                </button>
+              </div>
+              {([
+                { slot: 'video' as IntroSlot, label: 'Video', icon: <VideoIcon size={18} /> },
+                { slot: 'photo' as IntroSlot, label: 'Photo', icon: <ImageIcon size={18} /> },
+                { slot: 'pdf' as IntroSlot, label: 'PDF', icon: <FileText size={18} /> },
+              ]).map(({ slot, label, icon }) => {
+                const has = !!lk.slots[slot];
+                const live = lk.active === slot;
+                return (
+                  <div key={slot} style={{ padding: '10px 12px', borderRadius: 12, background: live ? 'rgba(34,197,94,0.08)' : 'rgba(249,115,22,0.08)', border: '1px solid ' + (live ? 'rgba(34,197,94,0.45)' : 'rgba(249,115,22,0.4)'), display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: live ? '#4ade80' : '#fdba74' }}>
+                      {icon}
+                      <span style={{ flex: 1, fontWeight: 900, fontSize: '0.9rem' }}>{label}</span>
+                      <span style={{ fontSize: '0.68rem', fontWeight: 700, opacity: 0.9 }}>{live ? 'منشور' : has ? 'مرفوع' : 'فاضي'}</span>
+                    </div>
+                    <input
+                      ref={el => { fileRefs.current[slot] = el; }}
+                      type="file" accept={ACCEPT[slot]} style={{ display: 'none' }}
+                      onChange={e => { void pickFile(slot, e.target.files && e.target.files[0]); }}
+                    />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button" disabled={uploading !== null}
+                        onClick={() => fileRefs.current[slot]?.click()}
+                        style={{ flex: 1, height: 38, borderRadius: 10, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#f97316', color: '#1a0a02', fontWeight: 900, fontSize: '0.8rem', opacity: uploading !== null ? 0.6 : 1 }}
+                      >
+                        <Plus size={15} />
+                        {uploading === slot ? 'جاري الرفع...' : has ? 'استبدال ونشر' : 'إضافة ونشر'}
+                      </button>
+                      {has && !live && (
+                        <button type="button" onClick={() => { void publishSlot(slot); }}
+                          style={{ height: 38, padding: '0 12px', borderRadius: 10, cursor: 'pointer', background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.5)', color: '#4ade80', fontWeight: 800, fontSize: '0.78rem' }}>
+                          نشر
+                        </button>
+                      )}
+                      {has && (
+                        <button type="button" aria-label={'Delete ' + label} onClick={() => { void removeSlot(slot, label); }}
+                          style={{ height: 38, padding: '0 11px', borderRadius: 10, cursor: 'pointer', display: 'flex', alignItems: 'center', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.4)', color: '#ef4444' }}>
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {lk.active !== '' && (
+                <button type="button" onClick={() => { void publishSlot(''); }}
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 10, cursor: 'pointer', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(240,230,220,0.9)', fontWeight: 800, fontSize: '0.78rem' }}>
+                  الرجوع للفيديو الأصلي
+                </button>
+              )}
+              {pubNote.text && <p style={{ margin: 0, fontSize: '0.72rem', color: pubNote.bad ? '#f87171' : '#4ade80' }}>{pubNote.text}</p>}
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
       <div style={{
         background: T.surface, border: '1px solid ' + T.surfaceBorder, borderRadius: 14,
         padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6,

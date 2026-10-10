@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { type StoreLinks, introKind, readStoreLinks, fetchStoreLinks, openAppUrl, openStoreUrl, STORE_LINKS_EVENT } from '@/lib/storeLinks';
+import { type StoreLinks, introKind, lastFetchStatus, readStoreLinks, fetchStoreLinks, openAppUrl, openStoreUrl, STORE_LINKS_EVENT } from '@/lib/storeLinks';
 
 /** The video lives in  /public/intro.mp4 */
 export const INTRO_VIDEO_SRC = '/intro.mp4';
@@ -312,6 +312,13 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
               border: '3px solid #7df3ff', boxShadow: '0 0 24px 6px rgba(0,188,212,0.7), inset 0 0 24px 4px rgba(0,188,212,0.5)',
               animation: 'stIntroRim 1.7s cubic-bezier(.22,.75,.2,1) both',
             }} />
+          )}
+
+          {/* open the site as  stooorna.com/?introdebug=1  to see why the "Open App" banner is not showing */}
+          {typeof location !== 'undefined' && /[?&]introdebug/.test(location.search) && (
+            <div dir="ltr" style={{ position: 'absolute', top: 'max(8px, env(safe-area-inset-top))', left: 8, right: 8, padding: '6px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.75)', color: '#7df3ff', fontSize: 11, lineHeight: 1.4, zIndex: 5, pointerEvents: 'none', wordBreak: 'break-all' }}>
+              server: {lastFetchStatus} | appStore: {storeLinks.appStore ? 'yes' : 'NO'} | googlePlay: {storeLinks.googlePlay ? 'yes' : 'NO'} | showBanner: {String(storeLinks.showBanner)} | banner link: {openUrl || 'NONE'}
+            </div>
           )}
 
           {/* white "Open App" banner: smaller, sits right above the red "Log in" banner; opens the owner's App Store / Google Play link */}

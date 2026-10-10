@@ -1316,7 +1316,14 @@ app.post("/api/app-settings/live-icons", guarded(async (req, res) => {
 // ── STORE-LINKS-PATCH: owner-set App Store / Google Play links + on/off switch for the white "Open App" banner on the welcome video ──
 // GET  /api/app-settings/store-links -> { ok, appStore, googlePlay, showBanner }  (public, never cached)
 // POST /api/app-settings/store-links { appStore?, googlePlay?, showBanner? } (owner/admin only) — saved to disk like the live-icons switches
-type StoreLinksCfg = { appStore: string; googlePlay: string; showBanner: boolean; showIntro: boolean; videoUrl: string };
+type IntroSlot = "video" | "photo" | "pdf";
+type StoreLinksCfg = {
+  appStore: string; googlePlay: string; showBanner: boolean; showIntro: boolean;
+  slots: Record<IntroSlot, string>; // one stored file per type (Video / Photo / PDF)
+  active: IntroSlot | "";           // which one is published as the welcome screen ("" = the built-in /intro.mp4)
+  videoUrl: string;                 // = slots[active] (what visitors load)
+};
+const INTRO_SLOTS: IntroSlot[] = ["video", "photo", "pdf"];
 const STORE_LINKS_FILE = () => join(ASSETS_DIR, "stooorna-store-links.json");
 const cleanStoreUrl = (v: unknown): string | null => {
   const s = String(v ?? "").trim();
@@ -1334,10 +1341,14 @@ const cleanVideoUrl = (v: unknown): string | null => {
   if (!s) return "";
   return /^\/(airo-assets|assets|uploads|media)\/intro\/[A-Za-z0-9._-]+\.(mp4|webm|mov|jpg|png|webp|gif|pdf)$/i.test(s) ? s : null;
 };
+const syncIntroActive = (c: StoreLinksCfg) => {
+  if (c.active && !c.slots[c.active]) c.active = "";
+  c.videoUrl = c.active ? c.slots[c.active] : "";
+};
 const storeLinksCfg = (): StoreLinksCfg => {
-  const g = globalThis as typeof globalThis & { __stooornaStoreLinks?: StoreLinksCfg };
-  if (!g.__stooornaStoreLinks) {
-    const c: StoreLinksCfg = { appStore: "", googlePlay: "", showBanner: true, showIntro: true, videoUrl: "" };
+  // read the file on every call (no in-memory copy): a deleted link can never come back from a stale cache / another instance
+  {
+    const c: StoreLinksCfg = { appStore: "", googlePlay: "", showBanner: true, showIntro: true, slots: { video: "", photo: "", pdf: "" }, active: "", videoUrl: "" };
     try {
       const p = STORE_LINKS_FILE();
       if (existsSync(p)) {
@@ -1346,19 +1357,26 @@ const storeLinksCfg = (): StoreLinksCfg => {
         c.googlePlay = cleanStoreUrl(raw?.googlePlay) || "";
         if (raw?.showBanner === false) c.showBanner = false;
         if (raw?.showIntro === false) c.showIntro = false;
-        c.videoUrl = cleanVideoUrl(raw?.videoUrl) || "";
+        for (const k of INTRO_SLOTS) c.slots[k] = cleanVideoUrl(raw?.slots?.[k]) || "";
+        if (INTRO_SLOTS.includes(raw?.active)) c.active = raw.active;
+        // older file with a single videoUrl: move it into the matching slot
+        const old = cleanVideoUrl(raw?.videoUrl) || "";
+        if (old && !INTRO_SLOTS.some((k) => c.slots[k])) {
+          const k: IntroSlot = /\.pdf$/i.test(old) ? "pdf" : /\.(jpg|png|webp|gif)$/i.test(old) ? "photo" : "video";
+          c.slots[k] = old; c.active = k;
+        }
+        syncIntroActive(c);
       }
     } catch (e) {
       console.error("[store-links] load failed", e);
     }
-    g.__stooornaStoreLinks = c;
+    return c;
   }
-  return g.__stooornaStoreLinks;
 };
-const saveStoreLinksCfg = () => {
+const saveStoreLinksCfg = (cfg: StoreLinksCfg) => {
   try {
     if (!existsSync(ASSETS_DIR)) mkdirSync(ASSETS_DIR, { recursive: true });
-    writeFileSync(STORE_LINKS_FILE(), JSON.stringify({ ...storeLinksCfg(), updatedAt: Date.now() }), "utf-8");
+    writeFileSync(STORE_LINKS_FILE(), JSON.stringify({ ...cfg, updatedAt: Date.now() }), "utf-8");
   } catch (e) {
     console.error("[store-links] save failed", e);
   }
@@ -1390,39 +1408,53 @@ app.post("/api/app-settings/store-links", guarded(async (req, res) => {
     cfg.showIntro = body.showIntro;
     touched = true;
   }
-  if ("videoUrl" in body) {
-    const v = cleanVideoUrl(body.videoUrl);
-    if (v === null) return deny(res, 400, "videoUrl_invalid");
-    cfg.videoUrl = v;
+  // publish one of the stored files as the welcome screen ("" = back to the built-in video)
+  if ("active" in body) {
+    const a = String(body.active ?? "");
+    if (a !== "" && !INTRO_SLOTS.includes(a as IntroSlot)) return deny(res, 400, "active_invalid");
+    if (a && !cfg.slots[a as IntroSlot]) return deny(res, 400, "slot_empty");
+    cfg.active = a as IntroSlot | "";
+    touched = true;
+  }
+  // delete the stored file of one type
+  if ("clearSlot" in body) {
+    const k = String(body.clearSlot ?? "") as IntroSlot;
+    if (!INTRO_SLOTS.includes(k)) return deny(res, 400, "clearSlot_invalid");
+    cfg.slots[k] = "";
     touched = true;
   }
   if (!touched) return deny(res, 400, "nothing_to_update");
-  saveStoreLinksCfg();
+  syncIntroActive(cfg);
+  saveStoreLinksCfg(cfg);
   res.json({ ok: true, ...cfg });
 }));
 
-// POST /api/app-settings/intro-video  (owner/admin only, raw video body, Content-Type video/*) -> { ok, videoUrl, ... }
-// The file is saved under ASSETS_DIR/intro/ and becomes the welcome video for everybody (until reset).
+// POST /api/app-settings/intro-video?slot=video|photo|pdf  (owner/admin only, raw file body)
+// Saves the file under ASSETS_DIR/intro/ in that slot and publishes it as the welcome screen for everybody.
 app.post("/api/app-settings/intro-video", guarded(async (req, res) => {
   if (!(await needAdmin(req, res))) return;
-  const ct = String(req.headers["content-type"] || "").toLowerCase();
-  const EXT: Record<string, string> = {
-    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "application/pdf": "pdf",
-    "video/webm": "webm", "video/quicktime": "mov", "video/mp4": "mp4",
+  const slot = String(req.query.slot || "") as IntroSlot;
+  if (!INTRO_SLOTS.includes(slot)) return deny(res, 400, "slot_required");
+  const mime = String(req.headers["content-type"] || "").toLowerCase().split(";")[0].trim();
+  const EXT: Record<IntroSlot, Record<string, string>> = {
+    video: { "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" },
+    photo: { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" },
+    pdf: { "application/pdf": "pdf" },
   };
-  const mime = ct.split(";")[0].trim();
-  const ext = EXT[mime] || (mime.startsWith("video/") ? "mp4" : "");
-  if (!ext) return deny(res, 400, "video_image_or_pdf_required");
+  const ext = EXT[slot][mime] || (slot === "video" && mime.startsWith("video/") ? "mp4" : "");
+  if (!ext) return deny(res, 400, `${slot}_file_required`);
   const buf = req.body as Buffer;
   if (!Buffer.isBuffer(buf) || buf.length < 1024) return deny(res, 400, "empty_file");
   const dir = join(ASSETS_DIR, "intro");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  const name = `intro-${Date.now()}.${ext}`;
+  const name = `${slot}-${Date.now()}.${ext}`;
   writeFileSync(join(dir, name), buf);
   const cfg = storeLinksCfg();
-  cfg.videoUrl = `/airo-assets/intro/${name}`;
+  cfg.slots[slot] = `/airo-assets/intro/${name}`;
+  cfg.active = slot;
   cfg.showIntro = true;
-  saveStoreLinksCfg();
+  syncIntroActive(cfg);
+  saveStoreLinksCfg(cfg);
   res.json({ ok: true, ...cfg });
 }));
 
