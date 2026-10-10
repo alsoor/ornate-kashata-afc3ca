@@ -1,12 +1,22 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Plus, Send, Clock, PenLine, Image as ImageIcon, Table, Sparkles, Mic } from 'lucide-react';
 
+interface Attachment {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  previewUrl: string; // blob: or data: for local preview
+  kind: 'image' | 'file';
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  type?: 'text' | 'image' | 'table';
+  type?: 'text' | 'image' | 'table' | 'file';
   data?: any;
+  attachments?: Attachment[];
   timestamp: number;
 }
 
@@ -37,6 +47,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   const avatar = user?.avatarUrl || user?.image || null;
   const displayName = user?.name || user?.username || 'You';
@@ -76,59 +88,133 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     setShowHistory(false);
   };
 
+  const revokeAttachmentUrls = (list: Attachment[]) => {
+    list.forEach(a => {
+      try { if (a.previewUrl.startsWith('blob:')) URL.revokeObjectURL(a.previewUrl); } catch { /* */ }
+    });
+  };
+
+  const addFiles = (files: FileList | File[] | null) => {
+    if (!files || !files.length) return;
+    const next: Attachment[] = [];
+    Array.from(files).forEach(file => {
+      if (file.size > 12 * 1024 * 1024) return; // 12MB cap per file
+      const isImage = file.type.startsWith('image/');
+      next.push({
+        id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: file.name,
+        mime: file.type || 'application/octet-stream',
+        size: file.size,
+        previewUrl: URL.createObjectURL(file),
+        kind: isImage ? 'image' : 'file',
+      });
+    });
+    if (next.length) setAttachments(prev => [...prev, ...next].slice(0, 8));
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments(prev => {
+      const gone = prev.find(a => a.id === id);
+      if (gone) revokeAttachmentUrls([gone]);
+      return prev.filter(a => a.id !== id);
+    });
+  };
+
   const sendMessage = async (text: string) => {
-    if (!text.trim()) return;
+    const trimmed = text.trim();
+    const pending = attachments;
+    if (!trimmed && pending.length === 0) return;
+
+    const content =
+      trimmed ||
+      (pending.length
+        ? pending.map(a => (a.kind === 'image' ? `[Image: ${a.name}]` : `[File: ${a.name}]`)).join(' ')
+        : '');
+
     const userMsg: Message = {
       id: `u-${Date.now()}`,
       role: 'user',
-      content: text.trim(),
+      content,
+      type: pending.some(a => a.kind === 'image') ? 'image' : pending.length ? 'file' : 'text',
+      attachments: pending.length ? pending : undefined,
       timestamp: Date.now(),
     };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+    setAttachments([]);
     setIsTyping(true);
 
-    // Mock AI response with tools support
-    setTimeout(() => {
-      let reply = '';
-      let type: Message['type'] = 'text';
-      let data: any = undefined;
-
-      const lower = text.toLowerCase();
-      if (lower.includes('image') || lower.includes('صورة') || lower.includes('generate') || lower.includes('صمم')) {
-        type = 'image';
-        data = { url: 'https://placehold.co/400x300/0a1f1a/ffffff?text=Generated+Image', prompt: text };
-        reply = `I've generated an image based on: "${text}"`;
-      } else if (lower.includes('table') || lower.includes('جدول') || lower.includes('جدول')) {
-        type = 'table';
-        data = {
+    const lower = content.toLowerCase();
+    // Lightweight client-side tools (table / placeholder image) still work offline
+    if (lower.includes('table') || lower.includes('جدول')) {
+      const aiMsg: Message = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: 'Here is a summary table:',
+        type: 'table',
+        data: {
           headers: ['Feature', 'Status', 'Notes'],
           rows: [
             ['Voice Live', 'Active', 'Real-time'],
             ['Camera Live', 'Active', 'HD'],
             ['AI Assistant', 'New', 'Stooorna Ai'],
           ],
-        };
-        reply = 'Here is a summary table:';
-      } else if (lower.includes('merge') || lower.includes('دمج')) {
-        type = 'image';
-        data = { url: 'https://placehold.co/500x300/04120f/c0c0c0?text=Merged+Images', prompt: 'merged' };
-        reply = 'Images merged successfully.';
-      } else {
-        reply = `Stooorna Ai: I received your query — "${text}".\n\nThis is a fully independent AI module in src/ai. You can extend it with real model calls, image generation APIs, table builders, and merge tools. Ask me anything about the app, generate content, or explore.`;
-      }
-
-      const aiMsg: Message = {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content: reply,
-        type,
-        data,
+        },
         timestamp: Date.now(),
       };
       setMessages(prev => [...prev, aiMsg]);
       setIsTyping(false);
-    }, 800 + Math.random() * 600);
+      return;
+    }
+
+    // Call independent Stooorna Ai backend (Ai/ folder → FastAPI)
+    const apiBase =
+      (typeof window !== 'undefined' && (window as any).__STOOORNA_AI_API__) ||
+      (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_STOOORNA_AI_URL) ||
+      (typeof process !== 'undefined' && (process as any).env?.VITE_STOOORNA_AI_URL) ||
+      'http://127.0.0.1:8000/ai';
+
+    try {
+      const history = messages.slice(-12).map(m => ({ role: m.role, content: m.content }));
+      const res = await fetch(`${apiBase}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: content,
+          history,
+          use_rag: lower.includes('search') || lower.includes('ابحث') || lower.includes('من المعرفة'),
+        }),
+      });
+      if (!res.ok) {
+        const errText = await res.text().catch(() => res.statusText);
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      const aiMsg: Message = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: data.reply || '(empty reply)',
+        type: 'text',
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, aiMsg]);
+    } catch (err: any) {
+      const aiMsg: Message = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content:
+          `تعذر الاتصال بخادم Stooorna Ai.\n\n` +
+          `تأكد أن الخدمة تعمل:\n` +
+          `  cd Ai/backend && bash scripts/dev.sh\n` +
+          `أو: docker compose -f Ai/docker/docker-compose.yml up\n\n` +
+          `التفاصيل: ${err?.message || err}`,
+        type: 'text',
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, aiMsg]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -332,6 +418,34 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               }}
             >
               {m.content}
+              {m.attachments && m.attachments.length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  {m.attachments.map(a => (
+                    a.kind === 'image' ? (
+                      <img
+                        key={a.id}
+                        src={a.previewUrl}
+                        alt={a.name}
+                        style={{ maxWidth: 180, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block' }}
+                      />
+                    ) : (
+                      <a
+                        key={a.id}
+                        href={a.previewUrl}
+                        download={a.name}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          padding: '8px 10px', borderRadius: 10,
+                          background: m.role === 'user' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
+                          color: 'inherit', fontSize: 13, textDecoration: 'none', maxWidth: 200,
+                        }}
+                      >
+                        📎 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+                      </a>
+                    )
+                  ))}
+                </div>
+              )}
               {m.type === 'image' && m.data?.url && (
                 <img
                   src={m.data.url}
@@ -392,6 +506,57 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             borderTop: '1px solid rgba(0,0,0,0.06)',
           }}
         >
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.txt,.doc,.docx,.csv,.json,.md,.zip"
+            style={{ display: 'none' }}
+            onChange={e => {
+              addFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+
+          {attachments.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+              {attachments.map(a => (
+                <div
+                  key={a.id}
+                  style={{
+                    position: 'relative',
+                    borderRadius: 12,
+                    overflow: 'hidden',
+                    border: '1px solid rgba(0,0,0,0.08)',
+                    background: '#f4f4f5',
+                    maxWidth: 120,
+                  }}
+                >
+                  {a.kind === 'image' ? (
+                    <img src={a.previewUrl} alt={a.name} style={{ width: 120, height: 80, objectFit: 'cover', display: 'block' }} />
+                  ) : (
+                    <div style={{ padding: '10px 12px', fontSize: 12, color: '#333', maxWidth: 120 }}>
+                      📎 {a.name.length > 18 ? a.name.slice(0, 16) + '…' : a.name}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Remove"
+                    onClick={() => removeAttachment(a.id)}
+                    style={{
+                      position: 'absolute', top: 4, right: 4,
+                      width: 22, height: 22, borderRadius: '50%', border: 'none',
+                      background: 'rgba(0,0,0,0.65)', color: '#fff', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div
             style={{
               display: 'flex',
@@ -399,7 +564,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               gap: 8,
               background: `linear-gradient(180deg, ${DARK_GREEN} 0%, ${DARKER_GREEN} 100%)`,
               borderRadius: 24,
-              padding: '6px 6px 6px 14px',
+              padding: '6px 6px 6px 10px',
               border: '1px solid rgba(255,255,255,0.08)',
             }}
           >
@@ -427,6 +592,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                   onClick={e => e.stopPropagation()}
                 >
                   {[
+                    { label: 'Attach photo / file', action: 'attach' as const },
                     { label: 'Generate Image', cmd: 'generate image of ' },
                     { label: 'Create Table', cmd: 'create table ' },
                     { label: 'Merge Images', cmd: 'merge images ' },
@@ -436,7 +602,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                       key={t.label}
                       type="button"
                       onClick={() => {
-                        setInput(t.cmd);
+                        if ((t as any).action === 'attach') {
+                          setToolsOpen(false);
+                          fileInputRef.current?.click();
+                          return;
+                        }
+                        setInput((t as any).cmd || '');
                         setToolsOpen(false);
                         inputRef.current?.focus();
                       }}
@@ -451,6 +622,20 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                   ))}
                 </div>
               )}
+            </button>
+
+            <button
+              type="button"
+              aria-label="Attach file"
+              title="Attach photo or file"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                width: 36, height: 36, borderRadius: '50%', border: 'none',
+                background: 'transparent', color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}
+            >
+              <ImageIcon size={18} strokeWidth={2.2} />
             </button>
 
             <input
@@ -468,12 +653,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
             <button
               type="submit"
-              disabled={!input.trim() || isTyping}
+              disabled={(!input.trim() && attachments.length === 0) || isTyping}
               aria-label="Send"
               style={{
                 width: 38, height: 38, borderRadius: '50%', border: 'none',
-                background: input.trim() ? RED : 'rgba(239,68,68,0.4)',
-                color: '#fff', cursor: input.trim() ? 'pointer' : 'default',
+                background: (input.trim() || attachments.length) ? RED : 'rgba(239,68,68,0.4)',
+                color: '#fff', cursor: (input.trim() || attachments.length) ? 'pointer' : 'default',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0,
               }}
