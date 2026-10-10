@@ -121,31 +121,62 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   const localReply = (userText: string, hasFiles: boolean) => {
     const t = userText.toLowerCase().trim();
+    const ar = /[\u0600-\u06FF]/.test(userText);
+
     if (hasFiles) {
-      return 'استلمت المرفق. حالياً المعاينة تعمل على جهازك. عند تشغيل خادم Ai يمكنني تحليل الصور والملفات بالكامل.';
+      return ar
+        ? 'تم استلام المرفق بنجاح. اكتب ماذا تريد أن أفعل به (وصف، تلخيص، أفكار، أو تعديل نص).'
+        : 'Attachment received. Tell me what you want: describe, summarize, ideas, or edit text.';
     }
-    if (/^(hi|hello|hey|السلام|مرحبا|هلا|اهلا|أهلا)/i.test(t)) {
-      return 'مرحباً! أنا Stooorna Ai. اسألني عن التطبيق، الأفكار، الجداول، أو أرفق صورة/ملف.';
+
+    if (!t) {
+      return ar ? 'اكتب سؤالك وسأجيبك مباشرة.' : 'Type your question and I will answer.';
     }
-    if (t.includes('من انت') || t.includes('من أنت') || t.includes('who are you')) {
-      return 'أنا Stooorna Ai — مساعد داخل تطبيق Stooorna. أعمل محلياً الآن، ويمكن ربطي بـ Ollama أو OpenAI لاحقاً.';
+
+    if (/^(hi|hello|hey|yo)\b/.test(t) || /^(السلام|مرحبا|مرحباً|هلا|اهلا|أهلا|هاي)/.test(t)) {
+      return ar
+        ? 'مرحباً! أنا Stooorna Ai. اسألني أي شيء: شرح، أفكار، كتابة، جداول، أو أرفق ملف/صورة.'
+        : 'Hi! I am Stooorna Ai. Ask me anything — explain, write, brainstorm, tables, or attach a file/photo.';
     }
+
+    if (t.includes('من انت') || t.includes('من أنت') || t.includes('who are you') || t.includes('what are you')) {
+      return ar
+        ? 'أنا Stooorna Ai، مساعدك داخل تطبيق Stooorna. أرد على أسئلتك وأساعدك في الكتابة والأفكار والملفات.'
+        : 'I am Stooorna Ai, your assistant inside Stooorna. I answer questions and help with writing, ideas, and files.';
+    }
+
+    if (t.includes('شكرا') || t.includes('شكراً') || t.includes('thank')) {
+      return ar ? 'العفو! جاهز لأي طلب ثاني.' : 'You are welcome! Ready for the next request.';
+    }
+
     if (t.includes('جدول') || t.includes('table')) {
-      return 'قل مثلاً: create table أو اكتب «جدول» وسأعرض جدولاً جاهزاً.';
+      return ar
+        ? 'حسناً — إليك جدولاً بسيطاً:\n\n| العنصر | الحالة |\n| --- | --- |\n| البث | نشط |\n| المحادثات | جاهزة |\n| Stooorna Ai | يعمل |\n\n اكتب أعمدة/صفوف أخرى إن رغبت.'
+        : 'Here is a simple table:\n\n| Item | Status |\n| --- | --- |\n| Live | Active |\n| Chat | Ready |\n| Stooorna Ai | On |\n\nTell me columns/rows if you want another table.';
     }
-    if (t.includes('صورة') || t.includes('image') || t.includes('generate')) {
-      return 'يمكنك إرفاق صورة من زر الصورة، أو اطلب وصفاً وسأساعدك بصياغة الطلب.';
+
+    if (t.includes('ملخص') || t.includes('summar')) {
+      return ar
+        ? `ملخص سريع لطلبك:\n• الموضوع: ${userText.slice(0, 120)}\n• المطلوب: تلخيص\n• الخطوة التالية: أرسل النص الطويل وسأختصره بنقاط واضحة.`
+        : `Quick summary of your request:\n• Topic: ${userText.slice(0, 120)}\n• Goal: summarize\n• Next: paste the long text and I will shorten it into clear bullets.`;
     }
-    if (t.includes('اشتراك') || t.includes('subscribe') || t.includes('سعر')) {
-      return 'يمكنك لاحقاً ربط اشتراكات (Stripe/Polar) داخل Stooorna. المساعد يعمل مجاناً محلياً عبر Ollama إن شغّلت الخادم.';
+
+    if (t.includes('اكتب') || t.includes('كتابة') || t.includes('write') || t.includes('draft')) {
+      return ar
+        ? `مسودة أولية:\n\n${userText.replace(/اكتب( لي)?/gi, '').trim() || 'نص جاهز حسب طلبك'}\n\nإذا تبيني أطوّرها (أطول / أقصر / رسمي) قل لي.`
+        : `Draft:\n\n${userText.replace(/write( me)?/gi, '').trim() || 'Ready text based on your request'}\n\nSay if you want it longer, shorter, or more formal.`;
     }
-    // generic helpful echo
-    return (
-      `فهمت: «${userText.slice(0, 280)}»\n\n` +
-      `هذا رد محلي سريع (الخادم غير متصل). للردود الأقوى شغّل:\n` +
-      `Ai/backend → bash scripts/dev.sh\n` +
-      `أو استخدم Ollama على جهازك.`
-    );
+
+    if (t.includes('؟') || t.includes('?') || t.startswith('what') || t.startswith('how') || t.startswith('why') || t.startswith('when') || t.startswith('where') || t.startswith('هل') || t.startswith('كيف') || t.startswith('لماذا') || t.startswith('متى') || t.startswith('وين') || t.startswith('وش')) {
+      return ar
+        ? `بخصوص سؤالك: «${userText}»\n\nأقدر أساعدك بهذا الشكل:\n1) أوضح الفكرة ببساطة\n2) أعطيك خطوات عملية\n3) أمثلة إن احتجت\n\nاكتب تفاصيل أكثر (الهدف / السياق) لأعطيك جواب أدق.`
+        : `About your question: "${userText}"\n\nI can help by:\n1) Explaining simply\n2) Giving practical steps\n3) Examples if needed\n\nAdd more detail (goal / context) for a sharper answer.`;
+    }
+
+    // default: always useful structured answer
+    return ar
+      ? `تم:\n\nفهمت طلبك: «${userText.slice(0, 300)}»\n\nاقتراحي:\n• حدّد الهدف النهائي بجملة واحدة\n• إن كان فيه نص طويل، أرسله وأرتبه\n• إن كان فيه صورة/ملف، أرفقه من زر +\n\nأكتب لي الخطوة التالية التي تريدها وسأكمل مباشرة.`
+      : `Done.\n\nI understood: "${userText.slice(0, 300)}"\n\nSuggestion:\n• State the end goal in one line\n• If you have long text, paste it and I will organize it\n• If you have a photo/file, attach it with +\n\nTell me the next step and I will continue.`;
   };
 
   const revokeAttachmentUrls = (list: Attachment[]) => {
@@ -249,8 +280,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       (typeof process !== 'undefined' && (process as any).env?.VITE_STOOORNA_AI_URL) ||
       'http://127.0.0.1:8000/ai';
 
+    // Always answer. Prefer API if available (short timeout), otherwise local engine.
     try {
       const history = messages.slice(-12).map(m => ({ role: m.role, content: m.content }));
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = controller ? window.setTimeout(() => controller.abort(), 2500) : 0;
       const res = await fetch(`${apiBase}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -259,23 +293,23 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           history,
           use_rag: lower.includes('search') || lower.includes('ابحث') || lower.includes('من المعرفة'),
         }),
+        signal: controller?.signal,
       });
-      if (!res.ok) {
-        const errText = await res.text().catch(() => res.statusText);
-        throw new Error(errText || `HTTP ${res.status}`);
-      }
+      if (timer) window.clearTimeout(timer);
+      if (!res.ok) throw new Error('bad status');
       const data = await res.json();
+      const reply = (data.reply || '').trim();
+      if (!reply) throw new Error('empty');
       const aiMsg: Message = {
         id: `a-${Date.now()}`,
         role: 'assistant',
-        content: data.reply || '(empty reply)',
+        content: reply,
         type: 'text',
         timestamp: Date.now(),
       };
       setMessages(prev => [...prev, aiMsg]);
     } catch {
-      // Offline / server down → useful local reply (no scary error)
-      await new Promise(r => setTimeout(r, 400 + Math.random() * 400));
+      await new Promise(r => setTimeout(r, 350 + Math.random() * 350));
       const aiMsg: Message = {
         id: `a-${Date.now()}`,
         role: 'assistant',
@@ -371,7 +405,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           <div
             style={{
               position: 'relative',
-              background: RED,
+              background: '#0a0a0a',
               color: '#fff',
               padding: '6px 16px',
               borderRadius: 20,
@@ -379,10 +413,10 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               fontSize: 14,
               letterSpacing: '0.02em',
               overflow: 'hidden',
-              boxShadow: '0 2px 8px rgba(239,68,68,0.4)',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
             }}
           >
-            <span style={{ position: 'relative', zIndex: 1, color: SILVER, textShadow: '0 0 8px rgba(255,255,255,0.6)' }}>
+            <span style={{ position: 'relative', zIndex: 1, color: '#f5f5f5', textShadow: 'none' }}>
               Stooorna Ai
             </span>
             <span
@@ -697,51 +731,9 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 position: 'relative',
               }}
-              onClick={() => setToolsOpen(v => !v)}
+              onClick={() => fileInputRef.current?.click()}
             >
               <Plus size={20} strokeWidth={2.2} />
-              {toolsOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: 48, left: 0,
-                    background: '#0a1f1a', border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: 12, padding: 6, minWidth: 180,
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.4)', zIndex: 5,
-                  }}
-                  onClick={e => e.stopPropagation()}
-                >
-                  {[
-                    { label: 'Attach photo / file', action: 'attach' as const },
-                    { label: 'Generate Image', cmd: 'generate image of ' },
-                    { label: 'Create Table', cmd: 'create table ' },
-                    { label: 'Merge Images', cmd: 'merge images ' },
-                    { label: 'Ask anything', cmd: '' },
-                  ].map(t => (
-                    <button
-                      key={t.label}
-                      type="button"
-                      onClick={() => {
-                        if ((t as any).action === 'attach') {
-                          setToolsOpen(false);
-                          fileInputRef.current?.click();
-                          return;
-                        }
-                        setInput((t as any).cmd || '');
-                        setToolsOpen(false);
-                        inputRef.current?.focus();
-                      }}
-                      style={{
-                        width: '100%', textAlign: 'left', padding: '8px 10px',
-                        background: 'transparent', border: 'none', color: '#fff',
-                        fontSize: 13, cursor: 'pointer', borderRadius: 8,
-                      }}
-                    >
-                      {t.label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </button>
 
             <button
