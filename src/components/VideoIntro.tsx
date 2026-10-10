@@ -79,8 +79,9 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   }, [covering]);
   const kind = introKind(videoSrc); // 'video' (default) | 'image' | 'pdf' -> whatever the owner uploaded
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const pdfSnapRef = useRef<(ctx: CanvasRenderingContext2D, dpr: number) => void>(() => {}); // the PDF view paints what is on screen into the crumble picture
   // an image / PDF has no first frame to wait for: start the opening as soon as the screen is up
-  useEffect(() => { if (visible && kind === 'pdf') { setReady(true); setOpened(true); } }, [visible, kind]);
+  useEffect(() => { if (visible && kind === 'pdf') setReady(true); }, [visible, kind]);
   // a photo that is already cached never fires onLoad again -> check it by hand; and if the opening animation event never arrives, start anyway
   useEffect(() => {
     if (!visible || kind !== 'image') return;
@@ -190,11 +191,19 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
     const W = window.innerWidth, H = window.innerHeight;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     try {
-      if (!v || kind === 'pdf') throw new Error('nothing to crumble');
+      if (!v && kind !== 'pdf') throw new Error('nothing to crumble');
       if (v instanceof HTMLVideoElement) v.pause();
       const snap = document.createElement('canvas');
       snap.width = Math.round(W * dpr); snap.height = Math.round(H * dpr);
       const sctx = snap.getContext('2d')!;
+      if (kind === 'pdf' || !v) {
+        sctx.fillStyle = PDF_BG; sctx.fillRect(0, 0, snap.width, snap.height);
+        pdfSnapRef.current(sctx, dpr);
+        snapRef.current = snap;
+        setPhase('shatter');
+        onLogin();
+        return;
+      }
       const bw = Math.max(W, H * 9 / 16), bh = Math.max(H, W * 16 / 9); // the 9:16 stage that covers the screen
       const iw = v instanceof HTMLVideoElement ? v.videoWidth : v.naturalWidth, ih = v instanceof HTMLVideoElement ? v.videoHeight : v.naturalHeight;
       const kk = iw && ih ? Math.max(bw / iw, bh / ih) : 1;
@@ -282,17 +291,16 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   const ringD = Math.round(0.14 * Math.hypot(stW, stH) / Math.SQRT2); // = the starting circle (7% radius)
 
   return createPortal(
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', zIndex: 2147483000, background: phase === 'play' && kind !== 'pdf' ? '#000' : 'transparent', overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', zIndex: 2147483000, background: phase === 'play' ? '#000' : 'transparent', overflow: 'hidden' }}>
       {phase === 'shatter' ? (
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
       ) : (
         <>
           {/* stage keeps the video's 9:16 ratio and covers the whole screen (video + photo: same circular spinning opening) */}
-          {kind !== 'pdf' && (
           <div
             style={{
               position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
-              width: 'max(100vw, calc(100dvh * 9 / 16))', height: 'max(100dvh, calc(100vw * 16 / 9))',
+              width: kind === 'pdf' ? '100vw' : 'max(100vw, calc(100dvh * 9 / 16))', height: kind === 'pdf' ? '100dvh' : 'max(100dvh, calc(100vw * 16 / 9))',
             }}
           >
             {/* liquid "melting" distortion that settles while the circle opens (removed once the video plays) */}
@@ -331,6 +339,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
                   style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block', pointerEvents: 'none', background: '#000' }}
                 />
               )}
+              {kind === 'pdf' && <PdfView src={videoSrc} hasOpen={!!openUrl} snapRef={pdfSnapRef} />}
               {kind === 'video' && (<>
               <video
                 ref={videoRef}
@@ -354,8 +363,8 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
               </>)}
 
               {/* flicker / flash on the video */}
-              <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'screen', animation: 'stIntroFlash 3.4s steps(1, end) infinite', background: 'radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.55), rgba(0,188,212,0.18) 55%, transparent 80%)' }} />
-              <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'screen', animation: 'stIntroSweep 5s ease-in-out infinite', background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.14) 50%, transparent 60%)' }} />
+              {kind !== 'pdf' && <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'screen', animation: 'stIntroFlash 3.4s steps(1, end) infinite', background: 'radial-gradient(ellipse at 50% 35%, rgba(255,255,255,0.55), rgba(0,188,212,0.18) 55%, transparent 80%)' }} />}
+              {kind !== 'pdf' && <div aria-hidden="true" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', mixBlendMode: 'screen', animation: 'stIntroSweep 5s ease-in-out infinite', background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.14) 50%, transparent 60%)' }} />}
 
               {/* light running around the logo ring at the end of the video */}
               <svg viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="none" aria-hidden="true"
@@ -376,19 +385,9 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
             </div>
             </div>
           </div>
-          )}
-
-          {/* PDF: opens by itself as a page that slides up from the bottom, X slides it back down and the visitor stays on the site */}
-          {kind === 'pdf' && (
-            <PdfSheet
-              src={videoSrc}
-              hasOpen={!!openUrl}
-              onClosed={() => { skippedThisSession = true; setDismissed(true); }}
-            />
-          )}
 
           {/* glowing rim that grows with the circle */}
-          {ready && !opened && kind !== 'pdf' && (
+          {ready && !opened && (
             <div aria-hidden="true" style={{
               position: 'absolute', left: '50%', top: '50%', width: ringD, height: ringD, borderRadius: '50%', pointerEvents: 'none',
               border: '3px solid #7df3ff', boxShadow: '0 0 24px 6px rgba(0,188,212,0.7), inset 0 0 24px 4px rgba(0,188,212,0.5)',
@@ -468,10 +467,10 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
 }
 
 
-/* ───────────────────────── PDF as a sliding page ─────────────────────────
+/* ───────────────────────── PDF as a full-screen welcome (same opening / crumble as photo + video) ─────────────────────────
  * no install needed: pdf.js is loaded from cdnjs only when a PDF is the welcome file
- * - slides up from the bottom by itself, no file name, no "Open" button, no second page
- * - X in the corner slides it back down; the visitor is on the site
+ * - opens full screen with the same circular spin as the photo / video, no file name, no "Open" button, no second page
+ * - the red Log in banner crumbles it away like the photo / video
  * - zoom bar at the bottom: 100% / 150% / 200% / 300% / 400%
  */
 const PDF_ZOOMS = [1, 1.5, 2, 3, 4];
@@ -496,9 +495,9 @@ function loadPdfJs(): Promise<any> {
   return pdfJsPromise;
 }
 
-function PdfSheet({ src, hasOpen, onClosed }: { src: string; hasOpen: boolean; onClosed: () => void }) {
-  const [up, setUp] = useState(false);
-  const [closing, setClosing] = useState(false);
+const PDF_BG = '#1b1b1b';
+
+function PdfView({ src, hasOpen, snapRef }: { src: string; hasOpen: boolean; snapRef: { current: (ctx: CanvasRenderingContext2D, dpr: number) => void } }) {
   const [zi, setZi] = useState(0);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [docReady, setDocReady] = useState(false);
@@ -511,12 +510,18 @@ function PdfSheet({ src, hasOpen, onClosed }: { src: string; hasOpen: boolean; o
   const bottomBase = 'max(26px, env(safe-area-inset-bottom) + 16px)'; // same as the Log in banner
   const bannersH = hasOpen ? 88 : 44;                                   // Log in (+ Open App) banners stay on top of the sheet
 
-  // slide up
-  useEffect(() => { const id = window.setTimeout(() => setUp(true), 30); return () => window.clearTimeout(id); }, []);
-  const close = () => {
-    if (closing) return;
-    setClosing(true); setUp(false);
-    window.setTimeout(onClosed, 430);
+  // what is on screen right now -> painted into the picture that crumbles
+  snapRef.current = (ctx, dpr) => {
+    const host = hostRef.current;
+    if (!host) return;
+    const H = window.innerHeight;
+    Array.from(host.children).forEach(el => {
+      const c = el as HTMLCanvasElement;
+      if (!c.width || c.width < 4) return;
+      const r = c.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > H) return;
+      try { ctx.drawImage(c, r.left * dpr, r.top * dpr, r.width * dpr, r.height * dpr); } catch { /* ignore */ }
+    });
   };
 
   // page width
@@ -557,7 +562,7 @@ function PdfSheet({ src, hasOpen, onClosed }: { src: string; hasOpen: boolean; o
     let dead = false;
     const tasks = new Set<any>();
     const cssW = baseW * PDF_ZOOMS[zi];
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(3, Math.max(2, window.devicePixelRatio || 1)); // sharp text, also when zoomed
     const keep = !firstRender.current; // keep the same spot of the page when the zoom changes
     const cx = scroller.scrollWidth ? (scroller.scrollLeft + scroller.clientWidth / 2) / scroller.scrollWidth : 0.5;
     const cy = scroller.scrollHeight ? (scroller.scrollTop + scroller.clientHeight / 2) / scroller.scrollHeight : 0;
@@ -582,14 +587,14 @@ function PdfSheet({ src, hasOpen, onClosed }: { src: string; hasOpen: boolean; o
         let rendering = false, drawn = false; let rt: any = null;
         canvas.__draw = () => {
           if (rendering || drawn || dead) return;
-          let k = dpr; const maxPx = 14e6;
+          let k = dpr; const maxPx = 16e6; // stays under the phone canvas limit
           if (cssW * k * cssH * k > maxPx) k = Math.sqrt(maxPx / (cssW * cssH));
           const vp = page.getViewport({ scale: (cssW / v1.width) * k });
           canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
           const ctx = canvas.getContext('2d');
           if (!ctx) return;
           rendering = true;
-          rt = page.render({ canvasContext: ctx, viewport: vp });
+          rt = page.render({ canvasContext: ctx, viewport: vp, intent: 'display' });
           tasks.add(rt);
           const mine = rt;
           mine.promise.then(() => { drawn = true; }).catch(() => { /* cancelled */ }).finally(() => { rendering = false; tasks.delete(mine); });
@@ -614,42 +619,30 @@ function PdfSheet({ src, hasOpen, onClosed }: { src: string; hasOpen: boolean; o
   const zbtn: CSSProperties = { width: 40, height: 40, borderRadius: 20, border: 'none', cursor: 'pointer', background: 'rgba(255,255,255,0.14)', color: '#fff', fontSize: 22, fontWeight: 800, lineHeight: '40px', padding: 0 };
 
   return (
-    <>
-      <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', opacity: up ? 1 : 0, transition: 'opacity .4s' }} />
+    <div style={{ position: 'absolute', inset: 0, background: PDF_BG, display: 'flex', flexDirection: 'column' }}>
       <div
-        style={{
-          position: 'absolute', inset: 0, background: '#1b1b1b', borderRadius: '16px 16px 0 0', overflow: 'hidden',
-          transform: up ? 'translateY(0)' : 'translateY(100%)', transition: 'transform .45s cubic-bezier(.22,.75,.2,1)',
-          display: 'flex', flexDirection: 'column',
-        }}
+        ref={scrollRef}
+        style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: `max(8px, env(safe-area-inset-top)) 8px calc(${bottomBase} + ${bannersH + 70}px)` }}
       >
-        <div style={{ flexShrink: 0, display: 'flex', justifyContent: 'flex-end', padding: 'max(8px, env(safe-area-inset-top)) 12px 6px' }}>
-          <button type="button" onClick={close} aria-label="Close" style={{ ...zbtn, fontSize: 20 }}>✕</button>
-        </div>
-        <div
-          ref={scrollRef}
-          style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: `0 8px calc(${bottomBase} + ${bannersH + 70}px)` }}
-        >
-          <div ref={hostRef} style={{ margin: '0 auto' }} />
-          {status === 'loading' && (
-            <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', display: 'flex', justifyContent: 'center' }}>
-              <div style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', animation: 'stIntroSpin 0.9s linear infinite' }} />
-            </div>
-          )}
-          {status === 'error' && (
-            <p style={{ color: '#fff', textAlign: 'center', marginTop: 80, fontSize: 14 }}>تعذر عرض الملف</p>
-          )}
-        </div>
-        {status === 'ready' && (
-          <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(${bottomBase} + ${bannersH + 10}px)`, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
-            <div dir="ltr" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderRadius: 30, background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)', boxShadow: '0 4px 14px rgba(0,0,0,0.5)' }}>
-              <button type="button" aria-label="Zoom out" disabled={zi === 0} onClick={() => setZi(z => Math.max(0, z - 1))} style={{ ...zbtn, opacity: zi === 0 ? 0.35 : 1 }}>−</button>
-              <span style={{ minWidth: 52, textAlign: 'center', color: '#fff', fontSize: 13, fontWeight: 800 }}>{Math.round(PDF_ZOOMS[zi] * 100)}%</span>
-              <button type="button" aria-label="Zoom in" disabled={zi === PDF_ZOOMS.length - 1} onClick={() => setZi(z => Math.min(PDF_ZOOMS.length - 1, z + 1))} style={{ ...zbtn, opacity: zi === PDF_ZOOMS.length - 1 ? 0.35 : 1 }}>+</button>
-            </div>
+        <div ref={hostRef} style={{ margin: '0 auto' }} />
+        {status === 'loading' && (
+          <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', animation: 'stIntroSpin 0.9s linear infinite' }} />
           </div>
         )}
+        {status === 'error' && (
+          <p style={{ color: '#fff', textAlign: 'center', marginTop: 80, fontSize: 14 }}>تعذر عرض الملف</p>
+        )}
       </div>
-    </>
+      {status === 'ready' && (
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: `calc(${bottomBase} + ${bannersH + 10}px)`, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div dir="ltr" style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderRadius: 30, background: 'rgba(0,0,0,0.72)', boxShadow: '0 4px 14px rgba(0,0,0,0.5)' }}>
+            <button type="button" aria-label="Zoom out" disabled={zi === 0} onClick={() => setZi(z => Math.max(0, z - 1))} style={{ ...zbtn, opacity: zi === 0 ? 0.35 : 1 }}>−</button>
+            <span style={{ minWidth: 52, textAlign: 'center', color: '#fff', fontSize: 13, fontWeight: 800 }}>{Math.round(PDF_ZOOMS[zi] * 100)}%</span>
+            <button type="button" aria-label="Zoom in" disabled={zi === PDF_ZOOMS.length - 1} onClick={() => setZi(z => Math.min(PDF_ZOOMS.length - 1, z + 1))} style={{ ...zbtn, opacity: zi === PDF_ZOOMS.length - 1 ? 0.35 : 1 }}>+</button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
