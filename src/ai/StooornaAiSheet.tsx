@@ -69,7 +69,30 @@ function saveChats(chats: ChatSession[]) {
   } catch { /* */ }
 }
 
-function buildLocalReply(userText: string, hasFiles: boolean): string {
+
+/**
+ * Where the Ai backend lives.
+ * Priority: window.__STOOORNA_AI_API__  >  VITE_AI_API_URL  >  localhost (dev)  >  same-origin /ai (production)
+ */
+function getAiApiBase(): string {
+  try {
+    const w: any = typeof window !== 'undefined' ? window : {};
+    if (w.__STOOORNA_AI_API__) return String(w.__STOOORNA_AI_API__).replace(/\/+$/, '');
+    const envUrl = (import.meta as any)?.env?.VITE_AI_API_URL;
+    if (envUrl) return String(envUrl).replace(/\/+$/, '');
+    const host = w.location?.hostname || '';
+    if (host === 'localhost' || host === '127.0.0.1') return 'http://127.0.0.1:8000/ai';
+  } catch { /* */ }
+  return '/ai';
+}
+
+function pickReply(data: any): string {
+  if (!data) return '';
+  const v = data.reply ?? data.response ?? data.answer ?? data.message ?? data.text ?? data.content ?? '';
+  return (typeof v === 'string' ? v : JSON.stringify(v)).trim();
+}
+
+export function buildLocalReply(userText: string, hasFiles: boolean): string {
   const t = userText.toLowerCase().trim();
   const ar = /[\u0600-\u06FF]/.test(userText);
 
@@ -245,76 +268,61 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     setAttachments([]);
     setIsTyping(true);
 
-    // Always reply locally (guaranteed on phone without backend)
-    window.setTimeout(() => {
-      const lower = content.toLowerCase();
-      let aiMsg: Message;
+    // Real answer from the Stooorna Ai backend (no fake canned replies)
+    const apiBase = getAiApiBase();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? window.setTimeout(() => controller.abort(), 90000) : 0;
+    const ar = /[\u0600-\u06FF]/.test(content);
 
-      if (lower.includes('table') || lower.includes('جدول')) {
-        aiMsg = {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          content: 'Here is a summary table:',
-          type: 'table',
-          data: {
-            headers: ['Feature', 'Status', 'Notes'],
-            rows: [
-              ['Voice Live', 'Active', 'Real-time'],
-              ['Camera Live', 'Active', 'HD'],
-              ['AI Assistant', 'On', 'Stooorna Ai'],
-            ],
-          },
-          timestamp: Date.now(),
-        };
-      } else {
-        aiMsg = {
-          id: `a-${Date.now()}`,
-          role: 'assistant',
-          content: buildLocalReply(content, pending.length > 0),
-          type: 'text',
-          timestamp: Date.now(),
-        };
-      }
-
+    const pushAi = (text: string) => {
+      const aiMsg: Message = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: text,
+        type: 'text',
+        timestamp: Date.now(),
+      };
       setMessages(prev => {
         const withAi = [...prev, aiMsg];
         syncChat(chatId, withAi);
         return withAi;
       });
-      setIsTyping(false);
+    };
 
-      // Optional: upgrade reply if Ai backend is running
-      const apiBase =
-        (typeof window !== 'undefined' && (window as any).__STOOORNA_AI_API__) ||
-        'http://127.0.0.1:8000/ai';
-
-      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = controller ? window.setTimeout(() => controller.abort(), 3500) : 0;
-
-      fetch(`${apiBase}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: content,
-          history: nextMessages.slice(-12).map(m => ({ role: m.role, content: m.content })),
-        }),
-        signal: controller?.signal,
+    fetch(`${apiBase}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: content,
+        history: nextMessages.slice(-12, -1).map(m => ({ role: m.role, content: m.content })),
+      }),
+      signal: controller?.signal,
+    })
+      .then(async r => {
+        if (!r.ok) {
+          let detail = '';
+          try { detail = (await r.text()).slice(0, 200); } catch { /* */ }
+          throw new Error(`HTTP ${r.status} ${detail}`);
+        }
+        return r.json();
       })
-        .then(r => (r.ok ? r.json() : null))
-        .then(data => {
-          const reply = (data?.reply || '').trim();
-          if (!reply) return;
-          setMessages(prev => {
-            const updated = prev.map(m => (m.id === aiMsg.id ? { ...m, content: reply } : m));
-            syncChat(chatId, updated);
-            return updated;
-          });
-        })
-        .catch(() => { /* keep local */ })
-        .finally(() => {
-          if (timer) window.clearTimeout(timer);
-        });
-    }, 300);
+      .then(data => {
+        const reply = pickReply(data);
+        if (!reply) throw new Error('empty reply');
+        pushAi(reply);
+      })
+      .catch(err => {
+        console.error('[Stooorna Ai] backend error:', err);
+        pushAi(
+          ar
+            ? '⚠️ تعذر الاتصال بخادم Stooorna Ai حالياً. حاول مرة ثانية بعد شوي.'
+            : '⚠️ Could not reach the Stooorna Ai server right now. Please try again shortly.'
+        );
+      })
+      .finally(() => {
+        if (timer) window.clearTimeout(timer);
+        setIsTyping(false);
+      });
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
