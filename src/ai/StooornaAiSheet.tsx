@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Plus, Send, Clock, PenLine, Image as ImageIcon } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff } from 'lucide-react';
 
 interface Attachment {
   id: string;
@@ -136,6 +137,278 @@ export function buildLocalReply(userText: string, hasFiles: boolean): string {
     : `Got it: "${userText.slice(0, 280)}"\n\nRequest noted. Add detail or the next step and I will continue.`;
 }
 
+/** Small black mark (two interlaced triangles). Animates (shrinks / grows) while the Ai is answering. */
+function AiMark({ size = 24, animate = false }: { size?: number; animate?: boolean }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      aria-hidden="true"
+      style={animate ? { animation: 'stooornaAiMarkPulse 1.1s ease-in-out infinite', transformOrigin: '50% 50%' } : undefined}
+    >
+      <defs>
+        <clipPath id="stooAiMarkClip">
+          <circle cx="37.87" cy="31" r="8" />
+          <circle cx="74.27" cy="52" r="8" />
+          <circle cx="37.87" cy="73" r="8" />
+        </clipPath>
+      </defs>
+      <polygon points="50,10 86.4,73 13.6,73" fill="none" stroke="#000" strokeWidth="8" strokeLinejoin="miter" />
+      <polygon points="50,94 13.6,31 86.4,31" fill="none" stroke="#fff" strokeWidth="14" strokeLinejoin="miter" />
+      <polygon points="50,94 13.6,31 86.4,31" fill="none" stroke="#000" strokeWidth="8" strokeLinejoin="miter" />
+      <g clipPath="url(#stooAiMarkClip)">
+        <polygon points="50,10 86.4,73 13.6,73" fill="none" stroke="#fff" strokeWidth="14" strokeLinejoin="miter" />
+        <polygon points="50,10 86.4,73 13.6,73" fill="none" stroke="#000" strokeWidth="8" strokeLinejoin="miter" />
+      </g>
+    </svg>
+  );
+}
+
+/** Removes the repeated "Stooorna" / "Stooorna Ai" name from replies (unless the user asked about it). */
+function cleanReply(reply: string, userText: string): string {
+  const nameRe = /stoo+rna(\s*ai)?/i;
+  if (!reply || !nameRe.test(reply)) return reply;
+  if (nameRe.test(userText || '')) return reply;
+  if (/(من\s*(انت|أنت|إنت)|مين\s*(انت|أنت)|وش\s*اسمك|ما\s*اسمك|اسمك|who\s*are\s*you|your\s*name|what\s*are\s*you)/i.test(userText || '')) return reply;
+  // 1) leading labels like "Stooorna Ai:" / "[Stooorna]"
+  let out = reply
+    .replace(/^\s*[\[\(*_]*\s*stoo+rna(\s*ai)?\s*[\]\)*_]*\s*[:：\-–—]\s*/gim, '');
+  // 2) drop sentences that only introduce the name
+  if (nameRe.test(out)) {
+    const parts = out.split(/(?<=[.!?؟…\n])\s+/);
+    const kept = parts.filter(x => !nameRe.test(x));
+    if (kept.join('').trim()) out = kept.join(' ');
+    else out = out.replace(/stoo+rna(\s*ai)?/gi, '').replace(/\s{2,}/g, ' ');
+  }
+  return out.replace(/[ \t]+\n/g, '\n').trim() || reply;
+}
+
+/** Camera card (same look as the reference): back / shutter / 3-dots; dots open flash + flip + close. */
+function CameraCapture({ onClose, onCapture }: { onClose: () => void; onCapture: (file: File) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const holdTimer = useRef<number>(0);
+  const recTick = useRef<number>(0);
+  const holdFired = useRef(false);
+  const [facing, setFacing] = useState<'environment' | 'user'>('environment');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [flashOn, setFlashOn] = useState(false);
+  const [torchOk, setTorchOk] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [secs, setSecs] = useState(0);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setFlashOn(false);
+    setTorchOk(false);
+    const start = async () => {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error('no camera');
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing } }, audio: true });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facing } }, audio: false });
+        }
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        const v = videoRef.current;
+        if (v) { v.srcObject = stream; void v.play().catch(() => {}); }
+        try {
+          const caps: any = (stream.getVideoTracks()[0] as any)?.getCapabilities?.() || {};
+          setTorchOk(!!caps.torch);
+        } catch { /* */ }
+      } catch {
+        if (!cancelled) setError('Camera not available');
+      }
+    };
+    void start();
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    };
+  }, [facing]);
+
+  useEffect(() => () => {
+    window.clearTimeout(holdTimer.current);
+    window.clearInterval(recTick.current);
+    try { if (recRef.current && recRef.current.state === 'recording') { recRef.current.onstop = null; recRef.current.stop(); } } catch { /* */ }
+  }, []);
+
+  const toggleFlash = async () => {
+    const next = !flashOn;
+    try {
+      const track: any = streamRef.current?.getVideoTracks()[0];
+      if (track && torchOk) {
+        await track.applyConstraints({ advanced: [{ torch: next }] });
+        setFlashOn(next);
+      }
+    } catch { /* */ }
+  };
+
+  const takePhoto = () => {
+    const v = videoRef.current;
+    if (!v || !v.videoWidth) return;
+    const c = document.createElement('canvas');
+    c.width = v.videoWidth;
+    c.height = v.videoHeight;
+    c.getContext('2d')?.drawImage(v, 0, 0, c.width, c.height);
+    c.toBlob(b => {
+      if (b) onCapture(new File([b], `photo-${Date.now()}.jpg`, { type: 'image/jpeg' }));
+      onClose();
+    }, 'image/jpeg', 0.9);
+  };
+
+  const stopRec = () => {
+    window.clearInterval(recTick.current);
+    setRecording(false);
+    try { if (recRef.current && recRef.current.state === 'recording') recRef.current.stop(); } catch { /* */ }
+  };
+
+  const startRec = () => {
+    const stream = streamRef.current;
+    if (!stream || typeof MediaRecorder === 'undefined') return;
+    let mime = '';
+    for (const m of ['video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']) {
+      if ((MediaRecorder as any).isTypeSupported?.(m)) { mime = m; break; }
+    }
+    try {
+      const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      chunksRef.current = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size) chunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        const type = rec.mimeType || 'video/webm';
+        const blob = new Blob(chunksRef.current, { type });
+        const ext = type.includes('mp4') ? 'mp4' : 'webm';
+        if (blob.size) onCapture(new File([blob], `video-${Date.now()}.${ext}`, { type }));
+        onClose();
+      };
+      rec.start();
+      recRef.current = rec;
+      setRecording(true);
+      setSecs(0);
+      let n = 0;
+      recTick.current = window.setInterval(() => {
+        n += 1;
+        setSecs(n);
+        if (n >= 30) stopRec();
+      }, 1000);
+    } catch { /* */ }
+  };
+
+  const onShutterDown = () => {
+    holdFired.current = false;
+    window.clearTimeout(holdTimer.current);
+    holdTimer.current = window.setTimeout(() => { holdFired.current = true; startRec(); }, 450);
+  };
+  const onShutterUp = () => {
+    window.clearTimeout(holdTimer.current);
+    if (holdFired.current) { holdFired.current = false; stopRec(); return; }
+    takePhoto();
+  };
+
+  const roundBtn: React.CSSProperties = {
+    width: 66, height: 66, borderRadius: '50%', border: 'none',
+    background: 'rgba(40,0,0,0.62)', color: '#fff', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+    WebkitTapHighlightColor: 'transparent',
+  };
+
+  return createPortal(
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 24500, background: 'rgba(0,0,0,0.18)' }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: 'absolute', left: 12, right: 12,
+          bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)',
+          height: '58dvh', maxWidth: 560, margin: '0 auto',
+          borderRadius: 44, overflow: 'hidden',
+          background: 'radial-gradient(circle at 50% 72%, #7c0a00 0%, #4a0807 55%, #2e0614 100%)',
+          boxShadow: '0 12px 40px rgba(0,0,0,0.35)',
+          animation: 'stooornaAiAttachUp 0.3s cubic-bezier(0.22,1,0.36,1)',
+        }}
+      >
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          autoPlay
+          style={{
+            position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+            transform: facing === 'user' ? 'scaleX(-1)' : undefined,
+          }}
+        />
+        {error && (
+          <p style={{ position: 'absolute', top: '42%', left: 0, right: 0, textAlign: 'center', color: 'rgba(255,255,255,0.8)', fontSize: 14, margin: 0 }}>{error}</p>
+        )}
+        {recording && (
+          <div style={{ position: 'absolute', top: 18, left: 0, right: 0, display: 'flex', justifyContent: 'center' }}>
+            <span style={{ background: 'rgba(0,0,0,0.55)', color: '#fff', borderRadius: 999, padding: '5px 12px', fontSize: 13, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444' }} />
+              {`0:${String(secs).padStart(2, '0')}`}
+            </span>
+          </div>
+        )}
+
+        {/* flash + flip (shown after tapping the three dots) */}
+        {menuOpen && (
+          <div style={{ position: 'absolute', right: 26, bottom: 26 + 66 + 14, display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <button type="button" aria-label="Flash" onClick={() => { void toggleFlash(); }} style={{ ...roundBtn, opacity: torchOk ? 1 : 0.7 }}>
+              {flashOn ? <Zap size={28} strokeWidth={2.2} /> : <ZapOff size={28} strokeWidth={2.2} />}
+            </button>
+            <button type="button" aria-label="Flip camera" onClick={() => setFacing(f => (f === 'environment' ? 'user' : 'environment'))} style={roundBtn}>
+              <RefreshCw size={28} strokeWidth={2.2} />
+            </button>
+          </div>
+        )}
+
+        {/* bottom row */}
+        <div style={{ position: 'absolute', left: 26, right: 26, bottom: 26, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <button type="button" aria-label="Back" onClick={onClose} style={roundBtn}>
+            <ChevronLeft size={32} strokeWidth={2.2} />
+          </button>
+
+          <button
+            type="button"
+            aria-label="Capture"
+            onPointerDown={onShutterDown}
+            onPointerUp={onShutterUp}
+            onPointerCancel={() => { window.clearTimeout(holdTimer.current); if (holdFired.current) { holdFired.current = false; stopRec(); } }}
+            onContextMenu={e => e.preventDefault()}
+            style={{
+              width: 112, height: 112, borderRadius: '50%', border: 'none', padding: 0,
+              background: recording ? '#7f1d1d' : '#2a0504', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              touchAction: 'none', WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            <span style={{ width: 94, height: 94, borderRadius: recording ? 26 : '50%', background: recording ? '#ef4444' : '#fff', transition: 'all 0.15s ease', display: 'block' }} />
+          </button>
+
+          <button type="button" aria-label={menuOpen ? 'Close options' : 'More'} onClick={() => setMenuOpen(v => !v)} style={roundBtn}>
+            {menuOpen ? (
+              <XIcon size={30} strokeWidth={2.2} />
+            ) : (
+              <span style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {[0, 1, 2].map(i => <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', display: 'block' }} />)}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheetProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -144,6 +417,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [chats, setChats] = useState<ChatSession[]>(() => loadChats());
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachMenu, setAttachMenu] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -159,7 +434,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   useEffect(() => {
     // Keyboard no longer opens automatically; it opens only when the user taps the input.
-    if (!open) setShowHistory(false);
+    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); }
   }, [open]);
 
   useEffect(() => {
@@ -212,6 +487,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   const closePopups = () => {
     setShowHistory(false);
+    setAttachMenu(false);
   };
 
   const addFiles = (files: FileList | File[] | null) => {
@@ -312,7 +588,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         return r.json();
       })
       .then(data => {
-        const reply = pickReply(data);
+        const reply = cleanReply(pickReply(data), content);
         if (!reply) throw new Error('empty reply');
         pushAi(reply);
       })
@@ -598,7 +874,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           {messages.length === 0 && (
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <p style={{ fontSize: 22, fontWeight: 700, color: '#1a1a1a', textAlign: 'center' }}>
-                What should we explore?
+                How can I help you?
               </p>
             </div>
           )}
@@ -609,6 +885,16 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               style={{
                 alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
                 maxWidth: '85%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: m.role === 'user' ? 'flex-end' : 'flex-start',
+                gap: 6,
+              }}
+            >
+              {m.role === 'assistant' && <AiMark size={24} />}
+            <div
+              style={{
+                maxWidth: '100%',
                 padding: '10px 14px',
                 borderRadius: 16,
                 background: m.role === 'user' ? DARK_GREEN : '#f4f4f5',
@@ -675,22 +961,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 </div>
               )}
             </div>
+            </div>
           ))}
 
           {isTyping && (
-            <div style={{ alignSelf: 'flex-start', padding: '10px 14px', borderRadius: 16, background: '#f4f4f5' }}>
-              <span style={{ display: 'inline-flex', gap: 4 }}>
-                {[0, 1, 2].map(i => (
-                  <span
-                    key={i}
-                    style={{
-                      width: 6, height: 6, borderRadius: '50%', background: '#888',
-                      animation: 'stooornaAiDot 1.2s infinite',
-                      animationDelay: `${i * 0.2}s`,
-                    }}
-                  />
-                ))}
-              </span>
+            <div style={{ alignSelf: 'flex-start', padding: '2px 4px' }}>
+              <AiMark size={24} animate />
             </div>
           )}
           <div ref={messagesEndRef} />
@@ -776,7 +1052,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             <button
               type="button"
               aria-label="Attach"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => { setShowHistory(false); setAttachMenu(v => !v); }}
               style={{
                 width: 36, height: 36, borderRadius: '50%', border: 'none',
                 background: 'transparent', color: '#fff', cursor: 'pointer',
@@ -784,19 +1060,6 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               }}
             >
               <Plus size={20} strokeWidth={2.2} />
-            </button>
-
-            <button
-              type="button"
-              aria-label="Attach photo"
-              onClick={() => imageInputRef.current?.click()}
-              style={{
-                width: 36, height: 36, borderRadius: '50%', border: 'none',
-                background: 'transparent', color: '#fff', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}
-            >
-              <ImageIcon size={18} strokeWidth={2.2} />
             </button>
 
             <input
@@ -829,7 +1092,66 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             </button>
           </div>
         </form>
+        {/* Add to chat — slides up from the bottom: Camera / Photos / Files */}
+        {attachMenu && (
+          <>
+            <div
+              role="presentation"
+              onClick={() => setAttachMenu(false)}
+              style={{ position: 'absolute', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.28)' }}
+            />
+            <div
+              style={{
+                position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 41,
+                background: '#f7f7f5', borderTopLeftRadius: 30, borderTopRightRadius: 30,
+                padding: '10px 16px max(22px, env(safe-area-inset-bottom))',
+                animation: 'stooornaAiAttachUp 0.3s cubic-bezier(0.22,1,0.36,1)',
+                boxShadow: '0 -10px 30px rgba(0,0,0,0.18)',
+              }}
+            >
+              <div style={{ width: 44, height: 5, borderRadius: 999, background: '#d4d4d2', margin: '0 auto 12px' }} />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', height: 40, marginBottom: 14 }}>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={() => setAttachMenu(false)}
+                  style={{ position: 'absolute', left: 4, top: 0, width: 40, height: 40, border: 'none', background: 'transparent', color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <XIcon size={26} strokeWidth={2} />
+                </button>
+                <span style={{ fontWeight: 800, fontSize: 20, color: '#111' }}>Add to chat</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                {[
+                  { key: 'camera', label: 'Camera', icon: <CameraIcon size={28} strokeWidth={1.8} />, run: () => { setAttachMenu(false); setCameraOpen(true); } },
+                  { key: 'photos', label: 'Photos', icon: <ImageIcon size={28} strokeWidth={1.8} />, run: () => { setAttachMenu(false); imageInputRef.current?.click(); } },
+                  { key: 'files', label: 'Files', icon: <FileUp size={28} strokeWidth={1.8} />, run: () => { setAttachMenu(false); fileInputRef.current?.click(); } },
+                ].map(t => (
+                  <button
+                    key={t.key}
+                    type="button"
+                    onClick={t.run}
+                    style={{
+                      border: 'none', background: '#fff', borderRadius: 26, padding: '22px 6px 18px',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, cursor: 'pointer', color: '#111',
+                    }}
+                  >
+                    <span style={{ width: 62, height: 62, borderRadius: '50%', background: '#e8e8e6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{t.icon}</span>
+                    <span style={{ fontWeight: 800, fontSize: 16 }}>{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
       </div>
+
+      {cameraOpen && (
+        <CameraCapture
+          onClose={() => setCameraOpen(false)}
+          onCapture={file => addFiles([file])}
+        />
+      )}
 
       <style>{`
         @keyframes stooornaAiSheetUp {
@@ -839,6 +1161,15 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         @keyframes stooornaAiShine {
           0% { transform: translateX(-120%) skewX(-18deg); }
           55%, 100% { transform: translateX(260%) skewX(-18deg); }
+        }
+        @keyframes stooornaAiAttachUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
+        }
+        @keyframes stooornaAiMarkPulse {
+          0%   { transform: scale(0.55) rotate(0deg);   opacity: 0.7; }
+          50%  { transform: scale(1.15) rotate(60deg);  opacity: 1; }
+          100% { transform: scale(0.55) rotate(120deg); opacity: 0.7; }
         }
         @keyframes stooornaAiDot {
           0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
