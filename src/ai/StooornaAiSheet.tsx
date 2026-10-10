@@ -158,7 +158,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   }, [chats]);
 
   useEffect(() => {
-    if (open) setTimeout(() => inputRef.current?.focus(), 250);
+    // Keyboard no longer opens automatically; it opens only when the user taps the input.
     if (!open) setShowHistory(false);
   }, [open]);
 
@@ -426,7 +426,18 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
             }}
           >
-            <span style={{ position: 'relative', zIndex: 1, color: '#f5f5f5' }}>Stooorna Ai</span>
+            <span style={{ position: 'relative', zIndex: 1, color: '#e8eaed' }}>Stooorna Ai</span>
+            <span
+              aria-hidden="true"
+              style={{
+                position: 'absolute', top: 0, bottom: 0, left: 0, width: '60%',
+                zIndex: 2, pointerEvents: 'none',
+                background:
+                  'linear-gradient(105deg, rgba(255,255,255,0) 0%, rgba(210,215,222,0.55) 45%, rgba(255,255,255,0.85) 50%, rgba(210,215,222,0.55) 55%, rgba(255,255,255,0) 100%)',
+                transform: 'translateX(-120%) skewX(-18deg)',
+                animation: 'stooornaAiShine 2.8s ease-in-out infinite',
+              }}
+            />
           </div>
 
           <div style={{ display: 'flex', gap: 6 }}>
@@ -824,6 +835,10 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         @keyframes stooornaAiSheetUp {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }
+        }
+        @keyframes stooornaAiShine {
+          0% { transform: translateX(-120%) skewX(-18deg); }
+          55%, 100% { transform: translateX(260%) skewX(-18deg); }
         }
         @keyframes stooornaAiDot {
           0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
