@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.routers import chat, health, rag
+from app.routers import chat, health, image, rag  # IMAGE-PATCH: added `image`
 
 settings = get_settings()
 
@@ -34,6 +34,7 @@ app.add_middleware(
 app.include_router(health.router, prefix=settings.api_prefix)
 app.include_router(chat.router, prefix=settings.api_prefix)
 app.include_router(rag.router, prefix=settings.api_prefix)
+app.include_router(image.router, prefix=settings.api_prefix)  # IMAGE-PATCH: POST /ai/image-edit
 
 
 @app.get("/")
