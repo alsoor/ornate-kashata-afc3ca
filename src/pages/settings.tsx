@@ -19,7 +19,7 @@ import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUs
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
 import AppUploadSection from '@/components/AppUploadSection';
-import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, normalizeStoreUrl, setStoreLink, setBannerShown, setIntroShown, uploadIntroFile, setIntroActive, clearIntroSlot, verifyStoreLinks, type IntroSlot } from '@/lib/storeLinks';
+import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, normalizeStoreUrl, setStoreLink, setBannerShown, setIntroShown, uploadIntroFile, setIntroActive, clearIntroSlot, setBuiltinHidden, verifyStoreLinks, type IntroSlot } from '@/lib/storeLinks';
 // VIP frame cancelled — avatar renders without frame
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
@@ -132,6 +132,13 @@ function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
     const r = await setIntroActive(slot);
     refreshLk();
     pubSay(r.synced ? (slot ? 'تم النشر' : 'رجع الفيديو الأصلي') : 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', !r.synced);
+  };
+
+  const toggleBuiltin = async () => {
+    const next = !lk.hideBuiltin;
+    const r = await setBuiltinHidden(next);
+    refreshLk();
+    pubSay(r.synced ? (next ? 'تم إخفاء الفيديو الأصلي' : 'رجع الفيديو الأصلي') : 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', !r.synced);
   };
 
   const removeSlot = async (slot: IntroSlot, label: string) => {
@@ -280,6 +287,20 @@ function OwnerStoreLinks({ T }: { T: Record<string, any> }) {
                   style={{ width: 46, height: 26, borderRadius: 13, border: 'none', padding: 0, cursor: 'pointer', position: 'relative', flexShrink: 0, background: introOn ? '#22c55e' : 'rgba(148,163,184,0.45)', transition: 'background .2s' }}
                 >
                   <span style={{ position: 'absolute', top: 3, left: introOn ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#ffffff', transition: 'left .2s', boxShadow: '0 1px 3px rgba(0,0,0,0.35)' }} />
+                </button>
+              </div>
+              {/* the built-in welcome video can't be deleted (it is inside the app) -> hide / show it so it never comes along with a new upload */}
+              <div style={{ padding: '10px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.12)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <VideoIcon size={18} />
+                <span style={{ flex: 1, fontWeight: 900, fontSize: '0.86rem', color: 'rgba(250,235,225,0.95)' }}>
+                  الفيديو الأصلي
+                  <span style={{ display: 'block', fontWeight: 700, fontSize: '0.66rem', color: lk.hideBuiltin ? '#f87171' : '#4ade80' }}>
+                    {lk.hideBuiltin ? 'مخفي' : lk.active === '' ? 'منشور' : 'موجود (غير منشور الحين)'}
+                  </span>
+                </span>
+                <button type="button" onClick={() => { void toggleBuiltin(); }}
+                  style={{ height: 36, padding: '0 14px', borderRadius: 10, cursor: 'pointer', background: lk.hideBuiltin ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.1)', border: '1px solid ' + (lk.hideBuiltin ? 'rgba(34,197,94,0.5)' : 'rgba(239,68,68,0.45)'), color: lk.hideBuiltin ? '#4ade80' : '#ef4444', fontWeight: 800, fontSize: '0.78rem' }}>
+                  {lk.hideBuiltin ? 'إظهار' : 'إخفاء'}
                 </button>
               </div>
               {([

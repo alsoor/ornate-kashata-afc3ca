@@ -1322,6 +1322,7 @@ type StoreLinksCfg = {
   slots: Record<IntroSlot, string>; // one stored file per type (Video / Photo / PDF)
   active: IntroSlot | "";           // which one is published as the welcome screen ("" = the built-in /intro.mp4)
   videoUrl: string;                 // = slots[active] (what visitors load)
+  hideBuiltin: boolean;             // true = the built-in /intro.mp4 is hidden (nothing shows when no file is published)
 };
 const INTRO_SLOTS: IntroSlot[] = ["video", "photo", "pdf"];
 const STORE_LINKS_FILE = () => join(ASSETS_DIR, "stooorna-store-links.json");
@@ -1348,7 +1349,7 @@ const syncIntroActive = (c: StoreLinksCfg) => {
 const storeLinksCfg = (): StoreLinksCfg => {
   // read the file on every call (no in-memory copy): a deleted link can never come back from a stale cache / another instance
   {
-    const c: StoreLinksCfg = { appStore: "", googlePlay: "", showBanner: true, showIntro: true, slots: { video: "", photo: "", pdf: "" }, active: "", videoUrl: "" };
+    const c: StoreLinksCfg = { appStore: "", googlePlay: "", showBanner: true, showIntro: true, slots: { video: "", photo: "", pdf: "" }, active: "", videoUrl: "", hideBuiltin: false };
     try {
       const p = STORE_LINKS_FILE();
       if (existsSync(p)) {
@@ -1357,6 +1358,7 @@ const storeLinksCfg = (): StoreLinksCfg => {
         c.googlePlay = cleanStoreUrl(raw?.googlePlay) || "";
         if (raw?.showBanner === false) c.showBanner = false;
         if (raw?.showIntro === false) c.showIntro = false;
+        if (raw?.hideBuiltin === true) c.hideBuiltin = true;
         for (const k of INTRO_SLOTS) c.slots[k] = cleanVideoUrl(raw?.slots?.[k]) || "";
         if (INTRO_SLOTS.includes(raw?.active)) c.active = raw.active;
         // older file with a single videoUrl: move it into the matching slot
@@ -1406,6 +1408,11 @@ app.post("/api/app-settings/store-links", guarded(async (req, res) => {
   if ("showIntro" in body) {
     if (typeof body.showIntro !== "boolean") return deny(res, 400, "showIntro_must_be_boolean");
     cfg.showIntro = body.showIntro;
+    touched = true;
+  }
+  if ("hideBuiltin" in body) {
+    if (typeof body.hideBuiltin !== "boolean") return deny(res, 400, "hideBuiltin_must_be_boolean");
+    cfg.hideBuiltin = body.hideBuiltin;
     touched = true;
   }
   // publish one of the stored files as the welcome screen ("" = back to the built-in video)

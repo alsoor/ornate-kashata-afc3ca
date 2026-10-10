@@ -66,7 +66,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   // owner settings (store links, master on/off switch, custom video) -> same endpoint for everybody
   const [storeLinks, setStoreLinks] = useState<StoreLinks>(() => readStoreLinks());
   const [linksLoaded, setLinksLoaded] = useState(false); // wait for the server answer so a hidden intro never flashes
-  const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered() && linksLoaded && storeLinks.showIntro;
+  const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered() && linksLoaded && storeLinks.showIntro && !(storeLinks.hideBuiltin && !storeLinks.videoUrl);
   const videoSrc = storeLinks.videoUrl || INTRO_VIDEO_SRC;
 
   // COVER: a first-time visitor must never see the page behind. While the login state / owner settings are still loading, keep the screen black.
@@ -469,12 +469,32 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
 
 
 /* ───────────────────────── PDF as a sliding page ─────────────────────────
- * needs:  npm i pdfjs-dist@4.10.38   (loaded only when a PDF is the welcome file)
+ * no install needed: pdf.js is loaded from cdnjs only when a PDF is the welcome file
  * - slides up from the bottom by itself, no file name, no "Open" button, no second page
  * - X in the corner slides it back down; the visitor is on the site
  * - zoom bar at the bottom: 100% / 150% / 200% / 300% / 400%
  */
 const PDF_ZOOMS = [1, 1.5, 2, 3, 4];
+const PDFJS_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+let pdfJsPromise: Promise<any> | null = null;
+function loadPdfJs(): Promise<any> {
+  const w = window as any;
+  if (w.pdfjsLib) return Promise.resolve(w.pdfjsLib);
+  if (!pdfJsPromise) {
+    pdfJsPromise = new Promise((resolve, reject) => {
+      const sc = document.createElement('script');
+      sc.src = PDFJS_BASE + 'pdf.min.js';
+      sc.onload = () => {
+        if (!w.pdfjsLib) { reject(new Error('pdfjs missing')); return; }
+        w.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_BASE + 'pdf.worker.min.js';
+        resolve(w.pdfjsLib);
+      };
+      sc.onerror = () => { pdfJsPromise = null; reject(new Error('pdfjs load failed')); };
+      document.head.appendChild(sc);
+    });
+  }
+  return pdfJsPromise;
+}
 
 function PdfSheet({ src, hasOpen, onClosed }: { src: string; hasOpen: boolean; onClosed: () => void }) {
   const [up, setUp] = useState(false);
@@ -516,11 +536,7 @@ function PdfSheet({ src, hasOpen, onClosed }: { src: string; hasOpen: boolean; o
     let dead = false; let task: any = null;
     (async () => {
       try {
-        // @ts-ignore - no bundled types for the legacy build
-        const lib: any = await import('pdfjs-dist/legacy/build/pdf.mjs');
-        // @ts-ignore - vite returns the worker file url
-        const worker: any = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url');
-        lib.GlobalWorkerOptions.workerSrc = worker.default;
+        const lib: any = await loadPdfJs();
         task = lib.getDocument({ url: src });
         const d = await task.promise;
         if (dead) { try { d.destroy(); } catch { /* ignore */ } return; }

@@ -12,6 +12,7 @@ export type StoreLinks = {
   slots: Record<IntroSlot, string>; // one stored file per type
   active: IntroSlot | '';           // the one published as the welcome screen ('' = built-in video)
   videoUrl: string;                 // = slots[active]
+  hideBuiltin: boolean;             // true = the built-in welcome video is hidden (owner switch)
 };
 const EMPTY_SLOTS: Record<IntroSlot, string> = { video: '', photo: '', pdf: '' };
 /** How the last read of the server went: 'server' = answered with links, 'no-route' = answered with a page (route missing / not deployed), 'error' = no answer. */
@@ -53,6 +54,7 @@ function clean(src: any): StoreLinks {
     slots,
     active,
     videoUrl: active ? slots[active] : '',
+    hideBuiltin: !!(src && src.hideBuiltin === true),
   };
 }
 
@@ -61,7 +63,7 @@ export function readStoreLinks(): StoreLinks {
     const raw = localStorage.getItem(CACHE_KEY);
     if (raw) return clean(JSON.parse(raw));
   } catch { /* ignore */ }
-  return { appStore: '', googlePlay: '', showBanner: true, showIntro: true, slots: { ...EMPTY_SLOTS }, active: '', videoUrl: '' };
+  return { appStore: '', googlePlay: '', showBanner: true, showIntro: true, slots: { ...EMPTY_SLOTS }, active: '', videoUrl: '', hideBuiltin: false };
 }
 
 function writeStoreLinks(next: StoreLinks) {
@@ -94,7 +96,7 @@ async function pushStoreLinks(next: StoreLinks, extra: Record<string, unknown> =
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ appStore: next.appStore, googlePlay: next.googlePlay, showBanner: next.showBanner, showIntro: next.showIntro, ...extra }),
+      body: JSON.stringify({ appStore: next.appStore, googlePlay: next.googlePlay, showBanner: next.showBanner, showIntro: next.showIntro, hideBuiltin: next.hideBuiltin, ...extra }),
     });
     const d: any = r.ok ? await r.json().catch(() => null) : null;
     return { ok: true, synced: !!d && typeof d === 'object' && d.ok !== false };
@@ -149,7 +151,14 @@ export async function setIntroActive(active: IntroSlot | ''): Promise<{ ok: bool
   const cur = readStoreLinks();
   const slotsOk = active === '' || !!cur.slots[active];
   if (!slotsOk) return { ok: false, synced: false };
-  return pushStoreLinks({ ...cur, active, videoUrl: active ? cur.slots[active] : '' }, { active });
+  // going back to the built-in video also un-hides it
+  const hideBuiltin = active === '' ? false : cur.hideBuiltin;
+  return pushStoreLinks({ ...cur, active, hideBuiltin, videoUrl: active ? cur.slots[active] : '' }, { active, hideBuiltin });
+}
+
+/** Hides / shows the built-in welcome video (it cannot be deleted: it is part of the app). Hidden = nothing shows unless a file is published. */
+export async function setBuiltinHidden(hide: boolean): Promise<{ ok: boolean; synced: boolean }> {
+  return pushStoreLinks({ ...readStoreLinks(), hideBuiltin: hide });
 }
 
 /** Deletes the stored file of one type. */
