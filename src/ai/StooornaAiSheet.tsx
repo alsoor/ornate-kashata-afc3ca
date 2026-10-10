@@ -440,6 +440,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const abortRef = useRef<AbortController | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ thumb: string; full: string; credit?: string; video?: string } | null>(null); // PHOTO-VIEWER
   const [photoNote, setPhotoNote] = useState('');
+  const [viewerFull, setViewerFull] = useState(false); // VIDEO-FULL: video fills the whole screen (no buttons) until tapped again
+  const viewerVideoRef = useRef<HTMLVideoElement>(null);
+  const openViewer = (v: { thumb: string; full: string; credit?: string; video?: string }) => {
+    setViewerFull(!!v.video);
+    setPhotoViewer(v);
+  };
   const [showHistory, setShowHistory] = useState(false);
   const [chats, setChats] = useState<ChatSession[]>(() => loadChats());
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -893,6 +899,18 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     el.style.height = `${Math.min(el.scrollHeight, 129)}px`;
   }, [input, open]);
 
+  // VIDEO-FULL: start the video with sound as soon as it opens (falls back to muted if the phone refuses)
+  useEffect(() => {
+    const el = viewerVideoRef.current;
+    if (!photoViewer?.video || !el) return;
+    el.muted = false;
+    el.volume = 1;
+    const pr = el.play();
+    if (pr && typeof pr.catch === 'function') {
+      pr.catch(() => { try { el.muted = true; void el.play(); } catch { /* */ } });
+    }
+  }, [photoViewer]);
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     sendMessage(input);
@@ -1252,12 +1270,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                         src={ph.thumb}
                         alt={ph.credit}
                         loading="lazy"
-                        onClick={() => setPhotoViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit, video: ph.video })}
+                        onClick={() => openViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit, video: ph.video })}
                         style={{ width: '100%', aspectRatio: ph.kind === 'video' ? '16 / 9' : '3 / 4', objectFit: 'cover', borderRadius: 10, display: 'block', cursor: 'pointer', background: '#e5e7eb' }}
                       />
                       {ph.kind === 'video' && (
                         <div
-                          onClick={() => setPhotoViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit, video: ph.video })}
+                          onClick={() => openViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit, video: ph.video })}
                           style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, cursor: 'pointer' }}
                         >
                           ▶
@@ -1508,7 +1526,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       {/* PHOTO-VIEWER: search photos open inside the app (own layer: close button on top, photo in the middle, Save at the bottom) */}
       {photoViewer && createPortal(
         <div
-          onClick={e => { e.stopPropagation(); setPhotoViewer(null); setPhotoNote(''); }}
+          onClick={e => {
+            e.stopPropagation();
+            if (photoViewer.video && viewerFull) { setViewerFull(false); return; }
+            setPhotoViewer(null); setPhotoNote('');
+          }}
           style={{
             position: 'fixed', inset: 0, zIndex: 30000, background: '#000',
             display: 'flex', flexDirection: 'column',
@@ -1516,7 +1538,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         >
           <div
             style={{
-              flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+              flexShrink: 0, display: photoViewer.video && viewerFull ? 'none' : 'flex', alignItems: 'center', justifyContent: 'flex-end',
               padding: 'calc(env(safe-area-inset-top, 0px) + 44px) 14px 8px',
             }}
           >
@@ -1533,16 +1555,22 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               <XIcon size={22} />
             </button>
           </div>
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: photoViewer.video && viewerFull ? 0 : '0 8px' }}>
             {photoViewer.video ? (
               <video
+                ref={viewerVideoRef}
                 src={photoViewer.video}
                 poster={photoViewer.thumb}
-                controls
                 autoPlay
+                loop
                 playsInline
-                onClick={e => e.stopPropagation()}
-                style={{ maxWidth: '100%', maxHeight: '100%', display: 'block', borderRadius: 8, background: '#000' }}
+                disablePictureInPicture
+                controlsList="nodownload nofullscreen noremoteplayback"
+                onClick={e => { e.stopPropagation(); setViewerFull(v => !v); }}
+                style={{
+                  width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000',
+                  borderRadius: viewerFull ? 0 : 8, maxWidth: '100%', maxHeight: '100%',
+                }}
               />
             ) : (
               <img
@@ -1556,7 +1584,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           </div>
           <div
             style={{
-              flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+              flexShrink: 0, display: photoViewer.video && viewerFull ? 'none' : 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
               padding: '12px 14px calc(env(safe-area-inset-bottom, 0px) + 28px)',
             }}
           >
