@@ -97,14 +97,33 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
     return () => evs.forEach(e => window.removeEventListener(e, unlock, true));
   }, [visible, kind]);
 
+  const [dbg, setDbg] = useState('');
   // AUTOPLAY GUARANTEE: if the opening animation event never arrives, or the browser pauses the video, start / restart it by itself
   useEffect(() => {
     if (!visible || kind !== 'video' || !ready) return;
     const fallback = window.setTimeout(() => { if (!opened) startPlayRef.current(); }, 2300);
+    const debug = /[?&]introdebug/.test(location.search);
+    let ticks = 0;
     const watch = window.setInterval(() => {
       const v = videoRef.current;
-      if (v && opened && v.paused && !v.ended && phase === 'play') { v.muted = true; v.play().catch(() => {}); }
-    }, 600);
+      if (!v || !opened || phase !== 'play') return;
+      if (v.paused && !v.ended) { v.muted = true; v.play().catch(() => {}); }
+      // SOUND PROBE: a silent, side-effect-free test sound. The moment the browser lets a sound start by itself, the video's sound is switched on
+      // (no touch needed). While it still refuses, the video just keeps playing muted and nothing is paused.
+      if (v.muted && !v.paused && ticks < 120) {
+        ticks++;
+        try {
+          const a = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=');
+          a.volume = 0.01;
+          const pr = a.play();
+          if (pr && typeof pr.then === 'function') pr.then(() => { a.pause(); if (videoRef.current && videoRef.current.muted) { videoRef.current.muted = false; videoRef.current.volume = 1; } }).catch(() => { /* still blocked */ });
+        } catch { /* ignore */ }
+      }
+      if (debug) {
+        const ua: any = (navigator as any).userActivation;
+        setDbg(`video muted:${v.muted} paused:${v.paused} vol:${v.volume} | touched:${ua ? ua.hasBeenActive : 'n/a'}`);
+      }
+    }, 500);
     return () => { window.clearTimeout(fallback); window.clearInterval(watch); };
   }, [visible, kind, ready, opened, phase]);
 
@@ -360,7 +379,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
           {/* open the site as  stooorna.com/?introdebug=1  to see why the "Open App" banner is not showing */}
           {typeof location !== 'undefined' && /[?&]introdebug/.test(location.search) && (
             <div dir="ltr" style={{ position: 'absolute', top: 'max(8px, env(safe-area-inset-top))', left: 8, right: 8, padding: '6px 8px', borderRadius: 6, background: 'rgba(0,0,0,0.75)', color: '#7df3ff', fontSize: 11, lineHeight: 1.4, zIndex: 5, pointerEvents: 'none', wordBreak: 'break-all' }}>
-              server: {lastFetchStatus} | appStore: {storeLinks.appStore ? 'yes' : 'NO'} | googlePlay: {storeLinks.googlePlay ? 'yes' : 'NO'} | showBanner: {String(storeLinks.showBanner)} | banner link: {openUrl || 'NONE'}
+              server: {lastFetchStatus} | appStore: {storeLinks.appStore ? 'yes' : 'NO'} | googlePlay: {storeLinks.googlePlay ? 'yes' : 'NO'} | showBanner: {String(storeLinks.showBanner)} | banner link: {openUrl || 'NONE'} | {dbg}
             </div>
           )}
 
