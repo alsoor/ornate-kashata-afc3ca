@@ -43,8 +43,28 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [isTyping, setIsTyping] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [chats, setChats] = useState<{ id: string; title: string; messages: Message[] }[]>([]);
+  const [chats, setChats] = useState<{ id: string; title: string; messages: Message[] }[]>(() => {
+    try {
+      const raw = localStorage.getItem('stooorna_ai_chats_v1');
+      const list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch { return []; }
+  });
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      // strip heavy blob previews before persist
+      const slim = chats.map(c => ({
+        ...c,
+        messages: (c.messages || []).map(m => ({
+          ...m,
+          attachments: m.attachments?.map(a => ({ ...a, previewUrl: a.kind === 'image' ? '' : a.previewUrl })),
+        })),
+      }));
+      localStorage.setItem('stooorna_ai_chats_v1', JSON.stringify(slim.slice(0, 50)));
+    } catch { /* */ }
+  }, [chats]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -273,53 +293,44 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       return;
     }
 
-    // Call independent Stooorna Ai backend (Ai/ folder → FastAPI)
+    // Local-first: always reply immediately (works offline / on phone without backend).
+    // If API is up, upgrade the last assistant message with the server reply.
+    await new Promise(r => setTimeout(r, 280 + Math.random() * 220));
+    const localText = localReply(content, pending.length > 0);
+    const localId = `a-${Date.now()}`;
+    setMessages(prev => [...prev, {
+      id: localId,
+      role: 'assistant',
+      content: localText,
+      type: 'text',
+      timestamp: Date.now(),
+    }]);
+    setIsTyping(false);
+
     const apiBase =
       (typeof window !== 'undefined' && (window as any).__STOOORNA_AI_API__) ||
       (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_STOOORNA_AI_URL) ||
       (typeof process !== 'undefined' && (process as any).env?.VITE_STOOORNA_AI_URL) ||
       'http://127.0.0.1:8000/ai';
 
-    // Always answer. Prefer API if available (short timeout), otherwise local engine.
     try {
       const history = messages.slice(-12).map(m => ({ role: m.role, content: m.content }));
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = controller ? window.setTimeout(() => controller.abort(), 2500) : 0;
+      const timer = controller ? window.setTimeout(() => controller.abort(), 4000) : 0;
       const res = await fetch(`${apiBase}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: content,
-          history,
-          use_rag: lower.includes('search') || lower.includes('ابحث') || lower.includes('من المعرفة'),
-        }),
+        body: JSON.stringify({ message: content, history }),
         signal: controller?.signal,
       });
       if (timer) window.clearTimeout(timer);
-      if (!res.ok) throw new Error('bad status');
+      if (!res.ok) return;
       const data = await res.json();
       const reply = (data.reply || '').trim();
-      if (!reply) throw new Error('empty');
-      const aiMsg: Message = {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content: reply,
-        type: 'text',
-        timestamp: Date.now(),
-      };
-      setMessages(prev => [...prev, aiMsg]);
+      if (!reply || reply === localText) return;
+      setMessages(prev => prev.map(m => m.id === localId ? { ...m, content: reply } : m));
     } catch {
-      await new Promise(r => setTimeout(r, 350 + Math.random() * 350));
-      const aiMsg: Message = {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content: localReply(content, pending.length > 0),
-        type: 'text',
-        timestamp: Date.now(),
-      };
-      setMessages(prev => [...prev, aiMsg]);
-    } finally {
-      setIsTyping(false);
+      // keep local reply
     }
   };
 
@@ -358,6 +369,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           overflow: 'hidden',
           boxShadow: '0 -12px 40px rgba(0,0,0,0.35)',
           animation: 'stooornaAiSheetUp 0.38s cubic-bezier(0.22,1,0.36,1)',
+          position: 'relative',
         }}
       >
         {/* Header */}
@@ -459,18 +471,29 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           </div>
         </div>
 
-        {/* History panel */}
+        {/* History panel — tap outside closes */}
         {showHistory && (
+          <>
+          <button
+            type="button"
+            aria-label="Close history"
+            onClick={() => setShowHistory(false)}
+            style={{
+              position: 'absolute', inset: 0, zIndex: 9,
+              border: 'none', background: 'rgba(0,0,0,0.15)', cursor: 'pointer', padding: 0,
+            }}
+          />
           <div
             style={{
               position: 'absolute',
               top: 60, right: 12, zIndex: 10,
-              width: 260, maxHeight: 320, overflowY: 'auto',
+              width: 280, maxHeight: 360, overflowY: 'auto',
               background: '#fff', borderRadius: 12,
               boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
               border: '1px solid rgba(0,0,0,0.08)',
               padding: 8,
             }}
+            onClick={e => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 4px 8px' }}>
               <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#333' }}>Previous chats</p>
@@ -539,10 +562,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               </button>
             )}
           </div>
+          </>
         )}
 
         {/* Messages */}
         <div
+          onClick={() => { if (showHistory) setShowHistory(false); }}
           style={{
             flex: 1, overflowY: 'auto', padding: '24px 16px',
             display: 'flex', flexDirection: 'column', gap: 16,
