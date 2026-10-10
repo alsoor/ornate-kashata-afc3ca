@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff } from 'lucide-react';
+import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square } from 'lucide-react';
 import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
 
 interface Attachment {
@@ -437,6 +437,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [photoViewer, setPhotoViewer] = useState<{ thumb: string; full: string; credit?: string } | null>(null); // PHOTO-VIEWER
+  const [photoNote, setPhotoNote] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [chats, setChats] = useState<ChatSession[]>(() => loadChats());
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -533,6 +534,43 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   };
 
   /** Put a generated image back into the input so the user can edit it again. */
+  // PHOTO-SAVE: get the photo bytes (direct, then through our server because most photo CDNs block CORS) and save as a file
+  const flashPhotoNote = (msg: string, ms = 2500) => {
+    setPhotoNote(msg);
+    if (ms) window.setTimeout(() => setPhotoNote(''), ms);
+  };
+  const getPhotoBlob = async (u: string): Promise<Blob> => {
+    const enc = encodeURIComponent(u);
+    const tries = [u, `/api/image-proxy?url=${enc}`, `https://www.stooorna.com/api/image-proxy?url=${enc}`];
+    for (const t of tries) {
+      try {
+        const r = await fetch(t);
+        if (!r.ok) continue;
+        const b = await r.blob();
+        if (b.size > 0 && (b.type || '').startsWith('image/')) return b;
+      } catch { /* try next */ }
+    }
+    throw new Error('photo not reachable');
+  };
+  const savePhoto = async (u: string) => {
+    try {
+      flashPhotoNote('Saving…', 0);
+      const blob = await getPhotoBlob(u);
+      const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `stooorna-${Date.now()}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
+      flashPhotoNote('Saved ✓');
+    } catch (err) {
+      console.error('[Stooorna Ai] save photo error:', err);
+      flashPhotoNote('Could not save the photo');
+    }
+  };
   const reuseImage = async (url: string) => {
     try {
       const blob = await (await fetch(url)).blob();
@@ -719,6 +757,116 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         setIsTyping(false);
       });
   };
+
+  // VOICE-MODE: the send button is a mic when the box is empty; speak -> text -> sent automatically
+  const [listening, setListening] = useState(false);
+  const [voiceNote, setVoiceNote] = useState('');
+  const recRef = useRef<any>(null);
+  const mediaRef = useRef<{ rec: MediaRecorder; stream: MediaStream } | null>(null);
+  const voiceTextRef = useRef('');
+  const voiceCancelRef = useRef(false);
+  const sendRef = useRef(sendMessage);
+  sendRef.current = sendMessage;
+
+  const flashNote = (msg: string) => {
+    setVoiceNote(msg);
+    window.setTimeout(() => setVoiceNote(''), 4000);
+  };
+  const voiceLang = (): string => {
+    try { return (window as any).__STOOORNA_VOICE_LANG__ || 'ar-SA'; } catch { return 'ar-SA'; }
+  };
+
+  const stopVoice = () => {
+    try { recRef.current?.stop?.(); } catch { /* */ }
+    try { if (mediaRef.current?.rec.state === 'recording') mediaRef.current.rec.stop(); } catch { /* */ }
+  };
+
+  const startVoice = async () => {
+    if (listening || isTyping) return;
+    closePopups();
+    voiceCancelRef.current = false;
+    const w: any = window;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (SR) {
+      try {
+        const rec = new SR();
+        rec.lang = voiceLang();
+        rec.interimResults = true;
+        rec.continuous = false;
+        voiceTextRef.current = '';
+        rec.onresult = (ev: any) => {
+          let t = '';
+          for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+          voiceTextRef.current = t;
+          setInput(t);
+        };
+        rec.onerror = (ev: any) => {
+          const e = ev?.error;
+          if (e === 'not-allowed' || e === 'service-not-allowed') flashNote('Allow microphone access');
+          else if (e === 'no-speech') flashNote("Didn't hear anything");
+        };
+        rec.onend = () => {
+          setListening(false);
+          recRef.current = null;
+          const t = voiceTextRef.current.trim();
+          voiceTextRef.current = '';
+          setInput('');
+          if (t && !voiceCancelRef.current) sendRef.current(t);
+        };
+        recRef.current = rec;
+        rec.start();
+        setListening(true);
+        return;
+      } catch {
+        recRef.current = null;
+      }
+    }
+    // No built-in speech recognition (common in app WebViews): record, then send to the server
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      flashNote('Voice is not supported on this device');
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        mediaRef.current = null;
+        setListening(false);
+        if (!chunks.length || voiceCancelRef.current) return;
+        const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+        setVoiceNote('Transcribing…');
+        try {
+          const fd = new FormData();
+          fd.append('audio', blob, 'voice.webm');
+          fd.append('lang', voiceLang().slice(0, 2));
+          const r = await fetch(`${getAiApiBase()}/transcribe`, { method: 'POST', body: fd });
+          if (!r.ok) throw new Error(String(r.status));
+          const d = await r.json();
+          const t = String(d?.text ?? d?.transcript ?? '').trim();
+          setVoiceNote('');
+          if (t) sendRef.current(t); else flashNote("Didn't hear anything");
+        } catch {
+          flashNote('Voice server is not ready yet');
+        }
+      };
+      mediaRef.current = { rec, stream };
+      rec.start();
+      setListening(true);
+    } catch {
+      flashNote('Allow microphone access');
+    }
+  };
+
+  useEffect(() => {
+    if (open) return;
+    voiceCancelRef.current = true;
+    voiceTextRef.current = '';
+    try { recRef.current?.abort?.(); } catch { /* */ }
+    try { if (mediaRef.current?.rec.state === 'recording') mediaRef.current.rec.stop(); } catch { /* */ }
+  }, [open]);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -1084,12 +1232,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                       />
                       <button
                         type="button"
-                        onClick={async () => {
-                          try {
-                            const blob = await (await fetch(ph.full)).blob();
-                            downloadImage(URL.createObjectURL(blob));
-                          } catch { setPhotoViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit }); }
-                        }}
+                        onClick={() => { void savePhoto(ph.full); }}
                         style={{ position: 'absolute', bottom: 6, right: 6, border: 'none', background: 'rgba(10,31,26,0.85)', color: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                       >
                         Save
@@ -1226,7 +1369,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
-              placeholder="Ask anything"
+              placeholder={listening ? (voiceNote || 'Listening…') : voiceNote || 'Ask anything'}
               style={{
                 flex: 1, background: 'transparent', border: 'none', outline: 'none',
                 color: '#fff', fontSize: 15, padding: '8px 0',
@@ -1237,18 +1380,29 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
             <button
               type="button"
-              disabled={(!input.trim() && attachments.length === 0) || isTyping}
-              aria-label="Send"
-              onClick={() => sendMessage(input)}
+              disabled={isTyping}
+              aria-label={listening ? 'Stop' : input.trim() || attachments.length ? 'Send' : 'Voice'}
+              onClick={() => {
+                if (listening) { stopVoice(); return; }
+                if (input.trim() || attachments.length) { sendMessage(input); return; }
+                void startVoice();
+              }}
               style={{
                 width: 38, height: 38, borderRadius: '50%', border: 'none',
-                background: (input.trim() || attachments.length) && !isTyping ? RED : 'rgba(239,68,68,0.4)',
+                background: !isTyping ? RED : 'rgba(239,68,68,0.4)',
                 color: '#fff',
-                cursor: (input.trim() || attachments.length) && !isTyping ? 'pointer' : 'default',
+                cursor: !isTyping ? 'pointer' : 'default',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                animation: listening ? 'stooornaAiMicPulse 1.2s ease-out infinite' : undefined,
               }}
             >
-              <Send size={16} strokeWidth={2.4} />
+              {listening ? (
+                <Square size={14} strokeWidth={0} fill="#fff" />
+              ) : input.trim() || attachments.length ? (
+                <Send size={16} strokeWidth={2.4} />
+              ) : (
+                <Mic size={18} strokeWidth={2.2} />
+              )}
             </button>
           </div>
         </form>
@@ -1313,52 +1467,63 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         />
       )}
 
-      {/* PHOTO-VIEWER: search photos open inside the app */}
-      {photoViewer && (
+      {/* PHOTO-VIEWER: search photos open inside the app (own layer: close button on top, photo in the middle, Save at the bottom) */}
+      {photoViewer && createPortal(
         <div
-          onClick={e => { e.stopPropagation(); setPhotoViewer(null); }}
+          onClick={e => { e.stopPropagation(); setPhotoViewer(null); setPhotoNote(''); }}
           style={{
-            position: 'fixed', inset: 0, zIndex: 24500, background: 'rgba(0,0,0,0.94)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+            position: 'fixed', inset: 0, zIndex: 30000, background: '#000',
+            display: 'flex', flexDirection: 'column',
           }}
         >
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={e => { e.stopPropagation(); setPhotoViewer(null); }}
+          <div
             style={{
-              position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', right: 14,
-              width: 40, height: 40, borderRadius: '50%', border: 'none',
-              background: 'rgba(255,255,255,0.16)', color: '#fff', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
+              padding: 'calc(env(safe-area-inset-top, 0px) + 44px) 14px 8px',
             }}
           >
-            <XIcon size={22} />
-          </button>
-          <img
-            src={photoViewer.full}
-            onError={e => { const el = e.currentTarget; if (el.src !== photoViewer.thumb) el.src = photoViewer.thumb; }}
-            alt={photoViewer.credit || ''}
-            onClick={e => e.stopPropagation()}
-            style={{ maxWidth: '100%', maxHeight: '82dvh', objectFit: 'contain', display: 'block' }}
-          />
-          <button
-            type="button"
-            onClick={async e => {
-              e.stopPropagation();
-              try {
-                const blob = await (await fetch(photoViewer.full)).blob();
-                downloadImage(URL.createObjectURL(blob));
-              } catch { /* */ }
-            }}
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={e => { e.stopPropagation(); setPhotoViewer(null); setPhotoNote(''); }}
+              style={{
+                width: 42, height: 42, borderRadius: '50%', border: 'none',
+                background: 'rgba(255,255,255,0.18)', color: '#fff', display: 'flex',
+                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              }}
+            >
+              <XIcon size={22} />
+            </button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
+            <img
+              src={photoViewer.full}
+              onError={e => { const el = e.currentTarget; if (el.src !== photoViewer.thumb) el.src = photoViewer.thumb; }}
+              alt={photoViewer.credit || ''}
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block', borderRadius: 8 }}
+            />
+          </div>
+          <div
             style={{
-              marginTop: 16, border: 'none', background: '#fff', color: '#111', borderRadius: 999,
-              padding: '10px 28px', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+              flexShrink: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+              padding: '12px 14px calc(env(safe-area-inset-bottom, 0px) + 28px)',
             }}
           >
-            Save
-          </button>
-        </div>
+            {photoNote && <div style={{ color: '#fff', fontSize: 13, opacity: 0.85 }}>{photoNote}</div>}
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); void savePhoto(photoViewer.full); }}
+              style={{
+                border: 'none', background: '#fff', color: '#111', borderRadius: 999,
+                padding: '11px 34px', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </div>,
+        document.body,
       )}
 
       <style>{`
@@ -1378,6 +1543,10 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           0%   { transform: scale(0.55) rotate(0deg);   opacity: 0.7; }
           50%  { transform: scale(1.15) rotate(180deg); opacity: 1; }
           100% { transform: scale(0.55) rotate(360deg); opacity: 0.7; }
+        }
+        @keyframes stooornaAiMicPulse {
+          0% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6); }
+          100% { box-shadow: 0 0 0 14px rgba(239,68,68,0); }
         }
         @keyframes stooornaAiDot {
           0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
