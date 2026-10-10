@@ -515,7 +515,7 @@ function PdfView({ src, hasOpen, snapRef }: { src: string; hasOpen: boolean; sna
     const host = hostRef.current;
     if (!host) return;
     const H = window.innerHeight;
-    Array.from(host.children).forEach(el => {
+    Array.from(host.querySelectorAll('canvas')).forEach(el => {
       const c = el as HTMLCanvasElement;
       if (!c.width || c.width < 4) return;
       const r = c.getBoundingClientRect();
@@ -561,8 +561,7 @@ function PdfView({ src, hasOpen, snapRef }: { src: string; hasOpen: boolean; sna
     if (!docReady || !doc || !host || !scroller || baseW < 50) return;
     let dead = false;
     const tasks = new Set<any>();
-    const cssW = baseW * PDF_ZOOMS[zi];
-    const dpr = Math.min(3, Math.max(2, window.devicePixelRatio || 1)); // sharp text, also when zoomed
+    const cssW = Math.round(baseW * PDF_ZOOMS[zi]);
     const keep = !firstRender.current; // keep the same spot of the page when the zoom changes
     const cx = scroller.scrollWidth ? (scroller.scrollLeft + scroller.clientWidth / 2) / scroller.scrollWidth : 0.5;
     const cy = scroller.scrollHeight ? (scroller.scrollTop + scroller.clientHeight / 2) / scroller.scrollHeight : 0;
@@ -571,40 +570,49 @@ function PdfView({ src, hasOpen, snapRef }: { src: string; hasOpen: boolean; sna
         const c = e.target as any;
         if (e.isIntersecting) c.__draw && c.__draw(); else c.__free && c.__free();
       }
-    }, { root: scroller, rootMargin: '120% 0px 120% 0px' });
+    }, { root: scroller, rootMargin: '100% 0px 100% 0px' });
     (async () => {
       const pages: any[] = [];
       for (let i = 1; i <= doc.numPages; i++) { if (dead) return; pages.push(await doc.getPage(i)); }
       if (dead) return;
       host.replaceChildren();
-      host.style.width = cssW + 'px';
+      host.style.width = cssW + 'px'; host.style.maxWidth = 'none';
       for (const page of pages) {
         const v1 = page.getViewport({ scale: 1 });
-        const cssH = cssW * v1.height / v1.width;
-        const canvas: any = document.createElement('canvas');
-        canvas.width = 1; canvas.height = 1;
-        canvas.style.cssText = `display:block;width:${cssW}px;height:${cssH}px;background:#fff;margin:0 0 10px;box-shadow:0 2px 10px rgba(0,0,0,.5)`;
-        let rendering = false, drawn = false; let rt: any = null;
-        canvas.__draw = () => {
-          if (rendering || drawn || dead) return;
-          let k = dpr; const maxPx = 16e6; // stays under the phone canvas limit
-          if (cssW * k * cssH * k > maxPx) k = Math.sqrt(maxPx / (cssW * cssH));
-          const vp = page.getViewport({ scale: (cssW / v1.width) * k });
-          canvas.width = Math.floor(vp.width); canvas.height = Math.floor(vp.height);
-          const ctx = canvas.getContext('2d');
-          if (!ctx) return;
-          rendering = true;
-          rt = page.render({ canvasContext: ctx, viewport: vp, intent: 'display' });
-          tasks.add(rt);
-          const mine = rt;
-          mine.promise.then(() => { drawn = true; }).catch(() => { /* cancelled */ }).finally(() => { rendering = false; tasks.delete(mine); });
-        };
-        canvas.__free = () => {
-          if (rendering && rt) { try { rt.cancel(); } catch { /* ignore */ } }
-          drawn = false; canvas.width = 1; canvas.height = 1;
-        };
-        host.appendChild(canvas);
-        io.observe(canvas);
+        const cssH = Math.round(cssW * v1.height / v1.width);
+        // whole-number pixel density, and the page is cut into strips: a tall page never becomes one giant canvas (which the phone blurs / drops)
+        let k = Math.min(3, Math.max(2, Math.ceil(window.devicePixelRatio || 1)));
+        if (cssW * k > 8192) k = Math.max(1, Math.floor(8192 / cssW));
+        const stripH = Math.max(256, Math.min(1024, Math.floor(12e6 / (cssW * k * k))));
+        const wrap = document.createElement('div');
+        wrap.style.cssText = `position:relative;display:block;width:${cssW}px;max-width:none;height:${cssH}px;background:#fff;margin:0 0 10px;box-shadow:0 2px 10px rgba(0,0,0,.5);overflow:hidden`;
+        for (let y0 = 0; y0 < cssH; y0 += stripH) {
+          const h = Math.min(stripH, cssH - y0);
+          const canvas: any = document.createElement('canvas');
+          canvas.width = 1; canvas.height = 1;
+          // max-width:none / height fixed: a global "canvas { max-width:100% }" rule must never squeeze the page sideways (that made the letters look narrow)
+          canvas.style.cssText = `position:absolute;left:0;top:${y0}px;display:block;width:${cssW}px;max-width:none;min-width:${cssW}px;height:${h}px;max-height:none;background:#fff`;
+          let rendering = false, drawn = false; let rt: any = null;
+          canvas.__draw = () => {
+            if (rendering || drawn || dead) return;
+            canvas.width = cssW * k; canvas.height = h * k;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return;
+            rendering = true;
+            const vp = page.getViewport({ scale: (cssW * k) / v1.width });
+            rt = page.render({ canvasContext: ctx, viewport: vp, transform: [1, 0, 0, 1, 0, -y0 * k], intent: 'display' });
+            tasks.add(rt);
+            const mine = rt;
+            mine.promise.then(() => { drawn = true; }).catch(() => { /* cancelled */ }).finally(() => { rendering = false; tasks.delete(mine); });
+          };
+          canvas.__free = () => {
+            if (rendering && rt) { try { rt.cancel(); } catch { /* ignore */ } }
+            drawn = false; canvas.width = 1; canvas.height = 1;
+          };
+          wrap.appendChild(canvas);
+          io.observe(canvas);
+        }
+        host.appendChild(wrap);
       }
       if (keep) {
         scroller.scrollLeft = Math.max(0, cx * scroller.scrollWidth - scroller.clientWidth / 2);
@@ -624,7 +632,7 @@ function PdfView({ src, hasOpen, snapRef }: { src: string; hasOpen: boolean; sna
         ref={scrollRef}
         style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch', padding: `max(8px, env(safe-area-inset-top)) 8px calc(${bottomBase} + ${bannersH + 70}px)` }}
       >
-        <div ref={hostRef} style={{ margin: '0 auto' }} />
+        <div ref={hostRef} style={{ margin: '0 auto', maxWidth: 'none' }} />
         {status === 'loading' && (
           <div style={{ position: 'absolute', left: 0, right: 0, top: '45%', display: 'flex', justifyContent: 'center' }}>
             <div style={{ width: 34, height: 34, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#fff', animation: 'stIntroSpin 0.9s linear infinite' }} />
