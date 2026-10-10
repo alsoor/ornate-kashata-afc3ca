@@ -74,6 +74,8 @@ function saveChats(chats: ChatSession[]) {
  * Where the Ai backend lives.
  * Priority: window.__STOOORNA_AI_API__  >  VITE_AI_API_URL  >  localhost (dev)  >  same-origin /ai (production)
  */
+const DEFAULT_AI_API = 'https://welcoming-heart-production.up.railway.app/ai';
+
 function getAiApiBase(): string {
   try {
     const w: any = typeof window !== 'undefined' ? window : {};
@@ -81,9 +83,11 @@ function getAiApiBase(): string {
     const envUrl = (import.meta as any)?.env?.VITE_AI_API_URL;
     if (envUrl) return String(envUrl).replace(/\/+$/, '');
     const host = w.location?.hostname || '';
-    if (host === 'localhost' || host === '127.0.0.1') return 'http://127.0.0.1:8000/ai';
+    const port = w.location?.port || '';
+    // Local dev server only (has a port). Mobile app shells use localhost without a port.
+    if ((host === 'localhost' || host === '127.0.0.1') && port) return 'http://127.0.0.1:8000/ai';
   } catch { /* */ }
-  return '/ai';
+  return DEFAULT_AI_API;
 }
 
 function pickReply(data: any): string {
@@ -313,10 +317,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       })
       .catch(err => {
         console.error('[Stooorna Ai] backend error:', err);
+        const why = String((err && (err as any).message) || err).slice(0, 80);
         pushAi(
-          ar
+          (ar
             ? '⚠️ تعذر الاتصال بخادم Stooorna Ai حالياً. حاول مرة ثانية بعد شوي.'
-            : '⚠️ Could not reach the Stooorna Ai server right now. Please try again shortly.'
+            : '⚠️ Could not reach the Stooorna Ai server right now. Please try again shortly.') + ` [${why}]`
         );
       })
       .finally(() => {
