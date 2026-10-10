@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Plus, Send, Clock, PenLine, Image as ImageIcon, Table, Sparkles, Mic } from 'lucide-react';
+import { Plus, Send, Clock, PenLine, Image as ImageIcon } from 'lucide-react';
 
 interface Attachment {
   id: string;
   name: string;
   mime: string;
   size: number;
-  previewUrl: string; // blob: or data: for local preview
+  previewUrl: string;
   kind: 'image' | 'file';
 }
 
@@ -18,6 +18,12 @@ interface Message {
   data?: any;
   attachments?: Attachment[];
   timestamp: number;
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  messages: Message[];
 }
 
 interface StooornaAiSheetProps {
@@ -35,86 +41,125 @@ interface StooornaAiSheetProps {
 const DARK_GREEN = '#0a1f1a';
 const DARKER_GREEN = '#04120f';
 const RED = '#ef4444';
-const SILVER = '#c0c0c0';
+const CHATS_KEY = 'stooorna_ai_chats_v1';
+
+function loadChats(): ChatSession[] {
+  try {
+    const raw = localStorage.getItem(CHATS_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveChats(chats: ChatSession[]) {
+  try {
+    const slim = chats.slice(0, 50).map(c => ({
+      ...c,
+      messages: (c.messages || []).map(m => ({
+        ...m,
+        attachments: m.attachments?.map(a => ({
+          ...a,
+          previewUrl: a.kind === 'image' ? '' : a.previewUrl,
+        })),
+      })),
+    }));
+    localStorage.setItem(CHATS_KEY, JSON.stringify(slim));
+  } catch { /* */ }
+}
+
+function buildLocalReply(userText: string, hasFiles: boolean): string {
+  const t = userText.toLowerCase().trim();
+  const ar = /[\u0600-\u06FF]/.test(userText);
+
+  if (hasFiles) {
+    return ar
+      ? 'تم استلام المرفق. اكتب ماذا تريد: وصف، تلخيص، أو أفكار.'
+      : 'Attachment received. Tell me what you need: describe, summarize, or ideas.';
+  }
+  if (!t) {
+    return ar ? 'اكتب سؤالك وسأجيبك.' : 'Type your question and I will answer.';
+  }
+  if (/^(hi|hello|hey)\b/.test(t) || /^(السلام|مرحبا|مرحباً|هلا|اهلا|أهلا|هاي)/.test(t)) {
+    return ar
+      ? 'مرحباً! أنا Stooorna Ai. اسألني أي شيء أو أرفق صورة/ملف.'
+      : 'Hi! I am Stooorna Ai. Ask me anything or attach a photo/file.';
+  }
+  if (t.includes('من انت') || t.includes('من أنت') || t.includes('who are you')) {
+    return ar
+      ? 'أنا Stooorna Ai، مساعدك داخل Stooorna.'
+      : 'I am Stooorna Ai, your assistant inside Stooorna.';
+  }
+  if (t.includes('شكرا') || t.includes('thank')) {
+    return ar ? 'العفو! جاهز لأي طلب.' : 'You are welcome!';
+  }
+  if (t.includes('جدول') || t.includes('table')) {
+    return ar
+      ? 'جدول سريع:\n\n| العنصر | الحالة |\n| --- | --- |\n| البث | نشط |\n| Ai | يعمل |'
+      : 'Quick table:\n\n| Item | Status |\n| --- | --- |\n| Live | Active |\n| Ai | On |';
+  }
+  if (t.includes('؟') || t.includes('?') || /^(how|what|why|when|where|هل|كيف|لماذا|متى|وين|وش)/.test(t)) {
+    return ar
+      ? `بخصوص: «${userText.slice(0, 200)}»\n\nأقدر أساعدك بشرح مبسط وخطوات عملية. أضف تفاصيل أكثر للجواب الأدق.`
+      : `About: "${userText.slice(0, 200)}"\n\nI can explain simply and give practical steps. Add more detail for a sharper answer.`;
+  }
+  return ar
+    ? `فهمت: «${userText.slice(0, 280)}»\n\nتم تسجيل طلبك. أكمل التفاصيل أو اطلب الخطوة التالية وسأكمل.`
+    : `Got it: "${userText.slice(0, 280)}"\n\nRequest noted. Add detail or the next step and I will continue.`;
+}
 
 export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheetProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [toolsOpen, setToolsOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [chats, setChats] = useState<{ id: string; title: string; messages: Message[] }[]>(() => {
-    try {
-      const raw = localStorage.getItem('stooorna_ai_chats_v1');
-      const list = raw ? JSON.parse(raw) : [];
-      return Array.isArray(list) ? list : [];
-    } catch { return []; }
-  });
+  const [chats, setChats] = useState<ChatSession[]>(() => loadChats());
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
-  useEffect(() => {
-    try {
-      // strip heavy blob previews before persist
-      const slim = chats.map(c => ({
-        ...c,
-        messages: (c.messages || []).map(m => ({
-          ...m,
-          attachments: m.attachments?.map(a => ({ ...a, previewUrl: a.kind === 'image' ? '' : a.previewUrl })),
-        })),
-      }));
-      localStorage.setItem('stooorna_ai_chats_v1', JSON.stringify(slim.slice(0, 50)));
-    } catch { /* */ }
-  }, [chats]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   const avatar = user?.avatarUrl || user?.image || null;
   const displayName = user?.name || user?.username || 'You';
 
   useEffect(() => {
-    if (open && messages.length === 0) {
-      // optional welcome
-    }
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 300);
-    }
+    saveChats(chats);
+  }, [chats]);
+
+  useEffect(() => {
+    if (open) setTimeout(() => inputRef.current?.focus(), 250);
+    if (!open) setShowHistory(false);
   }, [open]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  useEffect(() => {
-    if (!currentChatId || messages.length === 0) return;
-    const title = (messages[0]?.content || 'Chat').slice(0, 40);
+  const syncChat = useCallback((chatId: string, msgs: Message[]) => {
+    const title = (msgs[0]?.content || 'Chat').slice(0, 40);
     setChats(prev => {
-      const exists = prev.find(c => c.id === currentChatId);
-      if (exists) return prev.map(c => c.id === currentChatId ? { ...c, messages, title } : c);
-      return [{ id: currentChatId, title, messages }, ...prev];
+      const exists = prev.find(c => c.id === chatId);
+      if (exists) return prev.map(c => (c.id === chatId ? { ...c, messages: msgs, title } : c));
+      return [{ id: chatId, title, messages: msgs }, ...prev];
     });
-  }, [messages, currentChatId]);
+  }, []);
 
-  const createNewChat = useCallback(() => {
+  const createNewChat = () => {
     if (messages.length > 0 && currentChatId) {
-      setChats(prev => {
-        const existing = prev.find(c => c.id === currentChatId);
-        if (existing) {
-          return prev.map(c => c.id === currentChatId ? { ...c, messages, title: messages[0]?.content.slice(0, 40) || 'New Chat' } : c);
-        }
-        return [{ id: currentChatId, title: messages[0]?.content.slice(0, 40) || 'Chat', messages }, ...prev];
-      });
+      syncChat(currentChatId, messages);
     }
-    const newId = `chat-${Date.now()}`;
-    setCurrentChatId(newId);
+    setCurrentChatId(`chat-${Date.now()}`);
     setMessages([]);
     setShowHistory(false);
-  }, [messages, currentChatId]);
+    setAttachments([]);
+  };
 
-  const loadChat = (chat: typeof chats[0]) => {
+  const loadChat = (chat: ChatSession) => {
     setCurrentChatId(chat.id);
-    setMessages(chat.messages);
+    setMessages(chat.messages || []);
     setShowHistory(false);
   };
 
@@ -128,88 +173,24 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   const clearAllHistory = () => {
     setChats([]);
+    try { localStorage.removeItem(CHATS_KEY); } catch { /* */ }
   };
 
   const deleteCurrentConversation = () => {
-    if (currentChatId) {
-      setChats(prev => prev.filter(c => c.id !== currentChatId));
-    }
-    setMessages([]);
-    setCurrentChatId(null);
+    if (currentChatId) deleteChat(currentChatId);
+    else setMessages([]);
     setShowHistory(false);
   };
 
-  const localReply = (userText: string, hasFiles: boolean) => {
-    const t = userText.toLowerCase().trim();
-    const ar = /[\u0600-\u06FF]/.test(userText);
-
-    if (hasFiles) {
-      return ar
-        ? 'تم استلام المرفق بنجاح. اكتب ماذا تريد أن أفعل به (وصف، تلخيص، أفكار، أو تعديل نص).'
-        : 'Attachment received. Tell me what you want: describe, summarize, ideas, or edit text.';
-    }
-
-    if (!t) {
-      return ar ? 'اكتب سؤالك وسأجيبك مباشرة.' : 'Type your question and I will answer.';
-    }
-
-    if (/^(hi|hello|hey|yo)\b/.test(t) || /^(السلام|مرحبا|مرحباً|هلا|اهلا|أهلا|هاي)/.test(t)) {
-      return ar
-        ? 'مرحباً! أنا Stooorna Ai. اسألني أي شيء: شرح، أفكار، كتابة، جداول، أو أرفق ملف/صورة.'
-        : 'Hi! I am Stooorna Ai. Ask me anything — explain, write, brainstorm, tables, or attach a file/photo.';
-    }
-
-    if (t.includes('من انت') || t.includes('من أنت') || t.includes('who are you') || t.includes('what are you')) {
-      return ar
-        ? 'أنا Stooorna Ai، مساعدك داخل تطبيق Stooorna. أرد على أسئلتك وأساعدك في الكتابة والأفكار والملفات.'
-        : 'I am Stooorna Ai, your assistant inside Stooorna. I answer questions and help with writing, ideas, and files.';
-    }
-
-    if (t.includes('شكرا') || t.includes('شكراً') || t.includes('thank')) {
-      return ar ? 'العفو! جاهز لأي طلب ثاني.' : 'You are welcome! Ready for the next request.';
-    }
-
-    if (t.includes('جدول') || t.includes('table')) {
-      return ar
-        ? 'حسناً — إليك جدولاً بسيطاً:\n\n| العنصر | الحالة |\n| --- | --- |\n| البث | نشط |\n| المحادثات | جاهزة |\n| Stooorna Ai | يعمل |\n\n اكتب أعمدة/صفوف أخرى إن رغبت.'
-        : 'Here is a simple table:\n\n| Item | Status |\n| --- | --- |\n| Live | Active |\n| Chat | Ready |\n| Stooorna Ai | On |\n\nTell me columns/rows if you want another table.';
-    }
-
-    if (t.includes('ملخص') || t.includes('summar')) {
-      return ar
-        ? `ملخص سريع لطلبك:\n• الموضوع: ${userText.slice(0, 120)}\n• المطلوب: تلخيص\n• الخطوة التالية: أرسل النص الطويل وسأختصره بنقاط واضحة.`
-        : `Quick summary of your request:\n• Topic: ${userText.slice(0, 120)}\n• Goal: summarize\n• Next: paste the long text and I will shorten it into clear bullets.`;
-    }
-
-    if (t.includes('اكتب') || t.includes('كتابة') || t.includes('write') || t.includes('draft')) {
-      return ar
-        ? `مسودة أولية:\n\n${userText.replace(/اكتب( لي)?/gi, '').trim() || 'نص جاهز حسب طلبك'}\n\nإذا تبيني أطوّرها (أطول / أقصر / رسمي) قل لي.`
-        : `Draft:\n\n${userText.replace(/write( me)?/gi, '').trim() || 'Ready text based on your request'}\n\nSay if you want it longer, shorter, or more formal.`;
-    }
-
-    if (t.includes('؟') || t.includes('?') || t.startswith('what') || t.startswith('how') || t.startswith('why') || t.startswith('when') || t.startswith('where') || t.startswith('هل') || t.startswith('كيف') || t.startswith('لماذا') || t.startswith('متى') || t.startswith('وين') || t.startswith('وش')) {
-      return ar
-        ? `بخصوص سؤالك: «${userText}»\n\nأقدر أساعدك بهذا الشكل:\n1) أوضح الفكرة ببساطة\n2) أعطيك خطوات عملية\n3) أمثلة إن احتجت\n\nاكتب تفاصيل أكثر (الهدف / السياق) لأعطيك جواب أدق.`
-        : `About your question: "${userText}"\n\nI can help by:\n1) Explaining simply\n2) Giving practical steps\n3) Examples if needed\n\nAdd more detail (goal / context) for a sharper answer.`;
-    }
-
-    // default: always useful structured answer
-    return ar
-      ? `تم:\n\nفهمت طلبك: «${userText.slice(0, 300)}»\n\nاقتراحي:\n• حدّد الهدف النهائي بجملة واحدة\n• إن كان فيه نص طويل، أرسله وأرتبه\n• إن كان فيه صورة/ملف، أرفقه من زر +\n\nأكتب لي الخطوة التالية التي تريدها وسأكمل مباشرة.`
-      : `Done.\n\nI understood: "${userText.slice(0, 300)}"\n\nSuggestion:\n• State the end goal in one line\n• If you have long text, paste it and I will organize it\n• If you have a photo/file, attach it with +\n\nTell me the next step and I will continue.`;
-  };
-
-  const revokeAttachmentUrls = (list: Attachment[]) => {
-    list.forEach(a => {
-      try { if (a.previewUrl.startsWith('blob:')) URL.revokeObjectURL(a.previewUrl); } catch { /* */ }
-    });
+  const closePopups = () => {
+    setShowHistory(false);
   };
 
   const addFiles = (files: FileList | File[] | null) => {
     if (!files || !files.length) return;
     const next: Attachment[] = [];
     Array.from(files).forEach(file => {
-      if (file.size > 12 * 1024 * 1024) return; // 12MB cap per file
+      if (file.size > 12 * 1024 * 1024) return;
       const isImage = file.type.startsWith('image/');
       next.push({
         id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -226,112 +207,114 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const removeAttachment = (id: string) => {
     setAttachments(prev => {
       const gone = prev.find(a => a.id === id);
-      if (gone) revokeAttachmentUrls([gone]);
+      if (gone?.previewUrl.startsWith('blob:')) {
+        try { URL.revokeObjectURL(gone.previewUrl); } catch { /* */ }
+      }
       return prev.filter(a => a.id !== id);
     });
   };
 
-  const sendMessage = async (text: string) => {
-    const trimmed = text.trim();
+  const sendMessage = (text: string) => {
+    const trimmed = (text || '').trim();
     const pending = attachments;
     if (!trimmed && pending.length === 0) return;
+    if (isTyping) return;
+
+    closePopups();
 
     const content =
       trimmed ||
-      (pending.length
-        ? pending.map(a => (a.kind === 'image' ? `[Image: ${a.name}]` : `[File: ${a.name}]`)).join(' ')
-        : '');
+      pending.map(a => (a.kind === 'image' ? `[Image: ${a.name}]` : `[File: ${a.name}]`)).join(' ');
 
     const userMsg: Message = {
       id: `u-${Date.now()}`,
       role: 'user',
       content,
       type: pending.some(a => a.kind === 'image') ? 'image' : pending.length ? 'file' : 'text',
-      attachments: pending.length ? pending : undefined,
+      attachments: pending.length ? [...pending] : undefined,
       timestamp: Date.now(),
     };
-    let chatId = currentChatId;
-    if (!chatId) {
-      chatId = `chat-${Date.now()}`;
-      setCurrentChatId(chatId);
-    }
-    setMessages(prev => {
-      const next = [...prev, userMsg];
-      // keep history list in sync
-      const title = (next[0]?.content || 'Chat').slice(0, 40);
-      setChats(prevChats => {
-        const exists = prevChats.find(c => c.id === chatId);
-        if (exists) return prevChats.map(c => c.id === chatId ? { ...c, messages: next, title } : c);
-        return [{ id: chatId!, title, messages: next }, ...prevChats];
-      });
-      return next;
-    });
+
+    const chatId = currentChatId || `chat-${Date.now()}`;
+    if (!currentChatId) setCurrentChatId(chatId);
+
+    const nextMessages = [...messages, userMsg];
+    setMessages(nextMessages);
+    syncChat(chatId, nextMessages);
     setInput('');
     setAttachments([]);
     setIsTyping(true);
 
-    const lower = content.toLowerCase();
-    // Lightweight client-side tools (table / placeholder image) still work offline
-    if (lower.includes('table') || lower.includes('جدول')) {
-      const aiMsg: Message = {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        content: 'Here is a summary table:',
-        type: 'table',
-        data: {
-          headers: ['Feature', 'Status', 'Notes'],
-          rows: [
-            ['Voice Live', 'Active', 'Real-time'],
-            ['Camera Live', 'Active', 'HD'],
-            ['AI Assistant', 'New', 'Stooorna Ai'],
-          ],
-        },
-        timestamp: Date.now(),
-      };
-      setMessages(prev => [...prev, aiMsg]);
+    // Always reply locally (guaranteed on phone without backend)
+    window.setTimeout(() => {
+      const lower = content.toLowerCase();
+      let aiMsg: Message;
+
+      if (lower.includes('table') || lower.includes('جدول')) {
+        aiMsg = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: 'Here is a summary table:',
+          type: 'table',
+          data: {
+            headers: ['Feature', 'Status', 'Notes'],
+            rows: [
+              ['Voice Live', 'Active', 'Real-time'],
+              ['Camera Live', 'Active', 'HD'],
+              ['AI Assistant', 'On', 'Stooorna Ai'],
+            ],
+          },
+          timestamp: Date.now(),
+        };
+      } else {
+        aiMsg = {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          content: buildLocalReply(content, pending.length > 0),
+          type: 'text',
+          timestamp: Date.now(),
+        };
+      }
+
+      setMessages(prev => {
+        const withAi = [...prev, aiMsg];
+        syncChat(chatId, withAi);
+        return withAi;
+      });
       setIsTyping(false);
-      return;
-    }
 
-    // Local-first: always reply immediately (works offline / on phone without backend).
-    // If API is up, upgrade the last assistant message with the server reply.
-    await new Promise(r => setTimeout(r, 280 + Math.random() * 220));
-    const localText = localReply(content, pending.length > 0);
-    const localId = `a-${Date.now()}`;
-    setMessages(prev => [...prev, {
-      id: localId,
-      role: 'assistant',
-      content: localText,
-      type: 'text',
-      timestamp: Date.now(),
-    }]);
-    setIsTyping(false);
+      // Optional: upgrade reply if Ai backend is running
+      const apiBase =
+        (typeof window !== 'undefined' && (window as any).__STOOORNA_AI_API__) ||
+        'http://127.0.0.1:8000/ai';
 
-    const apiBase =
-      (typeof window !== 'undefined' && (window as any).__STOOORNA_AI_API__) ||
-      (typeof process !== 'undefined' && (process as any).env?.NEXT_PUBLIC_STOOORNA_AI_URL) ||
-      (typeof process !== 'undefined' && (process as any).env?.VITE_STOOORNA_AI_URL) ||
-      'http://127.0.0.1:8000/ai';
-
-    try {
-      const history = messages.slice(-12).map(m => ({ role: m.role, content: m.content }));
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = controller ? window.setTimeout(() => controller.abort(), 4000) : 0;
-      const res = await fetch(`${apiBase}/chat`, {
+      const timer = controller ? window.setTimeout(() => controller.abort(), 3500) : 0;
+
+      fetch(`${apiBase}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, history }),
+        body: JSON.stringify({
+          message: content,
+          history: nextMessages.slice(-12).map(m => ({ role: m.role, content: m.content })),
+        }),
         signal: controller?.signal,
-      });
-      if (timer) window.clearTimeout(timer);
-      if (!res.ok) return;
-      const data = await res.json();
-      const reply = (data.reply || '').trim();
-      if (!reply || reply === localText) return;
-      setMessages(prev => prev.map(m => m.id === localId ? { ...m, content: reply } : m));
-    } catch {
-      // keep local reply
-    }
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .then(data => {
+          const reply = (data?.reply || '').trim();
+          if (!reply) return;
+          setMessages(prev => {
+            const updated = prev.map(m => (m.id === aiMsg.id ? { ...m, content: reply } : m));
+            syncChat(chatId, updated);
+            return updated;
+          });
+        })
+        .catch(() => { /* keep local */ })
+        .finally(() => {
+          if (timer) window.clearTimeout(timer);
+        });
+    }, 300);
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -382,6 +365,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             paddingTop: 'max(12px, env(safe-area-inset-top))',
             borderBottom: '1px solid rgba(0,0,0,0.06)',
             background: '#fff',
+            position: 'relative',
+            zIndex: 5,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -413,7 +398,6 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             </div>
           </div>
 
-          {/* Red banner with shimmer */}
           <div
             style={{
               position: 'relative',
@@ -428,19 +412,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
             }}
           >
-            <span style={{ position: 'relative', zIndex: 1, color: '#f5f5f5', textShadow: 'none' }}>
-              Stooorna Ai
-            </span>
-            <span
-              style={{
-                position: 'absolute',
-                top: 0, left: '-100%',
-                width: '60%', height: '100%',
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)',
-                animation: 'stooornaAiShimmer 2.2s infinite',
-                pointerEvents: 'none',
-              }}
-            />
+            <span style={{ position: 'relative', zIndex: 1, color: '#f5f5f5' }}>Stooorna Ai</span>
           </div>
 
           <div style={{ display: 'flex', gap: 6 }}>
@@ -450,7 +422,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               aria-label="History"
               style={{
                 width: 34, height: 34, borderRadius: 10, border: 'none',
-                background: 'rgba(0,0,0,0.04)', color: '#333', cursor: 'pointer',
+                background: showHistory ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.04)',
+                color: '#333', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
@@ -471,59 +444,85 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           </div>
         </div>
 
-        {/* History panel — tap outside closes */}
+        {/* Full-sheet dim layer: tap anywhere closes history */}
         {showHistory && (
-          <>
-          <button
-            type="button"
-            aria-label="Close history"
-            onClick={() => setShowHistory(false)}
+          <div
+            role="presentation"
+            onClick={closePopups}
+            onTouchEnd={e => { e.preventDefault(); closePopups(); }}
             style={{
-              position: 'absolute', inset: 0, zIndex: 9,
-              border: 'none', background: 'rgba(0,0,0,0.15)', cursor: 'pointer', padding: 0,
+              position: 'absolute',
+              left: 0, right: 0, top: 0, bottom: 0,
+              zIndex: 20,
+              background: 'rgba(0,0,0,0.25)',
             }}
           />
+        )}
+
+        {/* History panel */}
+        {showHistory && (
           <div
             style={{
               position: 'absolute',
-              top: 60, right: 12, zIndex: 10,
-              width: 280, maxHeight: 360, overflowY: 'auto',
-              background: '#fff', borderRadius: 12,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+              top: 58, right: 10, zIndex: 30,
+              width: 280, maxHeight: '55%', overflowY: 'auto',
+              background: '#fff', borderRadius: 14,
+              boxShadow: '0 10px 28px rgba(0,0,0,0.2)',
               border: '1px solid rgba(0,0,0,0.08)',
-              padding: 8,
+              padding: 10,
             }}
             onClick={e => e.stopPropagation()}
+            onTouchEnd={e => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '4px 4px 8px' }}>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#333' }}>Previous chats</p>
-              {chats.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: '#222' }}>Previous chats</p>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {chats.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAllHistory}
+                    style={{
+                      border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444',
+                      fontSize: 11, fontWeight: 800, cursor: 'pointer',
+                      padding: '5px 8px', borderRadius: 8,
+                    }}
+                  >
+                    Delete all
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={clearAllHistory}
-                  style={{ border: 'none', background: 'transparent', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: '4px 6px' }}
+                  aria-label="Close"
+                  onClick={closePopups}
+                  style={{
+                    width: 28, height: 28, border: 'none', borderRadius: 8,
+                    background: 'rgba(0,0,0,0.06)', color: '#333', cursor: 'pointer',
+                    fontSize: 16, lineHeight: 1,
+                  }}
                 >
-                  Delete all
+                  ×
                 </button>
-              )}
+              </div>
             </div>
+
             {chats.length === 0 && (
-              <p style={{ margin: 8, color: '#888', fontSize: 12 }}>No history yet</p>
+              <p style={{ margin: '10px 4px', color: '#888', fontSize: 13 }}>No history yet</p>
             )}
+
             {chats.map(c => (
               <div
                 key={c.id}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 4,
-                  borderRadius: 8, padding: '2px 2px',
-                  background: c.id === currentChatId ? 'rgba(0,0,0,0.04)' : 'transparent',
+                  borderRadius: 10, padding: 2,
+                  background: c.id === currentChatId ? 'rgba(0,0,0,0.05)' : 'transparent',
                 }}
               >
                 <button
                   type="button"
                   onClick={() => loadChat(c)}
                   style={{
-                    flex: 1, textAlign: 'left', padding: '8px 10px',
+                    flex: 1, textAlign: 'left', padding: '10px 10px',
                     border: 'none', background: 'transparent', borderRadius: 8,
                     cursor: 'pointer', fontSize: 13, color: '#222',
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -534,40 +533,38 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 <button
                   type="button"
                   aria-label="Delete chat"
-                  title="Delete"
-                  onClick={(e) => { e.stopPropagation(); deleteChat(c.id); }}
+                  onClick={() => deleteChat(c.id)}
                   style={{
-                    width: 28, height: 28, border: 'none', borderRadius: 8,
-                    background: 'transparent', color: '#ef4444', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    fontSize: 16, lineHeight: 1,
+                    width: 32, height: 32, border: 'none', borderRadius: 8,
+                    background: 'rgba(239,68,68,0.08)', color: '#ef4444', cursor: 'pointer',
+                    fontSize: 18, lineHeight: 1, flexShrink: 0,
                   }}
                 >
                   ×
                 </button>
               </div>
             ))}
+
             {messages.length > 0 && (
               <button
                 type="button"
                 onClick={deleteCurrentConversation}
                 style={{
-                  width: '100%', marginTop: 8, padding: '8px 10px',
-                  border: '1px solid rgba(239,68,68,0.35)', borderRadius: 8,
+                  width: '100%', marginTop: 10, padding: '10px',
+                  border: '1px solid rgba(239,68,68,0.35)', borderRadius: 10,
                   background: 'rgba(239,68,68,0.06)', color: '#ef4444',
-                  fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                  fontSize: 12, fontWeight: 800, cursor: 'pointer',
                 }}
               >
                 Delete current chat
               </button>
             )}
           </div>
-          </>
         )}
 
-        {/* Messages */}
+        {/* Messages — tap also closes history */}
         <div
-          onClick={() => { if (showHistory) setShowHistory(false); }}
+          onClick={closePopups}
           style={{
             flex: 1, overflowY: 'auto', padding: '24px 16px',
             display: 'flex', flexDirection: 'column', gap: 16,
@@ -599,30 +596,28 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               {m.content}
               {m.attachments && m.attachments.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                  {m.attachments.map(a => (
-                    a.kind === 'image' ? (
+                  {m.attachments.map(a =>
+                    a.kind === 'image' && a.previewUrl ? (
                       <img
                         key={a.id}
                         src={a.previewUrl}
                         alt={a.name}
-                        style={{ maxWidth: 180, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block' }}
+                        style={{ maxWidth: 180, maxHeight: 160, borderRadius: 10, objectFit: 'cover' }}
                       />
                     ) : (
-                      <a
+                      <span
                         key={a.id}
-                        href={a.previewUrl}
-                        download={a.name}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 6,
                           padding: '8px 10px', borderRadius: 10,
                           background: m.role === 'user' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.06)',
-                          color: 'inherit', fontSize: 13, textDecoration: 'none', maxWidth: 200,
+                          fontSize: 13,
                         }}
                       >
-                        📎 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
-                      </a>
+                        📎 {a.name}
+                      </span>
                     )
-                  ))}
+                  )}
                 </div>
               )}
               {m.type === 'image' && m.data?.url && (
@@ -676,13 +671,15 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Input bar — dark green-black */}
+        {/* Input */}
         <form
           onSubmit={handleSubmit}
           style={{
             padding: '10px 12px max(12px, env(safe-area-inset-bottom))',
             background: '#fff',
             borderTop: '1px solid rgba(0,0,0,0.06)',
+            position: 'relative',
+            zIndex: 5,
           }}
         >
           <input
@@ -703,18 +700,14 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 <div
                   key={a.id}
                   style={{
-                    position: 'relative',
-                    borderRadius: 12,
-                    overflow: 'hidden',
-                    border: '1px solid rgba(0,0,0,0.08)',
-                    background: '#f4f4f5',
-                    maxWidth: 120,
+                    position: 'relative', borderRadius: 12, overflow: 'hidden',
+                    border: '1px solid rgba(0,0,0,0.08)', background: '#f4f4f5', maxWidth: 120,
                   }}
                 >
                   {a.kind === 'image' ? (
                     <img src={a.previewUrl} alt={a.name} style={{ width: 120, height: 80, objectFit: 'cover', display: 'block' }} />
                   ) : (
-                    <div style={{ padding: '10px 12px', fontSize: 12, color: '#333', maxWidth: 120 }}>
+                    <div style={{ padding: '10px 12px', fontSize: 12, color: '#333' }}>
                       📎 {a.name.length > 18 ? a.name.slice(0, 16) + '…' : a.name}
                     </div>
                   )}
@@ -725,8 +718,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                     style={{
                       position: 'absolute', top: 4, right: 4,
                       width: 22, height: 22, borderRadius: '50%', border: 'none',
-                      background: 'rgba(0,0,0,0.65)', color: '#fff', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, padding: 0,
+                      background: 'rgba(0,0,0,0.65)', color: '#fff', cursor: 'pointer', fontSize: 12,
                     }}
                   >
                     ×
@@ -738,33 +730,28 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
           <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
+              display: 'flex', alignItems: 'center', gap: 8,
               background: `linear-gradient(180deg, ${DARK_GREEN} 0%, ${DARKER_GREEN} 100%)`,
-              borderRadius: 24,
-              padding: '6px 6px 6px 10px',
+              borderRadius: 24, padding: '6px 6px 6px 10px',
               border: '1px solid rgba(255,255,255,0.08)',
             }}
           >
             <button
               type="button"
-              aria-label="Tools"
+              aria-label="Attach"
+              onClick={() => fileInputRef.current?.click()}
               style={{
                 width: 36, height: 36, borderRadius: '50%', border: 'none',
                 background: 'transparent', color: '#fff', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                position: 'relative',
               }}
-              onClick={() => fileInputRef.current?.click()}
             >
               <Plus size={20} strokeWidth={2.2} />
             </button>
 
             <button
               type="button"
-              aria-label="Attach file"
-              title="Attach photo or file"
+              aria-label="Attach photo"
               onClick={() => fileInputRef.current?.click()}
               style={{
                 width: 36, height: 36, borderRadius: '50%', border: 'none',
@@ -789,15 +776,16 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginRight: 4 }}>Fast</span>
 
             <button
-              type="submit"
+              type="button"
               disabled={(!input.trim() && attachments.length === 0) || isTyping}
               aria-label="Send"
+              onClick={() => sendMessage(input)}
               style={{
                 width: 38, height: 38, borderRadius: '50%', border: 'none',
-                background: (input.trim() || attachments.length) ? RED : 'rgba(239,68,68,0.4)',
-                color: '#fff', cursor: (input.trim() || attachments.length) ? 'pointer' : 'default',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
+                background: (input.trim() || attachments.length) && !isTyping ? RED : 'rgba(239,68,68,0.4)',
+                color: '#fff',
+                cursor: (input.trim() || attachments.length) && !isTyping ? 'pointer' : 'default',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}
             >
               <Send size={16} strokeWidth={2.4} />
@@ -810,10 +798,6 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         @keyframes stooornaAiSheetUp {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }
-        }
-        @keyframes stooornaAiShimmer {
-          0% { left: -100%; }
-          100% { left: 150%; }
         }
         @keyframes stooornaAiDot {
           0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
