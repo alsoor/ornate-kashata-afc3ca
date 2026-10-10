@@ -73,23 +73,31 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   // an image / PDF has no first frame to wait for: start the opening as soon as the screen is up
   useEffect(() => { if (visible && kind === 'pdf') setReady(true); }, [visible, kind]);
 
-  // SOUND: browsers refuse to start a video with sound before the first touch. The video then plays muted and the sound comes back
-  // on the first touch / key press anywhere (or with the small speaker button), so the sound never stays lost.
-  const [muted, setMuted] = useState(true);
+  // SOUND: browsers refuse sound before the first touch, so the video starts muted by itself and the sound is switched on by the first
+  // touch / key press anywhere (nothing to tap, no button).
   useEffect(() => {
     if (!visible || kind !== 'video') return;
     const unlock = () => {
       const v = videoRef.current;
-      if (!v) return;
+      if (!v || v.paused || v.ended) return;
       if (v.muted) { v.muted = false; v.volume = 1; }
-      if (v.paused && !v.ended) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
-      if (!v.muted) off();
+      if (v.paused) { v.muted = true; v.play().catch(() => {}); } // never leave the video stopped
     };
     const evs = ['pointerdown', 'touchstart', 'click', 'keydown'] as const;
-    const off = () => evs.forEach(e => window.removeEventListener(e, unlock, true));
     evs.forEach(e => window.addEventListener(e, unlock, true));
-    return off;
+    return () => evs.forEach(e => window.removeEventListener(e, unlock, true));
   }, [visible, kind]);
+
+  // AUTOPLAY GUARANTEE: if the opening animation event never arrives, or the browser pauses the video, start / restart it by itself
+  useEffect(() => {
+    if (!visible || kind !== 'video' || !ready) return;
+    const fallback = window.setTimeout(() => { if (!opened) startPlayRef.current(); }, 2300);
+    const watch = window.setInterval(() => {
+      const v = videoRef.current;
+      if (v && opened && v.paused && !v.ended && phase === 'play') { v.muted = true; v.play().catch(() => {}); }
+    }, 600);
+    return () => { window.clearTimeout(fallback); window.clearInterval(watch); };
+  }, [visible, kind, ready, opened, phase]);
 
   useEffect(() => {
     if (authLoading || isLoggedIn || dismissed || wasRegistered()) return;
@@ -120,17 +128,16 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
     const v = videoRef.current;
     if (!v) return;
     const playMuted = () => { v.muted = true; return v.play().catch(() => {}); };
-    const trySound = () => {
-      v.muted = false;
-      window.setTimeout(() => { if (v.paused && !v.ended) void playMuted(); }, 250);
-    };
-    v.play().then(trySound).catch(() => { void playMuted(); });
+    // 1) always start muted: this is allowed everywhere, so the video moves by itself
+    void playMuted().then(() => {
+      // 2) sound only when the browser allows it (page already touched), otherwise the first touch turns it on
+      const ua: any = (navigator as any).userActivation;
+      if (ua && ua.hasBeenActive && !v.paused) { v.muted = false; window.setTimeout(() => { if (v.paused && !v.ended) void playMuted(); }, 250); }
+    });
     v.addEventListener('canplay', () => { if (v.paused && !v.ended) void playMuted(); });
-    window.addEventListener('pointerdown', () => {
-      if (v.muted) v.muted = false;
-      if (v.paused && !v.ended) v.play().catch(() => {});
-    }, { once: true });
   }, []);
+  const startPlayRef = useRef<() => void>(() => {});
+  startPlayRef.current = startPlay;
 
   const onTime = useCallback(() => { const v = videoRef.current; if (v) setT(v.currentTime); }, []);
 
@@ -291,7 +298,6 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
                 {...({ controlsList: 'nodownload nofullscreen noremoteplayback' } as Record<string, string>)}
                 onLoadedData={grabStill}
                 onPlaying={() => setShown(true)}
-                onVolumeChange={e => setMuted((e.currentTarget as HTMLVideoElement).muted)}
                 onTimeUpdate={onTime}
                 onEnded={() => { setEnded(true); setT(999); shatter(false); }}
                 onError={() => { console.error('Intro video failed to load - check that', videoSrc, 'exists in /public'); skippedThisSession = true; setDismissed(true); }}
@@ -331,22 +337,6 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
               border: '3px solid #7df3ff', boxShadow: '0 0 24px 6px rgba(0,188,212,0.7), inset 0 0 24px 4px rgba(0,188,212,0.5)',
               animation: 'stIntroRim 1.7s cubic-bezier(.22,.75,.2,1) both',
             }} />
-          )}
-
-          {/* small speaker button: only while the video is playing without sound (browser blocked it) */}
-          {kind === 'video' && shown && muted && (
-            <button
-              type="button"
-              aria-label="Sound on"
-              onClick={() => { const v = videoRef.current; if (v) { v.muted = false; v.volume = 1; v.play().catch(() => {}); } }}
-              style={{ position: 'absolute', top: 'max(14px, env(safe-area-inset-top))', right: 14, width: 40, height: 40, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4 }}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
-                <line x1="23" y1="9" x2="17" y2="15" />
-                <line x1="17" y1="9" x2="23" y2="15" />
-              </svg>
-            </button>
           )}
 
           {/* open the site as  stooorna.com/?introdebug=1  to see why the "Open App" banner is not showing */}
