@@ -1312,6 +1312,76 @@ app.post("/api/app-settings/live-icons", guarded(async (req, res) => {
   res.json({ ok: true, ...sw });
 }));
 
+// ── STORE-LINKS-PATCH: owner-set App Store / Google Play links + on/off switch for the white "Open App" banner on the welcome video ──
+// GET  /api/app-settings/store-links -> { ok, appStore, googlePlay, showBanner }  (public, never cached)
+// POST /api/app-settings/store-links { appStore?, googlePlay?, showBanner? } (owner/admin only) — saved to disk like the live-icons switches
+type StoreLinksCfg = { appStore: string; googlePlay: string; showBanner: boolean };
+const STORE_LINKS_FILE = () => join(ASSETS_DIR, "stooorna-store-links.json");
+const cleanStoreUrl = (v: unknown): string | null => {
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  if (s.length > 2048) return null;
+  try {
+    const u = new URL(s);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+};
+const storeLinksCfg = (): StoreLinksCfg => {
+  const g = globalThis as typeof globalThis & { __stooornaStoreLinks?: StoreLinksCfg };
+  if (!g.__stooornaStoreLinks) {
+    const c: StoreLinksCfg = { appStore: "", googlePlay: "", showBanner: true };
+    try {
+      const p = STORE_LINKS_FILE();
+      if (existsSync(p)) {
+        const raw = JSON.parse(readFileSync(p, "utf-8"));
+        c.appStore = cleanStoreUrl(raw?.appStore) || "";
+        c.googlePlay = cleanStoreUrl(raw?.googlePlay) || "";
+        if (raw?.showBanner === false) c.showBanner = false;
+      }
+    } catch (e) {
+      console.error("[store-links] load failed", e);
+    }
+    g.__stooornaStoreLinks = c;
+  }
+  return g.__stooornaStoreLinks;
+};
+const saveStoreLinksCfg = () => {
+  try {
+    if (!existsSync(ASSETS_DIR)) mkdirSync(ASSETS_DIR, { recursive: true });
+    writeFileSync(STORE_LINKS_FILE(), JSON.stringify({ ...storeLinksCfg(), updatedAt: Date.now() }), "utf-8");
+  } catch (e) {
+    console.error("[store-links] save failed", e);
+  }
+};
+app.get("/api/app-settings/store-links", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.json({ ok: true, ...storeLinksCfg() });
+});
+app.post("/api/app-settings/store-links", guarded(async (req, res) => {
+  if (!(await needAdmin(req, res))) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  const cfg = storeLinksCfg();
+  let touched = false;
+  for (const k of ["appStore", "googlePlay"] as const) {
+    if (k in body) {
+      const v = cleanStoreUrl(body[k]);
+      if (v === null) return deny(res, 400, `${k}_invalid`);
+      cfg[k] = v;
+      touched = true;
+    }
+  }
+  if ("showBanner" in body) {
+    if (typeof body.showBanner !== "boolean") return deny(res, 400, "showBanner_must_be_boolean");
+    cfg.showBanner = body.showBanner;
+    touched = true;
+  }
+  if (!touched) return deny(res, 400, "nothing_to_update");
+  saveStoreLinksCfg();
+  res.json({ ok: true, ...cfg });
+}));
+
 app.get("/api/gifts/profits", guarded(async (req, res) => {
   if (!(await needAdmin(req, res))) return;
   const mem = giftProfitMem();

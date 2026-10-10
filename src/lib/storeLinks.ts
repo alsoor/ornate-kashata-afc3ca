@@ -2,14 +2,14 @@
  * Store links set by the owner (settings -> User Control area):
  *  - App Store link   -> opened by the "Open App" banner on iPhone / iPad
  *  - Google Play link -> opened by the "Open App" banner on Android
- * Server route (public GET, owner-only POST):  /api/store-links  ->  { appStore, googlePlay }
+ * Server route (public GET, owner-only POST):  /api/app-settings/store-links  ->  { ok, appStore, googlePlay, showBanner }
  * A local copy is kept so the owner's own device always works, even before the route answers.
  */
 export type StoreKind = 'appStore' | 'googlePlay';
 export type StoreLinks = { appStore: string; googlePlay: string; showBanner: boolean };
 
 const CACHE_KEY = 'stooorna_store_links';
-const ENDPOINT = '/api/store-links';
+const ENDPOINT = '/api/app-settings/store-links';
 export const STORE_LINKS_EVENT = 'stooorna:store-links';
 
 /** Only http(s) links are accepted. Adds https:// when the scheme is missing. Returns '' when invalid. */
