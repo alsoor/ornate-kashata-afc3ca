@@ -32,6 +32,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [chats, setChats] = useState<{ id: string; title: string; messages: Message[] }[]>([]);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
