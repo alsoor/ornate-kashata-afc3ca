@@ -76,7 +76,7 @@ const AR_EN: Record<string, string> = {
   ضباب: 'fog', نار: 'fire', ماء: 'water', سحاب: 'clouds', عشب: 'grass', جزيره: 'island', كهف: 'cave',
   قلعه: 'castle', بيت: 'house', غرفه: 'room', موسيقى: 'music', سياره_رياضيه: 'sports car', حيوانات: 'animals',
   اطفال: 'kids', طفل: 'kid', حب: 'love', قلب: 'heart', نيون: 'neon', ظلام: 'darkness', خريف: 'autumn',
-  شتاء: 'winter', صيف: 'summer', ربيع: 'spring', رمال: 'sand', امواج: 'waves', سفينه: 'ship', يخت: 'yacht',
+  مرسيدس: 'mercedes', تويوتا: 'toyota', لكزس: 'lexus', فيراري: 'ferrari', لامبورجيني: 'lamborghini', بورش: 'porsche', نيسان: 'nissan', هوندا: 'honda', فورد: 'ford', شيفروليه: 'chevrolet', جيب: 'jeep', كاديلاك: 'cadillac', بنتلي: 'bentley', ايفون: 'iphone', بي_ام_دبليو: 'bmw', شتاء: 'winter', صيف: 'summer', ربيع: 'spring', رمال: 'sand', امواج: 'waves', سفينه: 'ship', يخت: 'yacht',
 };
 const DICT = new Map(Object.entries(AR_EN).map(([k, v]) => [norm(k.replace(/_/g, ' ')), v]));
 
@@ -92,10 +92,12 @@ export function detectWallpaperIntent(text: string): WallpaperIntent | null {
   if (!raw || raw.length > 90) return null;
   const n = norm(raw);
   if (HOW_RE.test(n + ' ')) return null;
-  if (!NOUN_RE.test(n)) return null;
-
-  const startsWithNoun = new RegExp('^' + NOUN_RE.source, 'i').test(n);
-  if (!VERB_RE.test(n) && !startsWithNoun) return null;
+  if (NOUN_RE.test(n)) {
+    const startsWithNoun = new RegExp('^' + NOUN_RE.source, 'i').test(n);
+    if (!VERB_RE.test(n) && !startsWithNoun) return null;
+  } else if (!SEARCH_VERB_RE.test(n) || QUESTION_RE.test(n) || n.split(' ').length > 6) {
+    return null;
+  }
 
   const tokens = n.split(' ').filter(Boolean);
   const kept = tokens.filter(t => !STOP.has(t) && !(t.startsWith('ال') && STOP.has(t.slice(2))));
@@ -155,18 +157,28 @@ async function fromPixabay(i: WallpaperIntent, page: number): Promise<WallpaperH
   const key = envKey('__STOOORNA_PIXABAY_KEY__', 'VITE_PIXABAY_API_KEY');
   if (!key) return [];
   const o = i.orientation === 'portrait' ? '&orientation=vertical' : i.orientation === 'landscape' ? '&orientation=horizontal' : '';
-  const lang = /[\u0600-\u06FF]/.test(i.query) ? '&lang=ar' : '';
-  const d = await getJson(
-    `https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${encodeURIComponent(i.query)}&image_type=photo&safesearch=true&per_page=${Math.max(3, i.count)}&page=${page}${o}${lang}`,
-  );
-  return (d?.hits || []).map((p: any) => ({
-    id: `pb-${p.id}`,
-    thumb: p.webformatURL,
-    full: p.largeImageURL || p.webformatURL,
-    credit: p.user || 'Pixabay',
-    source: 'pixabay' as const,
-    page: p.pageURL,
-  }));
+  const run = async (q: string, lang: string): Promise<WallpaperHit[]> => {
+    const d = await getJson(
+      `https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&image_type=photo&safesearch=true&per_page=${Math.max(3, i.count)}&page=${page}${o}${lang}`,
+    );
+    return (d?.hits || []).map((p: any) => ({
+      id: `pb-${p.id}`,
+      thumb: p.webformatURL,
+      full: p.largeImageURL || p.webformatURL,
+      credit: p.user || 'Pixabay',
+      source: 'pixabay' as const,
+      page: p.pageURL,
+    }));
+  };
+  const hasAr = /[\u0600-\u06FF]/.test(i.query);
+  let hits = await run(i.query, hasAr ? '&lang=ar' : '');
+  // Words not in the dictionary stay Arabic: try the plain Arabic text, then English only.
+  if (!hits.length && hasAr) hits = await run(i.display, '&lang=ar');
+  if (!hits.length && hasAr) {
+    const en = i.query.split(' ').filter(w => !/[\u0600-\u06FF]/.test(w)).join(' ').trim();
+    if (en) hits = await run(en, '');
+  }
+  return hits;
 }
 
 async function fromWikimedia(i: WallpaperIntent): Promise<WallpaperHit[]> {
