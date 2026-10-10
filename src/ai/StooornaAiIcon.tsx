@@ -8,10 +8,12 @@ interface StooornaAiIconProps {
 
 /**
  * Bottom-bar icon for Stooorna Ai.
- * Dark green-black rounded square with white "S" in the center.
+ * White rounded square with the black Stooorna globe logo inside.
  * Place this between LIVE and Templates in the bottom navigation.
  */
 export default function StooornaAiIcon({ active = false, onClick, size = 42 }: StooornaAiIconProps) {
+  const glyph = Math.round(size * 0.62);
+
   return (
     <button
       type="button"
@@ -22,14 +24,9 @@ export default function StooornaAiIcon({ active = false, onClick, size = 42 }: S
         width: size,
         height: size,
         borderRadius: 14, // semi-circular / rounded square
-        border: active ? '1.5px solid #ef4444' : '1px solid rgba(0,255,140,0.25)',
-        background: active
-          ? 'linear-gradient(135deg, #0f2a22 0%, #04120f 100%)'
-          : 'linear-gradient(135deg, #0a1f1a 0%, #04120f 100%)',
-        color: '#ffffff',
-        fontWeight: 800,
-        fontSize: Math.round(size * 0.45),
-        fontFamily: 'system-ui, -apple-system, sans-serif',
+        border: active ? '1.5px solid #ef4444' : '1px solid rgba(255,255,255,0.9)',
+        background: '#ffffff',
+        color: '#000000',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -42,7 +39,23 @@ export default function StooornaAiIcon({ active = false, onClick, size = 42 }: S
         flexShrink: 0,
       }}
     >
-      S
+      {/* Stooorna Ai globe logo (black on white) */}
+      <svg
+        width={glyph}
+        height={glyph}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#000000"
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M21.54 15H17a2 2 0 0 0-2 2v4.54" />
+        <path d="M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17" />
+        <path d="M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05" />
+        <circle cx="12" cy="12" r="10" />
+      </svg>
     </button>
   );
 }
