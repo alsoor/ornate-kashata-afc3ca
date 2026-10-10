@@ -436,6 +436,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [photoViewer, setPhotoViewer] = useState<{ thumb: string; full: string; credit?: string } | null>(null); // PHOTO-VIEWER
   const [showHistory, setShowHistory] = useState(false);
   const [chats, setChats] = useState<ChatSession[]>(() => loadChats());
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
@@ -1078,7 +1079,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                         src={ph.thumb}
                         alt={ph.credit}
                         loading="lazy"
-                        onClick={() => { try { window.open(ph.full, '_blank'); } catch { /* */ } }}
+                        onClick={() => setPhotoViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit })}
                         style={{ width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: 10, display: 'block', cursor: 'pointer', background: '#e5e7eb' }}
                       />
                       <button
@@ -1087,7 +1088,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                           try {
                             const blob = await (await fetch(ph.full)).blob();
                             downloadImage(URL.createObjectURL(blob));
-                          } catch { try { window.open(ph.full, '_blank'); } catch { /* */ } }
+                          } catch { setPhotoViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit }); }
                         }}
                         style={{ position: 'absolute', bottom: 6, right: 6, border: 'none', background: 'rgba(10,31,26,0.85)', color: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
                       >
@@ -1310,6 +1311,54 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           onClose={() => setCameraOpen(false)}
           onCapture={file => addFiles([file])}
         />
+      )}
+
+      {/* PHOTO-VIEWER: search photos open inside the app */}
+      {photoViewer && (
+        <div
+          onClick={e => { e.stopPropagation(); setPhotoViewer(null); }}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 24500, background: 'rgba(0,0,0,0.94)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column',
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={e => { e.stopPropagation(); setPhotoViewer(null); }}
+            style={{
+              position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', right: 14,
+              width: 40, height: 40, borderRadius: '50%', border: 'none',
+              background: 'rgba(255,255,255,0.16)', color: '#fff', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}
+          >
+            <XIcon size={22} />
+          </button>
+          <img
+            src={photoViewer.full}
+            onError={e => { const el = e.currentTarget; if (el.src !== photoViewer.thumb) el.src = photoViewer.thumb; }}
+            alt={photoViewer.credit || ''}
+            onClick={e => e.stopPropagation()}
+            style={{ maxWidth: '100%', maxHeight: '82dvh', objectFit: 'contain', display: 'block' }}
+          />
+          <button
+            type="button"
+            onClick={async e => {
+              e.stopPropagation();
+              try {
+                const blob = await (await fetch(photoViewer.full)).blob();
+                downloadImage(URL.createObjectURL(blob));
+              } catch { /* */ }
+            }}
+            style={{
+              marginTop: 16, border: 'none', background: '#fff', color: '#111', borderRadius: 999,
+              padding: '10px 28px', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            Save
+          </button>
+        </div>
       )}
 
       <style>{`
