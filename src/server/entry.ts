@@ -2584,6 +2584,14 @@ if (import.meta.env.PROD) {
 	}
 	// permissions sheet (location / camera / mic / notifications) for the installed app
 	if (!template.includes("/permissions.js")) template = template.replace("</body>", '<script src="/permissions.js" defer></script></body>');
+	// WELCOME-COVER: first-time visitors see black from the very first paint (not the page behind) until the welcome video takes over.
+	// Visitors who already registered never get it; the app removes it, and a 6s failsafe removes it if anything goes wrong.
+	if (!template.includes("st-intro-cover")) {
+		const coverHtml =
+			'<div id="st-intro-cover" style="position:fixed;top:0;left:0;right:0;bottom:0;background:#000;z-index:2147482999"></div>' +
+			"<script>try{if(localStorage.getItem('stooorna_intro_registered')==='1'){var c=document.getElementById('st-intro-cover');c&&c.remove()}else{setTimeout(function(){var c=document.getElementById('st-intro-cover');c&&c.remove()},6000)}}catch(e){}</script>";
+		template = template.replace(/<body([^>]*)>/i, (m) => m + coverHtml);
+	}
 	const fallbackShell = template
 		.replace("<!--app-head-->", "")
 		.replace("<!--app-html-->", "");

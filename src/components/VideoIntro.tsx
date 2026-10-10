@@ -68,6 +68,15 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   const [linksLoaded, setLinksLoaded] = useState(false); // wait for the server answer so a hidden intro never flashes
   const visible = !authLoading && !isLoggedIn && !dismissed && !wasRegistered() && linksLoaded && storeLinks.showIntro;
   const videoSrc = storeLinks.videoUrl || INTRO_VIDEO_SRC;
+
+  // COVER: a first-time visitor must never see the page behind. While the login state / owner settings are still loading, keep the screen black.
+  const [coverGaveUp, setCoverGaveUp] = useState(false);
+  useEffect(() => { const id = window.setTimeout(() => setCoverGaveUp(true), 6000); return () => window.clearTimeout(id); }, []);
+  const covering = !isLoggedIn && !dismissed && !wasRegistered() && (authLoading || !linksLoaded) && !coverGaveUp;
+  // the black layer that came inside the HTML is removed as soon as this component takes over (or decides there is no welcome screen)
+  useEffect(() => {
+    if (!covering) { try { document.getElementById('st-intro-cover')?.remove(); } catch { /* ignore */ } }
+  }, [covering]);
   const kind = introKind(videoSrc); // 'video' (default) | 'image' | 'pdf' -> whatever the owner uploaded
   const imgRef = useRef<HTMLImageElement | null>(null);
   // an image / PDF has no first frame to wait for: start the opening as soon as the screen is up
@@ -83,7 +92,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
       if (v.muted) { v.muted = false; v.volume = 1; }
       if (v.paused) { v.muted = true; v.play().catch(() => {}); } // never leave the video stopped
     };
-    const evs = ['pointerdown', 'touchstart', 'click', 'keydown'] as const;
+    const evs = ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'click', 'keydown'] as const;
     evs.forEach(e => window.addEventListener(e, unlock, true));
     return () => evs.forEach(e => window.removeEventListener(e, unlock, true));
   }, [visible, kind]);
@@ -100,14 +109,14 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   }, [visible, kind, ready, opened, phase]);
 
   useEffect(() => {
-    if (authLoading || isLoggedIn || dismissed || wasRegistered()) return;
+    if (isLoggedIn || dismissed || wasRegistered()) return;
     let live = true;
     const hardStop = window.setTimeout(() => { if (live) setLinksLoaded(true); }, 2500); // slow server: use the local copy
     void fetchStoreLinks().then(l => { if (live) { setStoreLinks(l); setLinksLoaded(true); } });
     const onLinks = () => setStoreLinks(readStoreLinks());
     window.addEventListener(STORE_LINKS_EVENT, onLinks);
     return () => { live = false; window.clearTimeout(hardStop); window.removeEventListener(STORE_LINKS_EVENT, onLinks); };
-  }, [authLoading, isLoggedIn, dismissed]);
+  }, [isLoggedIn, dismissed]);
 
   // setup: silent, no controls. The video waits (showing its first picture) while the circular opening runs.
   useEffect(() => {
@@ -128,11 +137,12 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
     const v = videoRef.current;
     if (!v) return;
     const playMuted = () => { v.muted = true; return v.play().catch(() => {}); };
-    // 1) always start muted: this is allowed everywhere, so the video moves by itself
-    void playMuted().then(() => {
-      // 2) sound only when the browser allows it (page already touched), otherwise the first touch turns it on
-      const ua: any = (navigator as any).userActivation;
-      if (ua && ua.hasBeenActive && !v.paused) { v.muted = false; window.setTimeout(() => { if (v.paused && !v.ended) void playMuted(); }, 250); }
+    // 1) try WITH sound straight away (works whenever the browser allows autoplay with sound for this visitor / site)
+    v.muted = false;
+    v.volume = 1;
+    v.play().catch(() => {
+      // 2) the browser said no: start muted so the video still moves by itself; the first touch anywhere then turns the sound on
+      void playMuted();
     });
     v.addEventListener('canplay', () => { if (v.paused && !v.ended) void playMuted(); });
   }, []);
@@ -222,7 +232,15 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
     return () => { done = true; cancelAnimationFrame(raf); };
   }, [phase]);
 
-  if (!visible) return null;
+  if (!visible) {
+    if (covering && typeof document !== 'undefined') {
+      return createPortal(
+        <div aria-hidden="true" style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100dvh', zIndex: 2147483000, background: '#000' }} />,
+        document.body,
+      );
+    }
+    return null;
+  }
 
   const openUrl = openAppUrl(storeLinks);
   const shimmer = kind === 'video' && (t >= SHIMMER_FROM || ended) && phase === 'play';
