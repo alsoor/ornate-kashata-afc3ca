@@ -109,13 +109,16 @@ export function detectWallpaperIntent(text: string): WallpaperIntent | null {
 
 /* ───────────────────────── providers ───────────────────────── */
 
+/** Built-in free Pixabay key (can still be overridden by window.__STOOORNA_PIXABAY_KEY__ or VITE_PIXABAY_API_KEY). */
+const DEFAULT_PIXABAY_KEY = '57979311-8a039f9922dc91162d27bc5b9';
+
 function envKey(winName: string, viteName: string): string {
   try {
     const w: any = window;
-    return String(w[winName] || (import.meta as any)?.env?.[viteName] || '').trim();
-  } catch {
-    return '';
-  }
+    const v = String(w[winName] || (import.meta as any)?.env?.[viteName] || '').trim();
+    if (v) return v;
+  } catch { /* */ }
+  return viteName === 'VITE_PIXABAY_API_KEY' ? DEFAULT_PIXABAY_KEY : '';
 }
 
 async function getJson(url: string, headers?: Record<string, string>): Promise<any> {
@@ -152,8 +155,9 @@ async function fromPixabay(i: WallpaperIntent, page: number): Promise<WallpaperH
   const key = envKey('__STOOORNA_PIXABAY_KEY__', 'VITE_PIXABAY_API_KEY');
   if (!key) return [];
   const o = i.orientation === 'portrait' ? '&orientation=vertical' : i.orientation === 'landscape' ? '&orientation=horizontal' : '';
+  const lang = /[\u0600-\u06FF]/.test(i.query) ? '&lang=ar' : '';
   const d = await getJson(
-    `https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${encodeURIComponent(i.query)}&image_type=photo&safesearch=true&per_page=${Math.max(3, i.count)}&page=${page}${o}`,
+    `https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${encodeURIComponent(i.query)}&image_type=photo&safesearch=true&per_page=${Math.max(3, i.count)}&page=${page}${o}${lang}`,
   );
   return (d?.hits || []).map((p: any) => ({
     id: `pb-${p.id}`,

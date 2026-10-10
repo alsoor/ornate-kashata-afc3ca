@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff } from 'lucide-react';
+import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
 
 interface Attachment {
   id: string;
@@ -15,7 +16,7 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  type?: 'text' | 'image' | 'table' | 'file';
+  type?: 'text' | 'image' | 'table' | 'file' | 'gallery';
   data?: any;
   attachments?: Attachment[];
   timestamp: number;
@@ -613,6 +614,36 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       });
     };
 
+    // PHOTO-SEARCH: "ابي صور سيارات" -> photos from Pixabay shown inside the chat
+    const photoIntent = pending.length === 0 ? detectWallpaperIntent(trimmed) : null;
+    if (photoIntent) {
+      void (async () => {
+        try {
+          const { hits } = await searchWallpapers(photoIntent);
+          const aiMsg: Message = {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            content: ar ? `هذي صور «${photoIntent.display}»:` : `Here are photos of "${photoIntent.display}":`,
+            type: 'gallery',
+            data: { photos: hits.slice(0, 8) },
+            timestamp: Date.now(),
+          };
+          setMessages(prev => {
+            const withAi = [...prev, aiMsg];
+            syncChat(chatId, withAi);
+            return withAi;
+          });
+        } catch (err) {
+          console.error('[Stooorna Ai] photo search error:', err);
+          pushAi(ar ? '⚠️ ما لقيت صور لهالطلب. جرّب كلمات ثانية.' : '⚠️ No photos found. Try different words.');
+        } finally {
+          if (timer) window.clearTimeout(timer);
+          setIsTyping(false);
+        }
+      })();
+      return;
+    }
+
     // Photos attached → image edit / image question (Gemini image model on the backend)
     const imgAtts = pending.filter(a => a.kind === 'image' && a.previewUrl);
     if (imgAtts.length) {
@@ -1038,6 +1069,33 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                     </div>
                   )}
                 </>
+              )}
+              {m.type === 'gallery' && Array.isArray(m.data?.photos) && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginTop: 8 }}>
+                  {m.data.photos.map((ph: any) => (
+                    <div key={ph.id} style={{ position: 'relative' }}>
+                      <img
+                        src={ph.thumb}
+                        alt={ph.credit}
+                        loading="lazy"
+                        onClick={() => { try { window.open(ph.full, '_blank'); } catch { /* */ } }}
+                        style={{ width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: 10, display: 'block', cursor: 'pointer', background: '#e5e7eb' }}
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const blob = await (await fetch(ph.full)).blob();
+                            downloadImage(URL.createObjectURL(blob));
+                          } catch { try { window.open(ph.full, '_blank'); } catch { /* */ } }
+                        }}
+                        style={{ position: 'absolute', bottom: 6, right: 6, border: 'none', background: 'rgba(10,31,26,0.85)', color: '#fff', borderRadius: 999, padding: '4px 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  ))}
+                </div>
               )}
               {m.type === 'table' && m.data && (
                 <div style={{ marginTop: 8, overflowX: 'auto' }}>
