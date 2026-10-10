@@ -73,6 +73,24 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
   // an image / PDF has no first frame to wait for: start the opening as soon as the screen is up
   useEffect(() => { if (visible && kind === 'pdf') setReady(true); }, [visible, kind]);
 
+  // SOUND: browsers refuse to start a video with sound before the first touch. The video then plays muted and the sound comes back
+  // on the first touch / key press anywhere (or with the small speaker button), so the sound never stays lost.
+  const [muted, setMuted] = useState(true);
+  useEffect(() => {
+    if (!visible || kind !== 'video') return;
+    const unlock = () => {
+      const v = videoRef.current;
+      if (!v) return;
+      if (v.muted) { v.muted = false; v.volume = 1; }
+      if (v.paused && !v.ended) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });
+      if (!v.muted) off();
+    };
+    const evs = ['pointerdown', 'touchstart', 'click', 'keydown'] as const;
+    const off = () => evs.forEach(e => window.removeEventListener(e, unlock, true));
+    evs.forEach(e => window.addEventListener(e, unlock, true));
+    return off;
+  }, [visible, kind]);
+
   useEffect(() => {
     if (authLoading || isLoggedIn || dismissed || wasRegistered()) return;
     let live = true;
@@ -273,6 +291,7 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
                 {...({ controlsList: 'nodownload nofullscreen noremoteplayback' } as Record<string, string>)}
                 onLoadedData={grabStill}
                 onPlaying={() => setShown(true)}
+                onVolumeChange={e => setMuted((e.currentTarget as HTMLVideoElement).muted)}
                 onTimeUpdate={onTime}
                 onEnded={() => { setEnded(true); setT(999); shatter(false); }}
                 onError={() => { console.error('Intro video failed to load - check that', videoSrc, 'exists in /public'); skippedThisSession = true; setDismissed(true); }}
@@ -312,6 +331,22 @@ export default function VideoIntro({ isLoggedIn, authLoading = false, onLogin }:
               border: '3px solid #7df3ff', boxShadow: '0 0 24px 6px rgba(0,188,212,0.7), inset 0 0 24px 4px rgba(0,188,212,0.5)',
               animation: 'stIntroRim 1.7s cubic-bezier(.22,.75,.2,1) both',
             }} />
+          )}
+
+          {/* small speaker button: only while the video is playing without sound (browser blocked it) */}
+          {kind === 'video' && shown && muted && (
+            <button
+              type="button"
+              aria-label="Sound on"
+              onClick={() => { const v = videoRef.current; if (v) { v.muted = false; v.volume = 1; v.play().catch(() => {}); } }}
+              style={{ position: 'absolute', top: 'max(14px, env(safe-area-inset-top))', right: 14, width: 40, height: 40, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 4 }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" />
+                <line x1="23" y1="9" x2="17" y2="15" />
+                <line x1="17" y1="9" x2="23" y2="15" />
+              </svg>
+            </button>
           )}
 
           {/* open the site as  stooorna.com/?introdebug=1  to see why the "Open App" banner is not showing */}
