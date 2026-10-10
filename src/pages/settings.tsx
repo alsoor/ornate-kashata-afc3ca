@@ -24,6 +24,7 @@ import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, norma
 // import { VipAvatarFrame } from '@/components/VipBadge';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { WalletSheet } from '@/components/LiveCoinsDock';
+import { readAiIconHide, fetchAiIconHide, setAiIconHide, type AiIconHide } from '@/lib/aiIconPatch';
 
 /** Owner gift: credits spendable Coins immediately and queues the gifts-box notice. */
 
@@ -76,6 +77,45 @@ function OwnerLiveIconsControls() {
       }} style={{ width: '100%', textAlign: 'left', padding: '12px 14px', borderRadius: 12, cursor: 'pointer', background: priv ? 'rgba(250,204,21,0.12)' : 'rgba(255,255,255,0.04)', border: `1px solid ${priv ? 'rgba(250,204,21,0.45)' : 'rgba(255,255,255,0.12)'}`, color: priv ? '#facc15' : 'rgba(220,220,220,0.9)', fontWeight: 800, fontSize: '0.82rem' }}>
         {priv ? 'زر البث الخاص: شغّال — الشحن والهدايا تظهر لك فقط' : 'زر البث الخاص: متوقف'}
       </button>
+    </div>
+  );
+}
+
+/** Owner only: "Ai" section — hide the Stooorna Ai icon (bottom bar) from users / from the owner. */
+function OwnerAiControls({ T }: { T: Record<string, any> }) {
+  const [hide, setHide] = useState<AiIconHide>(() => readAiIconHide());
+  const [note, setNote] = useState<{ text: string; bad: boolean }>({ text: '', bad: false });
+  useEffect(() => {
+    let live = true;
+    void fetchAiIconHide().then(h => { if (live && h) setHide(h); });
+    return () => { live = false; };
+  }, []);
+  const toggle = async (key: 'users' | 'owner') => {
+    const next = { ...hide, [key]: !hide[key] };
+    setHide(next);
+    const ok = await setAiIconHide(next);
+    setNote(ok
+      ? { text: 'تم الحفظ', bad: false }
+      : { text: 'تغيّر على هذا الجهاز فقط - السيرفر ما أكّد', bad: true });
+  };
+  const sw = (key: 'users' | 'owner', label: string, sub: string) => (
+    <div key={key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 14px', borderRadius: 12, background: T.surface, border: `1px solid ${T.surfaceBorder}` }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ margin: 0, color: T.text, fontWeight: 800, fontSize: '0.82rem' }}>{label}</p>
+        <p style={{ margin: '3px 0 0', color: hide[key] ? '#fca5a5' : '#86efac', fontSize: '0.7rem', fontWeight: 700 }}>{hide[key] ? sub + ': مخفي' : sub + ': ظاهر'}</p>
+      </div>
+      <button type="button" aria-label={label} onClick={() => { void toggle(key); }}
+        style={{ width: 48, height: 28, borderRadius: 999, border: 'none', flexShrink: 0, background: hide[key] ? '#ef4444' : '#4b5563', position: 'relative', cursor: 'pointer' }}>
+        <span style={{ position: 'absolute', top: 4, width: 20, height: 20, borderRadius: '50%', background: '#fff', left: hide[key] ? 24 : 4, transition: 'left 0.15s ease' }} />
+      </button>
+    </div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <p style={{ margin: '6px 2px 0', color: T.text, fontWeight: 800, fontSize: '0.86rem', letterSpacing: '0.08em' }}>Ai</p>
+      {sw('users', 'إخفاء Stooorna Ai عن المستخدمين', 'عند المستخدمين')}
+      {sw('owner', 'إخفاء Stooorna Ai عن الأونر (أنا)', 'عندي')}
+      {note.text && <p style={{ margin: 0, textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: note.bad ? '#fca5a5' : '#86efac' }}>{note.text}</p>}
     </div>
   );
 }
@@ -10290,6 +10330,9 @@ export default function SettingsPage() {
                   </div>
                   <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
                 </motion.button>
+
+                {/* Ai — hide Stooorna Ai icon from users / owner, right under User Control */}
+                <OwnerAiControls T={T} />
 
                 {/* App Upload (Android / iOS boxes + live icons switch) — right under User Control */}
                 <AppUploadSection T={T} />

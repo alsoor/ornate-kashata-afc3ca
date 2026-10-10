@@ -3,6 +3,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, use
 import { createPortal } from 'react-dom';
 import React from 'react';
 import { StooornaAiIcon, StooornaAiSheet } from '@/ai';
+import { useAiIconVisible } from '@/lib/aiIconPatch';
 
 if (typeof document !== 'undefined' && !document.getElementById('stooorna-media-fix')) {
   const fix = document.createElement('style');
@@ -26744,6 +26745,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [dockTplYellow, setDockTplYellow] = useState(false);
   const [dockSettingsGray, setDockSettingsGray] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  const aiIconVisible = useAiIconVisible(user as any);
   useEffect(() => {
     const readTpl = () => {
       try {
@@ -29016,7 +29018,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
         )}
         <StooornaAiSheet
-          open={aiOpen}
+          open={aiOpen && aiIconVisible}
           onClose={() => setAiOpen(false)}
           user={user}
         />
@@ -29163,7 +29165,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 </div>
                   )}
                   {/* Stooorna Ai — between LIVE and Templates */}
-                  {user?.id && (
+                  {user?.id && aiIconVisible && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
                       <StooornaAiIcon
                         active={aiOpen}
