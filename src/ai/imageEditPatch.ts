@@ -1,5 +1,5 @@
 /**
- * Stooorna Ai — Image Patch (v1.1.0)
+ * Stooorna Ai — Image Patch (v1.2.0)
  * Place at: src/ai/imageEditPatch.ts
  *
  * Fixes: "تعذر تعديل الصورة حالياً [HTTP 404 {"detail":"Not Found"}]"
@@ -16,7 +16,9 @@
  *   3. `mode` field: "edit" (change the photo) or "understand" (describe / read / answer about it),
  *      detected from the user's text (Arabic + English).
  *   4. One retry on network errors / 5xx.
- *   5. Response normalising: accepts image_base64 / b64_json / image / images[] / image_url / url
+ *   5. Android fix: photos picked on the phone are copied into memory the moment they are chosen,
+ *      so the app can still read them when you press send ("Failed to fetch" / broken thumbnail).
+ *   6. Response normalising: accepts image_base64 / b64_json / image / images[] / image_url / url
  *      and always hands the sheet { reply, image_base64, image_mime }.
  *
  * Optional config (only if you host the route somewhere else):
@@ -24,7 +26,7 @@
  *   or  VITE_AI_IMAGE_API_URL=https://your-server.com/ai
  */
 
-export const STOOORNA_AI_IMAGE_PATCH_VERSION = '1.1.0';
+export const STOOORNA_AI_IMAGE_PATCH_VERSION = '1.2.0';
 
 const PATCH_FLAG = '__stooornaAiImagePatch__';
 const CACHE_KEY = 'stooorna_ai_image_base_v1';
@@ -44,6 +46,9 @@ function guessMode(prompt: string): 'edit' | 'understand' {
   if (ASK_RE.test(p) || /[?؟]/.test(p)) return 'understand';
   return 'understand';
 }
+
+/** In-memory copies of picked photos (blob URL -> Blob) so a dead blob URL can still be read. */
+const blobCache = new Map<string, Blob>();
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -221,7 +226,19 @@ async function handleImageRequest(
       { status: last.status, headers: { 'Content-Type': 'application/json' } },
     );
   }
-  throw lastErr ?? new Error('image request failed');
+  const hosts = tried.map(u => { try { return new URL(u).host; } catch { return u; } });
+  throw new Error(`Network error: cannot reach ${Array.from(new Set(hosts)).join(' / ')}${lastErr ? ` (${String((lastErr as any)?.message || lastErr)})` : ''}`);
+}
+
+/** fetch(blob:...) that falls back to the in-memory copy of the picked photo. */
+async function fetchBlobSafe(nativeFetch: typeof fetch, input: RequestInfo | URL, init: RequestInit | undefined, url: string) {
+  const copy = blobCache.get(url);
+  if (copy) return new Response(copy, { status: 200, headers: { 'Content-Type': copy.type || 'image/jpeg' } });
+  try {
+    return await nativeFetch(input, init);
+  } catch {
+    throw new Error('Could not read the picked photo from the device - please pick it again');
+  }
 }
 
 export function installStooornaAiImagePatch() {
@@ -231,7 +248,28 @@ export function installStooornaAiImagePatch() {
   w[PATCH_FLAG] = STOOORNA_AI_IMAGE_PATCH_VERSION;
 
   const nativeFetch = window.fetch.bind(window);
+
+  // Copy every picked image into memory right away (Android WebView can drop the original file later).
+  try {
+    const nativeCreate = URL.createObjectURL.bind(URL);
+    const nativeRevoke = URL.revokeObjectURL.bind(URL);
+    URL.createObjectURL = ((obj: Blob | MediaSource) => {
+      const url = nativeCreate(obj);
+      try {
+        if (typeof File !== 'undefined' && obj instanceof File && obj.type.startsWith('image/')) {
+          obj.arrayBuffer().then(buf => { blobCache.set(url, new Blob([buf], { type: obj.type })); }).catch(() => { /* */ });
+        }
+      } catch { /* */ }
+      return url;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = ((url: string) => {
+      blobCache.delete(url);
+      nativeRevoke(url);
+    }) as typeof URL.revokeObjectURL;
+  } catch { /* */ }
+
   window.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    if (urlOf(input).startsWith('blob:')) return fetchBlobSafe(nativeFetch, input, init, urlOf(input));
     const isTarget =
       /\/image-edit(\?|$)/.test(urlOf(input)) &&
       (init?.method || 'GET').toUpperCase() === 'POST' &&
