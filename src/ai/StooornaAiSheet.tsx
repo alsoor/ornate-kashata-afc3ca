@@ -436,7 +436,9 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [photoViewer, setPhotoViewer] = useState<{ thumb: string; full: string; credit?: string } | null>(null); // PHOTO-VIEWER
+  const reqIdRef = useRef(0); // STOP-BUTTON: id of the running request (changes when stopped)
+  const abortRef = useRef<AbortController | null>(null);
+  const [photoViewer, setPhotoViewer] = useState<{ thumb: string; full: string; credit?: string; video?: string } | null>(null); // PHOTO-VIEWER
   const [photoNote, setPhotoNote] = useState('');
   const [showHistory, setShowHistory] = useState(false);
   const [chats, setChats] = useState<ChatSession[]>(() => loadChats());
@@ -547,7 +549,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         const r = await fetch(t);
         if (!r.ok) continue;
         const b = await r.blob();
-        if (b.size > 0 && (b.type || '').startsWith('image/')) return b;
+        if (b.size > 0 && /^(image|video)\//.test(b.type || '')) return b;
       } catch { /* try next */ }
     }
     throw new Error('photo not reachable');
@@ -556,7 +558,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     try {
       flashPhotoNote('Saving…', 0);
       const blob = await getPhotoBlob(u);
-      const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+      const ext = blob.type.includes('video') ? 'mp4' : blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
@@ -635,9 +637,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     const apiBase = getAiApiBase();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? window.setTimeout(() => controller.abort(), 90000) : 0;
+    const myId = ++reqIdRef.current; // STOP-BUTTON
+    abortRef.current = controller;
+    const stale = () => myId !== reqIdRef.current;
     const ar = /[\u0600-\u06FF]/.test(content);
 
     const pushAi = (text: string, imageUrl?: string) => {
+      if (stale()) return; // stopped by the user
       const aiMsg: Message = {
         id: `a-${Date.now()}`,
         role: 'assistant',
@@ -659,10 +665,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       void (async () => {
         try {
           const { hits } = await searchWallpapers(photoIntent);
+          if (stale()) return;
           const aiMsg: Message = {
             id: `a-${Date.now()}`,
             role: 'assistant',
-            content: ar ? `هذي صور «${photoIntent.display}»:` : `Here are photos of "${photoIntent.display}":`,
+            content: photoIntent.kind === 'video'
+              ? (ar ? `هذي فيديوهات «${photoIntent.display}»:` : `Here are videos of "${photoIntent.display}":`)
+              : (ar ? `هذي صور «${photoIntent.display}»:` : `Here are photos of "${photoIntent.display}":`),
             type: 'gallery',
             data: { photos: hits.slice(0, 8) },
             timestamp: Date.now(),
@@ -674,10 +683,10 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           });
         } catch (err) {
           console.error('[Stooorna Ai] photo search error:', err);
-          pushAi(ar ? '⚠️ ما لقيت صور لهالطلب. جرّب كلمات ثانية.' : '⚠️ No photos found. Try different words.');
+          pushAi(ar ? '⚠️ ما لقيت نتائج لهالطلب. جرّب كلمات ثانية.' : '⚠️ No results found. Try different words.');
         } finally {
           if (timer) window.clearTimeout(timer);
-          setIsTyping(false);
+          if (!stale()) setIsTyping(false);
         }
       })();
       return;
@@ -715,7 +724,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           );
         } finally {
           if (timer) window.clearTimeout(timer);
-          setIsTyping(false);
+          if (!stale()) setIsTyping(false);
         }
       })();
       return;
@@ -754,7 +763,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       })
       .finally(() => {
         if (timer) window.clearTimeout(timer);
-        setIsTyping(false);
+        if (!stale()) setIsTyping(false);
       });
   };
 
@@ -867,6 +876,14 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     try { recRef.current?.abort?.(); } catch { /* */ }
     try { if (mediaRef.current?.rec.state === 'recording') mediaRef.current.rec.stop(); } catch { /* */ }
   }, [open]);
+
+  // STOP-BUTTON: cancel the running search / answer (the send button turns into a stop square while waiting)
+  const stopRequest = () => {
+    reqIdRef.current += 1;
+    try { abortRef.current?.abort(); } catch { /* */ }
+    abortRef.current = null;
+    setIsTyping(false);
+  };
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -1227,9 +1244,17 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                         src={ph.thumb}
                         alt={ph.credit}
                         loading="lazy"
-                        onClick={() => setPhotoViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit })}
-                        style={{ width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: 10, display: 'block', cursor: 'pointer', background: '#e5e7eb' }}
+                        onClick={() => setPhotoViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit, video: ph.video })}
+                        style={{ width: '100%', aspectRatio: ph.kind === 'video' ? '16 / 9' : '3 / 4', objectFit: 'cover', borderRadius: 10, display: 'block', cursor: 'pointer', background: '#e5e7eb' }}
                       />
+                      {ph.kind === 'video' && (
+                        <div
+                          onClick={() => setPhotoViewer({ thumb: ph.thumb, full: ph.full, credit: ph.credit, video: ph.video })}
+                          style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, cursor: 'pointer' }}
+                        >
+                          ▶
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() => { void savePhoto(ph.full); }}
@@ -1380,23 +1405,23 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
             <button
               type="button"
-              disabled={isTyping}
-              aria-label={listening ? 'Stop' : input.trim() || attachments.length ? 'Send' : 'Voice'}
+              aria-label={listening || isTyping ? 'Stop' : input.trim() || attachments.length ? 'Send' : 'Voice'}
               onClick={() => {
+                if (isTyping) { stopRequest(); return; }
                 if (listening) { stopVoice(); return; }
                 if (input.trim() || attachments.length) { sendMessage(input); return; }
                 void startVoice();
               }}
               style={{
                 width: 38, height: 38, borderRadius: '50%', border: 'none',
-                background: !isTyping ? RED : 'rgba(239,68,68,0.4)',
+                background: RED,
                 color: '#fff',
-                cursor: !isTyping ? 'pointer' : 'default',
+                cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                animation: listening ? 'stooornaAiMicPulse 1.2s ease-out infinite' : undefined,
+                animation: listening || isTyping ? 'stooornaAiMicPulse 1.2s ease-out infinite' : undefined,
               }}
             >
-              {listening ? (
+              {listening || isTyping ? (
                 <Square size={14} strokeWidth={0} fill="#fff" />
               ) : input.trim() || attachments.length ? (
                 <Send size={16} strokeWidth={2.4} />
@@ -1496,13 +1521,25 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             </button>
           </div>
           <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 8px' }}>
-            <img
-              src={photoViewer.full}
-              onError={e => { const el = e.currentTarget; if (el.src !== photoViewer.thumb) el.src = photoViewer.thumb; }}
-              alt={photoViewer.credit || ''}
-              onClick={e => e.stopPropagation()}
-              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block', borderRadius: 8 }}
-            />
+            {photoViewer.video ? (
+              <video
+                src={photoViewer.video}
+                poster={photoViewer.thumb}
+                controls
+                autoPlay
+                playsInline
+                onClick={e => e.stopPropagation()}
+                style={{ maxWidth: '100%', maxHeight: '100%', display: 'block', borderRadius: 8, background: '#000' }}
+              />
+            ) : (
+              <img
+                src={photoViewer.full}
+                onError={e => { const el = e.currentTarget; if (el.src !== photoViewer.thumb) el.src = photoViewer.thumb; }}
+                alt={photoViewer.credit || ''}
+                onClick={e => e.stopPropagation()}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block', borderRadius: 8 }}
+              />
+            )}
           </div>
           <div
             style={{

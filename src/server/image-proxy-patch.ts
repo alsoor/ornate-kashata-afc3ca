@@ -11,7 +11,7 @@ const ALLOWED_HOSTS = [
   "images.pexels.com",
   "upload.wikimedia.org",
 ];
-const MAX_BYTES = 15 * 1024 * 1024;
+const MAX_BYTES = 60 * 1024 * 1024; // photos are small; Pixabay videos can reach tens of MB
 
 function hostAllowed(host: string): boolean {
   const h = host.toLowerCase();
@@ -39,7 +39,7 @@ export function registerImageProxyRoutes(app: Express) {
       clearTimeout(timer);
       if (!r.ok) return res.status(502).json({ ok: false, error: `upstream ${r.status}` });
       const type = r.headers.get("content-type") || "";
-      if (!type.startsWith("image/")) return res.status(415).json({ ok: false, error: "not an image" });
+      if (!/^(image|video)\//.test(type)) return res.status(415).json({ ok: false, error: "not an image or video" });
       const buf = Buffer.from(await r.arrayBuffer());
       if (buf.length > MAX_BYTES) return res.status(413).json({ ok: false, error: "too large" });
       res.setHeader("Content-Type", type);

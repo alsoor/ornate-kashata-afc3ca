@@ -18,6 +18,9 @@ export interface WallpaperHit {
   credit: string;
   source: 'pexels' | 'pixabay' | 'wikimedia';
   page?: string;
+  /** 'video' = Pixabay video (thumb = poster, video = small file to play in chat, full = better quality to save) */
+  kind?: 'photo' | 'video';
+  video?: string;
 }
 
 export interface WallpaperIntent {
@@ -27,6 +30,7 @@ export interface WallpaperIntent {
   display: string;
   orientation: 'portrait' | 'landscape' | 'any';
   count: number;
+  kind?: 'photo' | 'video';
 }
 
 /* ───────────────────────── intent detection ───────────────────────── */
@@ -42,7 +46,8 @@ const norm = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
-const NOUN_RE = /(خلفي(?:ه|ات)|ولبيبر|وولبيبر|wallpapers?|صور(?:ه)?|pictures?|photos?|images?|pics?)/i;
+const VIDEO_RE = /(فيديو|فيديوهات|مقطع|مقاطع|videos?|clips?)/i;
+const NOUN_RE = /(فيديو(?:هات)?|مقاطع|مقطع|videos?|clips?|خلفي(?:ه|ات)|ولبيبر|وولبيبر|wallpapers?|صور(?:ه)?|pictures?|photos?|images?|pics?)/i;
 const WALLPAPER_RE = /(خلفي(?:ه|ات)|ولبيبر|وولبيبر|wallpapers?)/i;
 const VERB_RE =
   /(^|\s)(ابي|ابغي|ابغا|ابغى|اريد|ودي|هات|هاتلي|جيب|جيبلي|ورني|وريني|عطني|اعطني|دور|دورلي|ابحث|show|find|get|search|want|need)(\s|$)/i;
@@ -52,7 +57,7 @@ const LANDSCAPE_RE = /(كمبيوتر|لابتوب|لاب توب|\bpc\b|desktop|
 const STOP = new Set(
   norm(
     'ابي ابغي ابغا ابغى اريد ودي هات هاتلي جيب جيبلي ورني وريني عطني اعطني دور دورلي ابحث عن لي من في ل لل و ' +
-      'خلفيه خلفيات ولبيبر وولبيبر صوره صور ممكن لو سمحت بليز شوي كم كثير حلوه حلو جميله جميل رجاء ' +
+      'فيديو فيديوهات مقطع مقاطع video videos clip clips خلفيه خلفيات ولبيبر وولبيبر صوره صور ممكن لو سمحت بليز شوي كم كثير حلوه حلو جميله جميل رجاء ' +
       'كمبيوتر لابتوب لاب توب شاشه عريض عريضه افقي ' +
       'show find get search want need me some of for a the please plz pictures picture photos photo images image pics pic wallpapers wallpaper pc desktop laptop landscape i to my',
   ).split(' '),
@@ -106,7 +111,8 @@ export function detectWallpaperIntent(text: string): WallpaperIntent | null {
   const query = kept.map(translateToken).join(' ').trim();
   const wallpaper = WALLPAPER_RE.test(n);
   const orientation: WallpaperIntent['orientation'] = LANDSCAPE_RE.test(n) ? 'landscape' : wallpaper ? 'portrait' : 'any';
-  return { query, display: kept.join(' '), orientation, count: 8 };
+  const kind: 'photo' | 'video' = VIDEO_RE.test(n) ? 'video' : 'photo';
+  return { query, display: kept.join(' '), orientation: kind === 'video' ? 'any' : orientation, count: kind === 'video' ? 6 : 8, kind };
 }
 
 /* ───────────────────────── providers ───────────────────────── */
@@ -123,9 +129,9 @@ function envKey(winName: string, viteName: string): string {
   return viteName === 'VITE_PIXABAY_API_KEY' ? DEFAULT_PIXABAY_KEY : '';
 }
 
-async function getJson(url: string, headers?: Record<string, string>): Promise<any> {
+async function getJson(url: string, headers?: Record<string, string>, timeoutMs = 7000): Promise<any> {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const t = ctrl ? window.setTimeout(() => ctrl.abort(), 12000) : 0;
+  const t = ctrl ? window.setTimeout(() => ctrl.abort(), timeoutMs) : 0;
   try {
     const r = await fetch(url, { headers, signal: ctrl?.signal });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -160,6 +166,8 @@ async function fromPixabay(i: WallpaperIntent, page: number): Promise<WallpaperH
   const run = async (q: string, lang: string): Promise<WallpaperHit[]> => {
     const d = await getJson(
       `https://pixabay.com/api/?key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&image_type=photo&safesearch=true&per_page=${Math.max(3, i.count)}&page=${page}${o}${lang}`,
+      undefined,
+      6000,
     );
     return (d?.hits || []).map((p: any) => ({
       id: `pb-${p.id}`,
@@ -168,17 +176,53 @@ async function fromPixabay(i: WallpaperIntent, page: number): Promise<WallpaperH
       credit: p.user || 'Pixabay',
       source: 'pixabay' as const,
       page: p.pageURL,
+      kind: 'photo' as const,
     }));
   };
   const hasAr = /[\u0600-\u06FF]/.test(i.query);
-  let hits = await run(i.query, hasAr ? '&lang=ar' : '');
-  // Words not in the dictionary stay Arabic: try the plain Arabic text, then English only.
-  if (!hits.length && hasAr) hits = await run(i.display, '&lang=ar');
-  if (!hits.length && hasAr) {
-    const en = i.query.split(' ').filter(w => !/[\u0600-\u06FF]/.test(w)).join(' ').trim();
-    if (en) hits = await run(en, '');
-  }
-  return hits;
+  if (!hasAr) return run(i.query, '');
+  // Words not in the dictionary stay Arabic: ask the variants at the same time (not one after another), keep the best non-empty one.
+  const en = i.query.split(' ').filter(w => !/[\u0600-\u06FF]/.test(w)).join(' ').trim();
+  const variants = [run(i.query, '&lang=ar'), run(i.display, '&lang=ar')];
+  if (en) variants.push(run(en, ''));
+  const results = await Promise.all(variants.map(v => v.catch(() => [] as WallpaperHit[])));
+  return results.find(r => r.length) || [];
+}
+
+async function fromPixabayVideos(i: WallpaperIntent, page: number): Promise<WallpaperHit[]> {
+  const key = envKey('__STOOORNA_PIXABAY_KEY__', 'VITE_PIXABAY_API_KEY');
+  if (!key) return [];
+  const run = async (q: string, lang: string): Promise<WallpaperHit[]> => {
+    const d = await getJson(
+      `https://pixabay.com/api/videos/?key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&safesearch=true&per_page=${Math.max(3, i.count)}&page=${page}${lang}`,
+      undefined,
+      6000,
+    );
+    return (d?.hits || [])
+      .map((v: any) => {
+        const vs = v.videos || {};
+        const play = vs.small?.url || vs.medium?.url || vs.tiny?.url || '';
+        const best = vs.medium?.url || vs.small?.url || vs.large?.url || play;
+        const thumb =
+          vs.medium?.thumbnail || vs.small?.thumbnail || vs.tiny?.thumbnail ||
+          (v.picture_id ? `https://i.vimeocdn.com/video/${v.picture_id}_640x360.jpg` : '');
+        return {
+          id: `pv-${v.id}`,
+          thumb,
+          full: best,
+          video: play,
+          credit: v.user || 'Pixabay',
+          source: 'pixabay' as const,
+          page: v.pageURL,
+          kind: 'video' as const,
+        };
+      })
+      .filter((h: WallpaperHit) => h.video && h.full);
+  };
+  const hasAr = /[\u0600-\u06FF]/.test(i.query);
+  const variants = hasAr ? [run(i.query, '&lang=ar'), run(i.display, '&lang=ar')] : [run(i.query, '')];
+  const results = await Promise.all(variants.map(v => v.catch(() => [] as WallpaperHit[])));
+  return results.find(r => r.length) || [];
 }
 
 async function fromWikimedia(i: WallpaperIntent): Promise<WallpaperHit[]> {
@@ -209,10 +253,46 @@ async function fromWikimedia(i: WallpaperIntent): Promise<WallpaperHit[]> {
   return out;
 }
 
+/** Same search again within 10 minutes = instant (kept in memory). */
+const searchCache = new Map<string, { at: number; hits: WallpaperHit[]; provider: string }>();
+const CACHE_MS = 10 * 60 * 1000;
+
+/** Open connections to the photo servers early so the first search is faster. */
+let warmed = false;
+function warmUp() {
+  if (warmed || typeof document === 'undefined') return;
+  warmed = true;
+  try {
+    ['https://pixabay.com', 'https://cdn.pixabay.com'].forEach(href => {
+      const l = document.createElement('link');
+      l.rel = 'preconnect';
+      l.href = href;
+      l.crossOrigin = 'anonymous';
+      document.head.appendChild(l);
+    });
+  } catch { /* */ }
+}
+
 export async function searchWallpapers(
   intent: WallpaperIntent,
   page = 1,
 ): Promise<{ hits: WallpaperHit[]; provider: string }> {
+  warmUp();
+  const cacheKey = `${intent.kind || 'photo'}|${intent.query}|${intent.orientation}|${page}`;
+  const cached = searchCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < CACHE_MS) return { hits: cached.hits, provider: cached.provider };
+
+  const done = (hits: WallpaperHit[], provider: string) => {
+    searchCache.set(cacheKey, { at: Date.now(), hits, provider });
+    return { hits, provider };
+  };
+
+  if (intent.kind === 'video') {
+    const hits = await fromPixabayVideos(intent, page);
+    if (hits.length) return done(hits, 'pixabay');
+    throw new Error('no results');
+  }
+
   const steps: Array<[string, () => Promise<WallpaperHit[]>]> = [
     ['pexels', () => fromPexels(intent, page)],
     ['pixabay', () => fromPixabay(intent, page)],
@@ -222,7 +302,7 @@ export async function searchWallpapers(
   for (const [name, run] of steps) {
     try {
       const hits = (await run()).filter(h => h.thumb && h.full);
-      if (hits.length) return { hits, provider: name };
+      if (hits.length) return done(hits, name);
     } catch (e) {
       lastErr = e;
     }
