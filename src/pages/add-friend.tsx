@@ -2,6 +2,7 @@ import { add_friend } from 'virtual:content';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import React from 'react';
+import { StooornaAiIcon, StooornaAiSheet } from '@/ai';
 
 if (typeof document !== 'undefined' && !document.getElementById('stooorna-media-fix')) {
   const fix = document.createElement('style');
@@ -26742,6 +26743,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const anyInCall = useAnyInCall(anyLiveHostIds);
   const [dockTplYellow, setDockTplYellow] = useState(false);
   const [dockSettingsGray, setDockSettingsGray] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   useEffect(() => {
     const readTpl = () => {
       try {
@@ -29013,6 +29015,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
         )}
+        <StooornaAiSheet
+          open={aiOpen}
+          onClose={() => setAiOpen(false)}
+          user={user}
+        />
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && !tplMediaOpen && (
           <BottomHeaderPortal key={dockBarKey} enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
@@ -29154,6 +29161,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Radio size={22} strokeWidth={2.2} />
                     </button>
 </div>
+                  )}
+                  {/* Stooorna Ai — between LIVE and Templates */}
+                  {user?.id && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
+                      <StooornaAiIcon
+                        active={aiOpen}
+                        onClick={() => setAiOpen(v => !v)}
+                        size={44}
+                      />
+                    </div>
                   )}
                   {/* Templates — صور وفيديو Templates (كانت خلف الشيت) صارت هنا بين LIVE و Settings */}
                   {user?.id && (
