@@ -1,0 +1,14 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.debugpy",
+    "ms-toolsai.jupyter",
+    "charliermarsh.ruff",
+    "ms-azuretools.vscode-docker",
+    "esbenp.prettier-vscode",
+    "dbaeumer.vscode-eslint",
+    "bradlc.vscode-tailwindcss",
+    "streetsidesoftware.code-spell-checker"
+  ]
+}

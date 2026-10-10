@@ -1,0 +1,38 @@
+# Stooorna Ai stack (independent)
+# From Ai/ folder:
+#   docker compose -f docker/docker-compose.yml up --build
+
+services:
+  stooorna-ai:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: stooorna-ai
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    environment:
+      CHROMA_PATH: /data/chroma
+      UPLOAD_DIR: /data/uploads
+      HF_HOME: /data/huggingface
+      # Point Ollama at host machine (Mac/Windows Docker Desktop)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    volumes:
+      - ../data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  # Optional: local Ollama in Docker (uncomment if you don't run Ollama on host)
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: stooorna-ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   restart: unless-stopped
+
+# volumes:
+#   ollama_data:
