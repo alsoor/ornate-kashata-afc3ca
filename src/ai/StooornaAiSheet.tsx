@@ -573,6 +573,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [publishErr, setPublishErr] = useState('');
   const [publishPct, setPublishPct] = useState(0); // PUBLISH-PROGRESS: 0..100
   const publishPre = useRef<{ url: string; promise: Promise<string>; pct: number } | null>(null); // upload started in the background while the preview box is open
+  const publishCtl = useRef<AbortController | null>(null); // Cancel stops the preparation + upload at once
   const [publishFull, setPublishFull] = useState(false); // tap the preview = bigger, tap again = smaller
   const [mediaView, setMediaView] = useState<{ url: string; kind: 'image' | 'video' } | null>(null);
 
@@ -753,22 +754,38 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   };
 
   // PUBLISH-TEMPLATES: Publish -> preview box -> "Share To Templates"
+  // Cancel: stops everything right now and closes the box
+  const cancelPublish = () => {
+    publishCtl.current?.abort();
+    publishCtl.current = null;
+    publishPre.current = null;
+    setPublishing(false); setPublishFor(null); setPublishFull(false); setPublishPct(0); setPublishErr('');
+  };
+
   const doPublish = async () => {
     if (!publishFor || publishing) return;
+    if (!publishCtl.current || publishCtl.current.signal.aborted) publishCtl.current = new AbortController();
+    const ctl = publishCtl.current;
+    const dead = () => ctl.signal.aborted;
     setPublishing(true); setPublishErr(''); setPublishFull(false);
-    setPublishPct(p => (publishPre.current?.url === publishFor.url ? Math.max(p, publishPre.current.pct) : 0));
+    setPublishPct(p => (publishPre.current?.url === publishFor.url ? Math.max(p, publishPre.current.pct) : p));
     try {
       const blob = editedBlobs.current.get(publishFor.url) || (await (await fetch(publishFor.url)).blob());
+      if (dead()) return;
       let pre: Promise<string> | null = publishPre.current?.url === publishFor.url ? publishPre.current.promise : null;
       if (pre) { try { await pre; } catch { pre = null; } } // background upload failed -> try again normally
-      await publishToTemplates(blob, user as any, publishFor.kind, p => setPublishPct(prev => Math.max(prev, p)), pre);
+      if (dead()) return;
+      await publishToTemplates(blob, user as any, publishFor.kind, p => { if (!dead()) setPublishPct(prev => Math.max(prev, p)); }, pre, ctl.signal);
+      if (dead()) return;
       const left = await spendCredits(user as any, publishFor.url); // AI-CREDITS: 5 P per published photo / video, taken automatically
       if (left !== null) setCredits(left);
       setPublishPct(100);
       await new Promise(r => setTimeout(r, 300)); // let the bar visibly reach 100%
+      if (dead()) return;
       setPublishFor(null);
       flashPhotoNote(left !== null ? `Published to Templates ✓  −${AI_POST_COST} P` : 'Published to Templates ✓', 3000);
     } catch (e) {
+      if (dead() || /aborted/.test(String((e as any)?.message))) return; // cancelled by the user
       console.error('[Stooorna Ai] publish error:', e);
       publishPre.current = null;
       setPublishErr(/signed in/.test(String((e as any)?.message)) ? 'Please sign in first.' : 'Could not publish. Check your connection and try again.');
@@ -1134,21 +1151,22 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     return () => { alive = false; off(); };
   }, [open, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // PUBLISH-PREFETCH: start uploading as soon as the preview box opens, so Share To Templates is (almost) instant
+  // PUBLISH-PREFETCH: as soon as the preview box opens, a small "preview size" copy is made and uploaded in the background
   useEffect(() => {
-    if (!publishFor) { publishPre.current = null; return; }
+    if (!publishFor) { publishCtl.current?.abort(); publishCtl.current = null; publishPre.current = null; return; }
     if (publishPre.current?.url === publishFor.url) return;
     const target = publishFor;
+    publishCtl.current?.abort();
+    const ctl = new AbortController();
+    publishCtl.current = ctl;
     const entry = { url: target.url, pct: 0, promise: Promise.resolve('') };
+    entry.promise = (async () => {
+      const blob = editedBlobs.current.get(target.url) || (await (await fetch(target.url)).blob());
+      return startTemplateUpload(blob, user as any, target.kind, p => { entry.pct = p; if (!ctl.signal.aborted) setPublishPct(prev => Math.max(prev, p)); }, ctl.signal);
+    })();
+    entry.promise.catch(() => { /* handled when the user taps Share */ });
     publishPre.current = entry;
     setPublishPct(0);
-    (async () => {
-      try {
-        const blob = editedBlobs.current.get(target.url) || (await (await fetch(target.url)).blob());
-        entry.promise = startTemplateUpload(blob, user as any, target.kind, p => { entry.pct = p; setPublishPct(prev => Math.max(prev, p)); });
-        entry.promise.catch(() => { /* handled when the user taps Share */ });
-      } catch (e) { entry.promise = Promise.reject(e); entry.promise.catch(() => { /* */ }); }
-    })();
   }, [publishFor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // VIDEO-FULL: start the video with sound as soon as it opens (falls back to muted if the phone refuses)
@@ -1919,9 +1937,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 </button>
                 <button
                   type="button"
-                  disabled={publishing}
-                  onClick={() => setPublishFor(null)}
-                  style={{ border: 'none', background: 'transparent', color: '#9ca3af', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 4, opacity: publishing ? 0.4 : 1 }}
+                  onClick={cancelPublish}
+                  style={{ border: 'none', background: 'transparent', color: '#e5e7eb', fontSize: 15, fontWeight: 800, cursor: 'pointer', padding: '8px 18px', alignSelf: 'center' }}
                 >
                   Cancel
                 </button>
