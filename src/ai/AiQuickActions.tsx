@@ -43,16 +43,12 @@ export default function AiQuickActions({ user, onAsk, onOpen }: Props) {
 
   const chips: Array<{ label: string; kind?: PanelKind; ask?: string }> = ar
     ? [
-        { label: 'منو أونلاين من أصدقائي؟', kind: 'online' },
         { label: 'افتح الشات العام', ask: 'افتح الشات العام' },
-        { label: 'ملخص حسابي', kind: 'summary' },
         { label: 'كم رصيدي؟', ask: 'كم رصيدي؟' },
         { label: 'وش هو التطبيق؟', kind: 'app' },
       ]
     : [
-        { label: 'Who is online?', kind: 'online' },
         { label: 'Open the general chat', ask: 'Open the general chat' },
-        { label: 'Account summary', kind: 'summary' },
         { label: 'My balance', ask: 'My balance' },
         { label: 'What is Stooorna?', kind: 'app' },
       ];

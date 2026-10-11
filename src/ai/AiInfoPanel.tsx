@@ -239,6 +239,11 @@ export default function AiInfoPanel({ kind, user, onClose, onKind }: Props) {
   return createPortal(
     <div
       dir={ar ? 'rtl' : 'ltr'}
+      // React events bubble through portals: without this the tap on X also reached the Ai sheet and closed it
+      onClick={e => e.stopPropagation()}
+      onPointerDown={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+      onTouchStart={e => e.stopPropagation()}
       style={{
         position: 'fixed', inset: 0, zIndex: Z, background: '#fff', display: 'flex', flexDirection: 'column',
         transform: shown ? 'translateY(0)' : 'translateY(100%)', transition: 'transform 0.3s cubic-bezier(0.22,1,0.36,1)',
@@ -250,7 +255,7 @@ export default function AiInfoPanel({ kind, user, onClose, onKind }: Props) {
           {titles[kind]}
           {count !== '' ? <span style={{ marginInlineStart: 8, fontSize: 14, fontWeight: 800, color: '#fff', background: DARK_GREEN, borderRadius: 999, padding: '2px 10px' }}>{count}</span> : null}
         </div>
-        <button type="button" aria-label="Close" onClick={close} style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: '#f1f1f2', color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <button type="button" aria-label="Close" onClick={e => { e.stopPropagation(); close(); }} style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: '#f1f1f2', color: '#111', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <XIcon size={20} />
         </button>
       </div>
