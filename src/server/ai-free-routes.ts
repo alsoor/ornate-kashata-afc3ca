@@ -6,6 +6,8 @@
  *   POST /ai/chat            text reply (Arabic / English / any language), context via "history", image understanding
  *   POST /ai/search          web search (answer + sources)
  *   POST /ai/image-generate  image creation  -> { image_base64, image_mime }
+ *   POST /ai/image-edit      edit a photo / answer a question about it (multipart: prompt + images)
+ *   POST /ai/transcribe      voice -> text (multipart: audio + lang)
  *   POST /ai/file-read       PDF / Word text extraction (multipart "file")
  *   GET  /ai/health          which free providers are active
  *
@@ -31,7 +33,7 @@ const SYSTEM_EN =
 const pick = (o: any, keys: string[]) => { for (const k of keys) if (typeof o?.[k] === "string" && o[k].trim()) return String(o[k]); return ""; };
 const isArabic = (s: string) => /[\u0600-\u06FF]/.test(s);
 
-async function postJson(url: string, body: unknown, headers: Record<string, string> = {}, ms = 40000): Promise<any | null> {
+async function postJson(url: string, body: unknown, headers: Record<string, string> = {}, ms = 14000): Promise<any | null> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -96,8 +98,8 @@ async function freeChat(system: string, history: Msg[], user: string, image?: { 
     if (t) return t;
   }
   // 4) Keyless fallback: Pollinations (free, no account)
-  for (const model of image ? ["openai"] : ["openai", "mistral"]) {
-    const d = await postJson("https://text.pollinations.ai/openai", { model, messages: msgs, private: true }, {}, 45000);
+  for (const model of ["openai"]) {
+    const d = await postJson("https://text.pollinations.ai/openai", { model, messages: msgs, private: true }, {}, 14000);
     const t = String(d?.choices?.[0]?.message?.content || "").trim();
     if (t) return t;
   }
@@ -155,6 +157,77 @@ async function extractFileText(name: string, buf: Buffer): Promise<string> {
       const d = await (mammoth.default || mammoth).extractRawText({ buffer: buf });
       return String(d?.value || "");
     } catch { return ""; }
+  }
+  return "";
+}
+
+
+/* ---------------------------------------------------------------- multipart (no extra libs) */
+
+type Part = { name: string; filename?: string; mime?: string; data: Buffer };
+
+async function readMultipart(req: Request, maxBytes = 25 * 1024 * 1024): Promise<Part[] | null> {
+  const m = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(String(req.headers["content-type"] || ""));
+  if (!m) return null;
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const c of req as any) { size += c.length; if (size > maxBytes) return null; chunks.push(c as Buffer); }
+  const raw = Buffer.concat(chunks);
+  const delim = Buffer.from(`--${m[1] || m[2]}`);
+  const parts: Part[] = [];
+  let pos = raw.indexOf(delim);
+  while (pos >= 0) {
+    pos += delim.length;
+    if (raw.slice(pos, pos + 2).toString() === "--") break;
+    if (raw.slice(pos, pos + 2).toString() === "\r\n") pos += 2;
+    const headEnd = raw.indexOf(Buffer.from("\r\n\r\n"), pos);
+    if (headEnd < 0) break;
+    const head = raw.slice(pos, headEnd).toString("utf8");
+    const next = raw.indexOf(delim, headEnd + 4);
+    if (next < 0) break;
+    parts.push({
+      name: /name="([^"]*)"/i.exec(head)?.[1] || "",
+      filename: /filename="([^"]*)"/i.exec(head)?.[1],
+      mime: /content-type:\s*([^\r\n]+)/i.exec(head)?.[1]?.trim(),
+      data: raw.slice(headEnd + 4, next - 2),
+    });
+    pos = next;
+  }
+  return parts;
+}
+
+const EDIT_RE = /(عدل|عدّل|غير|غيّر|احذف|ازل|أزل|امسح|اضف|أضف|حول|حوّل|اجعل|لون|خلفي[هة]|ارسم|فلتر|كرتون|أنمي|انمي|edit|remove|erase|add|change|make|turn|replace|background|cartoon|filter|enhance|restore|colorize)/i;
+
+async function geminiImageEdit(prompt: string, images: Array<{ data: string; mime: string }>): Promise<{ data: string; mime: string; text: string } | null> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return null;
+  const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+  const parts: any[] = [{ text: prompt }, ...images.map(i => ({ inline_data: { mime_type: i.mime, data: i.data } }))];
+  const d = await postJson(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`,
+    { contents: [{ role: "user", parts }], generationConfig: { responseModalities: ["TEXT", "IMAGE"] } }, {}, 40000);
+  const ps: any[] = d?.candidates?.[0]?.content?.parts || [];
+  const img = ps.find(x => (x.inlineData || x.inline_data)?.data);
+  if (!img) return null;
+  const idata = img.inlineData || img.inline_data;
+  return { data: idata.data, mime: idata.mimeType || idata.mime_type || "image/png", text: ps.map(x => x.text || "").join("").trim() };
+}
+
+async function transcribeAudio(buf: Buffer, mime: string, lang: string): Promise<string> {
+  if (process.env.GROQ_API_KEY) { // Whisper on Groq free tier (accepts webm/ogg/mp3/wav/m4a)
+    try {
+      const fd = new FormData();
+      fd.append("file", new Blob([buf], { type: mime || "audio/webm" }), "voice.webm");
+      fd.append("model", process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo");
+      if (lang) fd.append("language", lang);
+      const r = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${process.env.GROQ_API_KEY}` }, body: fd });
+      if (r.ok) { const d: any = await r.json(); const t = String(d?.text || "").trim(); if (t) return t; }
+    } catch { /* next */ }
+  }
+  if (process.env.GEMINI_API_KEY) { // Gemini audio understanding (works best with ogg/mp3/wav)
+    const d = await postJson(`https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_MODEL || "gemini-2.0-flash"}:generateContent?key=${encodeURIComponent(process.env.GEMINI_API_KEY)}`,
+      { contents: [{ role: "user", parts: [{ text: "Transcribe this audio exactly as spoken. Output ONLY the transcription." }, { inline_data: { mime_type: mime || "audio/webm", data: buf.toString("base64") } }] }] }, {}, 30000);
+    const t = String(d?.candidates?.[0]?.content?.parts?.map((x: any) => x.text || "").join("") || "").trim();
+    if (t) return t;
   }
   return "";
 }
@@ -239,29 +312,49 @@ export function registerAiFreeRoutes(app: Express, opts: { json?: any } = {}) {
     } catch { res.status(500).json({ error: "server error" }); }
   });
 
-  // ---- file reading (PDF / DOCX): multipart field "file"; parsed without extra upload libs
+  // ---- file reading (PDF / DOCX): multipart field "file"
   app.post("/ai/file-read", async (req: Request, res: Response) => {
     try {
-      const ct = String(req.headers["content-type"] || "");
-      const m = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(ct);
-      if (!m) return res.status(400).json({ text: "" });
-      const chunks: Buffer[] = [];
-      let size = 0;
-      for await (const c of req as any) { size += c.length; if (size > 15 * 1024 * 1024) return res.status(413).json({ text: "" }); chunks.push(c); }
-      const raw = Buffer.concat(chunks);
-      const boundary = Buffer.from(`--${m[1] || m[2]}`);
-      const start = raw.indexOf(boundary);
-      const headEnd = raw.indexOf(Buffer.from("\r\n\r\n"), start);
-      if (start < 0 || headEnd < 0) return res.json({ text: "" });
-      const head = raw.slice(start, headEnd).toString("utf8");
-      const name = /filename="([^"]*)"/i.exec(head)?.[1] || "file";
-      const bodyStart = headEnd + 4;
-      const bodyEnd = raw.indexOf(boundary, bodyStart) - 2; // strip trailing CRLF
-      const file = raw.slice(bodyStart, bodyEnd > bodyStart ? bodyEnd : raw.length);
-      const text = (await extractFileText(name, file)).replace(/\s+\n/g, "\n").trim().slice(0, 40000);
+      const parts = await readMultipart(req, 15 * 1024 * 1024);
+      const f = parts?.find(x => x.name === "file" || x.filename);
+      if (!f) return res.json({ text: "" });
+      const text = (await extractFileText(f.filename || "file", f.data)).replace(/\s+\n/g, "\n").trim().slice(0, 40000);
       res.json({ text });
     } catch { res.json({ text: "" }); }
   });
 
-  console.log("[ai-free] routes ready: /ai/chat /ai/search /ai/image-generate /ai/file-read");
+  // ---- image edit / image question (the sheet sends multipart: prompt + images)
+  app.post("/ai/image-edit", async (req: Request, res: Response) => {
+    try {
+      const parts = await readMultipart(req);
+      if (!parts) return res.status(400).json({ reply: "" });
+      const prompt = (parts.find(x => x.name === "prompt")?.data.toString("utf8") || "").trim().slice(0, 2000);
+      const images = parts.filter(x => x.name === "images" || /^image\//.test(x.mime || "")).slice(0, 3)
+        .map(x => ({ data: x.data.toString("base64"), mime: /^image\//.test(x.mime || "") ? String(x.mime) : "image/jpeg" }));
+      if (!images.length) return res.status(400).json({ reply: "" });
+      const ar = isArabic(prompt);
+
+      if (prompt && EDIT_RE.test(prompt)) { // real edit -> Gemini image model (needs GEMINI_API_KEY)
+        const out = await geminiImageEdit(prompt, images);
+        if (out) return res.json({ reply: out.text || (ar ? "تفضل، هذي الصورة بعد التعديل 🎨" : "Here is the edited image 🎨"), image_base64: out.data, image_mime: out.mime });
+      }
+      // question about the photo (or edit not available) -> vision answer
+      const reply = await freeChat(ar ? SYSTEM_AR : SYSTEM_EN, [], prompt || (ar ? "وش في هذي الصورة؟" : "Describe this image."), images[0]);
+      if (!reply) return res.status(502).json({ reply: "" });
+      res.json({ reply });
+    } catch (e) { console.error("[ai/image-edit]", e); res.status(500).json({ reply: "" }); }
+  });
+
+  // ---- voice -> text (multipart: audio + lang)
+  app.post("/ai/transcribe", async (req: Request, res: Response) => {
+    try {
+      const parts = await readMultipart(req);
+      const a = parts?.find(x => x.name === "audio" || x.filename);
+      if (!a || a.data.length < 200) return res.json({ text: "" });
+      const lang = (parts?.find(x => x.name === "lang")?.data.toString("utf8") || "").trim().slice(0, 5);
+      res.json({ text: await transcribeAudio(a.data, a.mime || "audio/webm", lang) });
+    } catch { res.json({ text: "" }); }
+  });
+
+  console.log("[ai-free] routes ready: /ai/chat /ai/search /ai/image-generate /ai/image-edit /ai/transcribe /ai/file-read");
 }
