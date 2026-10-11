@@ -14,7 +14,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=32000)
     history: list[ChatMessage] = Field(default_factory=list)
-    provider: Optional[Literal["openai", "gemini", "ollama"]] = None
+    provider: Optional[Literal["openai", "gemini", "ollama", "claude", "anthropic"]] = None  # CLAUDE
     model: Optional[str] = None
     temperature: float = Field(default=0.7, ge=0, le=2)
     use_rag: bool = False

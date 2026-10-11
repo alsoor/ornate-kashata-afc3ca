@@ -29,7 +29,7 @@ const FLAG = '__stooornaAiCaps__';
 const FALLBACK_BASES = ['https://www.stooorna.com/ai'];
 const HISTORY_TURNS = 12;
 const MAX_CHATS = 60;
-const MAX_FILE_CHARS = 20000;
+const MAX_FILE_CHARS = 8000; // 3 files x 8000 + search + question stays under the server's 32000-char limit
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -237,9 +237,18 @@ export async function generateImage(prompt: string, chatUrl = ''): Promise<{ dat
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: p }),
   }, 60000);
   if (server) {
-    const raw: any = server.image_base64 ?? server.b64_json ?? server.image ?? server.images?.[0];
+    const raw: any = server.image_base64 ?? server.b64 ?? server.b64_json ?? server.image ?? server.images?.[0];
     const val: string = typeof raw === 'string' ? raw : raw?.b64_json || raw?.base64 || '';
     if (val && !/^https?:/.test(val)) return { data: val.replace(/^data:[^,]*,/, ''), mime: server.image_mime || 'image/png' };
+    if (typeof server.url === 'string' && /^https?:/.test(server.url)) { // server gave a link: download it and hand back base64
+      try {
+        const ir = await fetch(server.url);
+        if (ir.ok) {
+          const ib = await ir.blob();
+          if (ib.size > 2000 && /^image\//.test(ib.type)) return { data: await blobToBase64(ib), mime: ib.type };
+        }
+      } catch { /* next */ }
+    }
   }
   try { // free fallback, no key
     const r = await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1024&height=1024&nologo=true`);
