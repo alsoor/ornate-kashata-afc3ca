@@ -14,7 +14,7 @@ import { X as XIcon, Plus, Check, Search, ChevronLeft, ChevronRight, Music, Play
 export interface MergeItem { url: string; kind: 'image' | 'video'; name: string }
 interface Item extends MergeItem { id: string; own: boolean }
 type Trans = 'fade' | 'slide' | 'zoom' | 'wipe' | 'flash' | 'up' | 'left' | 'spin' | 'zoomout' | 'circle' | 'split' | 'none';
-type Music = { type: 'none' } | { type: 'track'; id: string } | { type: 'file'; file: File };
+type Music = { type: 'none' } | { type: 'track'; id: string } | { type: 'file'; file: File } | { type: 'video'; file: File };
 
 interface Track { id: string; ar: string; en: string; tags: string; bpm: number; notes: number[]; root: number }
 
@@ -117,6 +117,7 @@ async function renderMerge(items: Item[], opts: Opts, onPct: (p: number) => void
 
   const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
   let ac: AudioContext | null = null;
+  let musicVid: { el: HTMLVideoElement; gain: GainNode; url: string; vol: number } | null = null; // song taken from a video file (sound only)
   const hasVideo = els.some(e => e instanceof HTMLVideoElement);
   const wantAudio = opts.music.type !== 'none' || (opts.keepAudio && hasVideo);
   if (AC && wantAudio) {
@@ -139,6 +140,18 @@ async function renderMerge(items: Item[], opts: Opts, onPct: (p: number) => void
         g.gain.linearRampToValueAtTime(0.0001, t0 + total);
         src.connect(g); g.connect(dest);
         src.start(t0); src.stop(t0 + total + 0.1);
+      } else if (opts.music.type === 'video') {
+        // sound of a chosen video plays over the whole merge (its picture is NOT shown)
+        const mv = document.createElement('video');
+        const mUrl = URL.createObjectURL((opts.music as any).file);
+        mv.playsInline = true; mv.loop = true; mv.preload = 'auto'; mv.muted = false; mv.volume = 1;
+        mv.src = mUrl;
+        await new Promise<void>((res, rej) => { mv.onloadeddata = () => res(); mv.onerror = () => rej(new Error('audio-decode')); });
+        const ms = ac.createMediaElementSource(mv);
+        const mg = ac.createGain();
+        mg.gain.value = vol;
+        ms.connect(mg); mg.connect(dest);
+        musicVid = { el: mv, gain: mg, url: mUrl, vol };
       }
       if (opts.keepAudio) {
         els.forEach(e => {
@@ -193,12 +206,14 @@ async function renderMerge(items: Item[], opts: Opts, onPct: (p: number) => void
     ctx.restore();
   };
 
+  if (musicVid) { try { musicVid.el.currentTime = 0; } catch { /* */ } void musicVid.el.play().catch(() => {}); }
   await new Promise<void>(resolve => {
     const t0 = performance.now();
     const frame = () => {
       if (dead()) { resolve(); return; }
       const T = (performance.now() - t0) / 1000;
       if (T >= total) { resolve(); return; }
+      if (musicVid && T > total - 0.8) musicVid.gain.gain.value = musicVid.vol * Math.max(0, (total - T) / 0.8);
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, W, H);
       for (let i = 0; i < n; i++) {
@@ -235,6 +250,7 @@ async function renderMerge(items: Item[], opts: Opts, onPct: (p: number) => void
   try { if (rec.state !== 'inactive') rec.stop(); } catch { /* */ }
   await stopped;
   els.forEach(e => { if (e instanceof HTMLVideoElement) { try { e.pause(); e.removeAttribute('src'); e.load(); } catch { /* */ } } });
+  if (musicVid) { try { musicVid.el.pause(); musicVid.el.removeAttribute('src'); musicVid.el.load(); URL.revokeObjectURL(musicVid.url); } catch { /* */ } }
   try { await ac?.close(); } catch { /* */ }
   stream.getTracks().forEach(t => t.stop());
   if (dead()) throw new Error('aborted');
@@ -280,6 +296,7 @@ export default function MergeMedia({ open, items: initial = [], onClose, onDone,
   const abortRef = useRef(false);
   const mediaInput = useRef<HTMLInputElement>(null);
   const audioInput = useRef<HTMLInputElement>(null);
+  const videoAudioInput = useRef<HTMLInputElement>(null);
   const prevRef = useRef<AudioContext | null>(null);
   const t = (a: string, e: string) => (ar ? a : e);
   const qn = q.trim().toLowerCase();
@@ -475,10 +492,14 @@ export default function MergeMedia({ open, items: initial = [], onClose, onDone,
             <div>
               <p style={label}>{t('3) الموسيقى', '3) Music')}</p>
               <input ref={audioInput} type="file" accept="audio/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { stopPrev(); setMusic({ type: 'file', file: f }); } e.target.value = ''; }} />
+              <input ref={videoAudioInput} type="file" accept="video/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) { stopPrev(); setMusic({ type: 'video', file: f }); } e.target.value = ''; }} />
               <div style={{ display: 'flex', gap: 8, marginBottom: 10, overflowX: 'auto' }}>
                 <button type="button" onClick={() => { stopPrev(); setMusic({ type: 'none' }); }} style={chip(music.type === 'none')}>{t('بدون موسيقى', 'No music')}</button>
                 <button type="button" onClick={() => audioInput.current?.click()} style={chip(music.type === 'file')}>
                   {music.type === 'file' ? `🎵 ${music.file.name.length > 18 ? music.file.name.slice(0, 16) + '…' : music.file.name}` : t('🎵 من جهازي', '🎵 From my device')}
+                </button>
+                <button type="button" onClick={() => videoAudioInput.current?.click()} style={chip(music.type === 'video')}>
+                  {music.type === 'video' ? `🎬 ${music.file.name.length > 18 ? music.file.name.slice(0, 16) + '…' : music.file.name}` : t('🎬 من فيديو', '🎬 From video')}
                 </button>
               </div>
             </div>
