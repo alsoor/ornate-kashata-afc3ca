@@ -5451,10 +5451,11 @@ function GlobalPublicChatHost({ user }: { user: any }) {
     window.addEventListener('stooorna:open-public-chat', h);
     return () => window.removeEventListener('stooorna:open-public-chat', h);
   }, []);
-  if (!user?.id || !on) return null;
+  // TEMPLATES-ALWAYS: الشات العام OFF => لا زر عائم ولا طبقة شات، لكن اللوحة تبقى مركّبة حتى يفتح Templates (الشريط السفلي) طبيعي
+  if (!user?.id) return null;
   return (
     <>
-      {!open && headerLifted !== false ? (
+      {on && !open && headerLifted !== false ? (
         <button
           type="button"
           onClick={() => { if (fabMovedRef.current) { fabMovedRef.current = false; return; } setOpen(true); }}
@@ -5541,8 +5542,8 @@ function GlobalPublicChatHost({ user }: { user: any }) {
       <Suspense fallback={null}>
         <PublicLiveCommentsPanel
           user={user}
-          headerOpen={!open}
-          overlayOpen={open}
+          headerOpen={!(on && open)}
+          overlayOpen={on && open}
           onOverlayClose={() => setOpen(false)}
           onBusyChange={setBusy}
           onTypersChange={setTypers}
