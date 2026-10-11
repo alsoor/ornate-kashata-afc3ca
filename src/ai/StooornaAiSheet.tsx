@@ -10,6 +10,7 @@ import { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
 import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
 import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
 import { detectAppIntent, answerAppIntent, intentToPanel, type PanelKind } from './appAssistant'; // APP-ASSISTANT
+import { readFileForAi, speak, stopSpeaking, voiceOutputSupported } from './aiCapabilities'; // AI-CAPABILITIES: read files, voice replies
 
 interface Attachment {
   id: string;
@@ -563,6 +564,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachMenu, setAttachMenu] = useState(false);
+  const [speakingId, setSpeakingId] = useState<string | null>(null); // AI-CAPABILITIES: which reply is being read aloud
+  const autoSpeakRef = useRef(false); // AI-CAPABILITIES: question was spoken -> answer is spoken too
   const [credits, setCredits] = useState<number | null>(null); // AI-CREDITS: points balance (30 P welcome, 5 P per published photo / video)
   const [infoPanel, setInfoPanel] = useState<PanelKind | null>(null); // APP-ASSISTANT: white list page (friends / online / posts ...)
   const [planOpen, setPlanOpen] = useState(false); // AI-CREDITS: centered "Stooorna Ai" plan box
@@ -856,8 +859,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     const stale = () => myId !== reqIdRef.current;
     const ar = /[\u0600-\u06FF]/.test(content) || (!content && /^ar/i.test(navigator.language || ''));
 
+    const spokenQuestion = autoSpeakRef.current; // AI-CAPABILITIES
+    autoSpeakRef.current = false;
     const pushAi = (text: string, imageUrl?: string) => {
       if (stale()) return; // stopped by the user
+      if (spokenQuestion && text && !imageUrl) speak(text, ar ? 'ar' : 'en'); // AI-CAPABILITIES: voice answer
       const aiMsg: Message = {
         id: `a-${Date.now()}`,
         role: 'assistant',
@@ -1014,7 +1020,20 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       return;
     }
 
-    fetch(`${apiBase}/chat`, {
+    // AI-CAPABILITIES: read the attached text files so the Ai can really analyse them (PDF / Word need the server)
+    const fileAtts = pending.filter(a => a.kind === 'file' && a.previewUrl);
+    const filesReady: Promise<string[]> = (async () => {
+      const notes: string[] = [];
+      for (const a of fileAtts.slice(0, 3)) {
+        try {
+          const blob = await (await fetch(a.previewUrl)).blob();
+          const r = await readFileForAi(new File([blob], a.name || 'file', { type: a.mime || blob.type }));
+          if (!r.ok) notes.push(r.note);
+        } catch { /* */ }
+      }
+      return notes;
+    })();
+    filesReady.then(() => fetch(`${apiBase}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1022,7 +1041,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         history: nextMessages.slice(-12, -1).filter(m => m.content && m.type !== 'offer').map(m => ({ role: m.role, content: m.content })),
       }),
       signal: controller?.signal,
-    })
+    }))
       .then(async r => {
         if (!r.ok) {
           let detail = '';
@@ -1033,8 +1052,9 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       })
       .then(data => {
         const reply = cleanReply(pickReply(data), content);
-        if (!reply) throw new Error('empty reply');
-        pushAi(reply);
+        const genUrl = data?.image_base64 ? `data:${data.image_mime || 'image/png'};base64,${data.image_base64}` : ''; // AI-CAPABILITIES: created image
+        if (!reply && !genUrl) throw new Error('empty reply');
+        pushAi(reply, genUrl || undefined);
       })
       .catch(err => {
         console.error('[Stooorna Ai] backend error:', err);
@@ -1104,7 +1124,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           const t = voiceTextRef.current.trim();
           voiceTextRef.current = '';
           setInput('');
-          if (t && !voiceCancelRef.current) sendRef.current(t);
+          if (t && !voiceCancelRef.current) { autoSpeakRef.current = true; sendRef.current(t); } // AI-CAPABILITIES
         };
         recRef.current = rec;
         rec.start();
@@ -1140,7 +1160,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           const d = await r.json();
           const t = String(d?.text ?? d?.transcript ?? '').trim();
           setVoiceNote('');
-          if (t) sendRef.current(t); else flashNote("Didn't hear anything");
+          if (t) { autoSpeakRef.current = true; sendRef.current(t); } else flashNote("Didn't hear anything"); // AI-CAPABILITIES
         } catch {
           flashNote('Voice server is not ready yet');
         }
@@ -1517,6 +1537,22 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               }}
             >
               {m.content}
+              {m.role === 'assistant' && m.content && m.type !== 'offer' && voiceOutputSupported() && ( /* AI-CAPABILITIES: listen to the reply */
+                <button
+                  type="button"
+                  aria-label="Listen"
+                  onClick={e => {
+                    e.stopPropagation();
+                    if (speakingId === m.id) { stopSpeaking(); setSpeakingId(null); return; }
+                    speak(m.content);
+                    setSpeakingId(m.id);
+                    window.setTimeout(() => setSpeakingId(cur => (cur === m.id ? null : cur)), Math.min(120000, 3000 + m.content.length * 90));
+                  }}
+                  style={{ display: 'block', marginTop: 6, border: 'none', background: 'transparent', color: '#555', padding: 2, cursor: 'pointer' }}
+                >
+                  {speakingId === m.id ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                </button>
+              )}
               {m.attachments && m.attachments.length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: m.content ? 8 : 0 }}>
                   {m.attachments.map(a =>
