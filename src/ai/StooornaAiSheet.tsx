@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square, Volume2, VolumeX } from 'lucide-react';
+import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, Film, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square, Volume2, VolumeX } from 'lucide-react';
 import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
 import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
 import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
 import { publishToTemplates, startTemplateUpload } from './mediaPublish'; // PUBLISH-TEMPLATES
 import { getCredits, spendCredits, canAfford, onCreditsChange, AI_POST_COST, hasFreePass } from './aiCredits'; // AI-CREDITS
 import { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
+import CapCutTemplates from './CapCutTemplates'; // CAPCUT-TEMPLATES
 import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
 import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
 import { detectAppIntent, answerAppIntent, intentToPanel, type PanelKind } from './appAssistant'; // APP-ASSISTANT
@@ -570,6 +571,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [infoPanel, setInfoPanel] = useState<PanelKind | null>(null); // APP-ASSISTANT: white list page (friends / online / posts ...)
   const [planOpen, setPlanOpen] = useState(false); // AI-CREDITS: centered "Stooorna Ai" plan box
   const [cameraOpen, setCameraOpen] = useState(false);
+  const [capcutOpen, setCapcutOpen] = useState(false); // CAPCUT-TEMPLATES
   // MEDIA-EDITOR: full-screen photo / video editor + the pending "do you want to edit?" offer
   const [editor, setEditor] = useState<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
   const offerRef = useRef<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
@@ -598,7 +600,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   useEffect(() => {
     // Keyboard no longer opens automatically; it opens only when the user taps the input.
-    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); setPublishFull(false); setPlanOpen(false); }
+    if (!open) { setCapcutOpen(false); setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); setPublishFull(false); setPlanOpen(false); }
   }, [open]);
 
   useEffect(() => {
@@ -1934,11 +1936,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 </button>
                 <span style={{ fontWeight: 800, fontSize: 20, color: '#111' }}>Add to chat</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                 {[
                   { key: 'camera', label: 'Camera', icon: <CameraIcon size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); setCameraOpen(true); } },
                   { key: 'photos', label: 'Photos', icon: <ImageIcon size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); imageInputRef.current?.click(); } },
                   { key: 'files', label: 'Files', icon: <FileUp size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); fileInputRef.current?.click(); } }, // AI-CREDITS: no points -> plan box instead of the file picker
+                  { key: 'templates', label: 'Templates', icon: <Film size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); setCapcutOpen(true); } }, // CAPCUT-TEMPLATES
                 ].map(t => (
                   <button
                     key={t.key}
@@ -2061,6 +2064,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           onDone={handleEditorDone}
         />
       )}
+
+      <CapCutTemplates
+        open={capcutOpen}
+        onClose={() => setCapcutOpen(false)}
+        onDone={handleEditorDone}
+        ar={messages.some(x => /[\u0600-\u06FF]/.test(x.content)) || /^ar/i.test(navigator.language || '')}
+      /> {/* CAPCUT-TEMPLATES */}
 
       {cameraOpen && (
         <CameraCapture
