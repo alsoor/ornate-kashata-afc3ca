@@ -37,25 +37,30 @@ function loadOnce(): Promise<void> {
   return loading;
 }
 
-async function save(userId: string, on: boolean): Promise<boolean> {
+/** Returns '' on success, otherwise a short reason: HTTP status (403 = not owner, 404 = server routes not deployed, 500 = database), 'html' or 'net'. */
+async function save(userId: string, on: boolean): Promise<string> {
   try {
     const r = await fetch('/api/ai-credits/free', {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, on }),
     });
-    if (!r.ok) return false;
-    const d: any = await r.json();
+    if (!r.ok) {
+      try { const d: any = await r.clone().json(); if (d?.detail) console.error('[free-publish] server:', d.detail); } catch { /* */ }
+      return String(r.status);
+    }
+    let d: any;
+    try { d = await r.json(); } catch { return 'html'; } // 200 but not JSON: the route does not exist on this server
     if (Array.isArray(d?.ids)) granted = new Set<string>(d.ids.map((x: unknown) => String(x)));
     else if (on) granted.add(userId); else granted.delete(userId);
     loaded = true;
     emit();
-    return true;
-  } catch { return false; }
+    return '';
+  } catch { return 'net'; }
 }
 
 export function OwnerFreePublishSwitch({ userId }: { userId: string }) {
   const [, force] = useState(0);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState('');
 
   useEffect(() => {
     const h = () => force(n => n + 1);
@@ -72,13 +77,13 @@ export function OwnerFreePublishSwitch({ userId }: { userId: string }) {
     const next = !on;
     if (next) granted.add(userId); else granted.delete(userId); // instant
     emit();
-    setFailed(false);
-    const ok = await save(userId, next);
-    if (!ok) { // server refused (not the owner / offline): put it back
+    setFailed('');
+    const why = await save(userId, next);
+    if (why) { // server refused (not the owner / not deployed / offline): put it back and show why
       if (next) granted.delete(userId); else granted.add(userId);
       emit();
-      setFailed(true);
-      window.setTimeout(() => setFailed(false), 2500);
+      setFailed(why);
+      window.setTimeout(() => setFailed(''), 7000);
     }
   };
 
@@ -93,7 +98,7 @@ export function OwnerFreePublishSwitch({ userId }: { userId: string }) {
       style={{ display: 'inline-flex', alignItems: 'center', gap: 7, flexShrink: 0, cursor: 'pointer', padding: '6px 2px', background: 'transparent', border: 'none', outline: 'none' }}
     >
       {on && <span style={{ color: '#22c55e', fontWeight: 800, fontSize: '0.72rem', letterSpacing: '0.02em' }}>Active</span>}
-      {failed && <span style={{ color: '#fca5a5', fontWeight: 700, fontSize: '0.64rem' }}>!</span>}
+      {failed && <span style={{ color: '#fca5a5', fontWeight: 800, fontSize: '0.68rem' }}>! {failed}</span>}
       <span style={{ position: 'relative', width: 38, height: 22, borderRadius: 999, flexShrink: 0, background: on ? '#22c55e' : '#4b5563', transition: 'background 0.15s ease' }}>
         <span style={{ position: 'absolute', top: 3, left: on ? 19 : 3, width: 16, height: 16, borderRadius: '50%', background: '#fff', transition: 'left 0.15s ease' }} />
       </span>
