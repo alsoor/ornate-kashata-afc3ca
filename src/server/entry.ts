@@ -25,6 +25,7 @@ import { registerAdsStoreRoutes } from "./ads-store.js"; // ADS-STORE-PATCH (MyS
 import { registerAiIconRoutes } from "./ai-icon-patch.js"; // AI-ICON-PATCH (owner switch: hide Stooorna Ai icon)
 import { registerImageProxyRoutes } from "./image-proxy-patch.js"; // IMAGE-PROXY-PATCH (save photos from the Ai chat)
 import { registerAiFreeRoutes } from "./ai-free-routes.js"; // AI-FREE (free chat / search / image / file routes for Stooorna Ai)
+import { createLiveBoxRouter } from "./liveBox.server.js"; // TREASURE-BOX
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -1220,6 +1221,7 @@ const creditRecipientEarnings = (toUserId: string, amount: number) => {
 const session = createSession(users_me_get_148 as unknown as RequestHandler, OWNER_IDS);
 registerLiveBurstRoutes(app, { getUserId: async (req) => (await session.user(req))?.id ?? null }); // EMOJI-BURST-PATCH
 registerAppReleaseRoutes(app, { getUser: (req) => session.user(req), ownerIds: OWNER_IDS }); // APP-RELEASES-PATCH
+app.use("/api/live-box", createLiveBoxRouter()); // TREASURE-BOX
 
 // ── TEMPLATES-PATCH: Templates (صور/فيديو) تُحفظ على السيرفر ولا تُحذف إلا بطلب DELETE من ناشرها (أو الأدمن) ──
 // 1) لو لقينا MySQL pool داخل ./db/client يُستخدم (جدول templates_posts ينشأ تلقائياً).
