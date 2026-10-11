@@ -455,45 +455,6 @@ export default function MergeMedia({ open, items: initial = [], onClose, onDone,
                   {music.type === 'file' ? `🎵 ${music.file.name.length > 18 ? music.file.name.slice(0, 16) + '…' : music.file.name}` : t('🎵 من جهازي', '🎵 From my device')}
                 </button>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.10)', borderRadius: 999, padding: '0 14px', height: 42, marginBottom: 10 }}>
-                <Search size={18} style={{ opacity: 0.7, flexShrink: 0 }} />
-                <input
-                  value={q}
-                  onChange={e => setQ(e.target.value)}
-                  placeholder={t('ابحث عن موسيقى (هادئ، حفلة، سفر...)', 'Search music (chill, party, travel...)')}
-                  style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: 15, fontFamily: 'inherit' }}
-                />
-                {q && (
-                  <button type="button" aria-label="Clear" onClick={() => setQ('')} style={{ border: 'none', background: 'transparent', color: '#fff', opacity: 0.7, cursor: 'pointer', padding: 2, display: 'flex' }}><XIcon size={16} /></button>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {shown.length === 0 && <p style={{ textAlign: 'center', opacity: 0.7, fontSize: 14, margin: '12px 0' }}>{t('ما لقيت موسيقى بهالاسم', 'No music found')}</p>}
-                {shown.map(tk => {
-                  const on = music.type === 'track' && music.id === tk.id;
-                  return (
-                    <div
-                      key={tk.id}
-                      onClick={() => setMusic({ type: 'track', id: tk.id })}
-                      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 14, cursor: 'pointer', background: on ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.07)', border: on ? '1px solid #ef4444' : '1px solid transparent' }}
-                    >
-                      <button
-                        type="button"
-                        aria-label="Preview"
-                        onClick={e => { e.stopPropagation(); preview(tk); }}
-                        style={{ width: 36, height: 36, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.16)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-                      >
-                        {playing === tk.id ? <Square size={14} fill="#fff" strokeWidth={0} /> : <Play size={16} fill="#fff" strokeWidth={0} />}
-                      </button>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 800, fontSize: 15 }}>{ar ? tk.ar : tk.en}</div>
-                        <div style={{ fontSize: 12, opacity: 0.65 }}>{tk.bpm} BPM</div>
-                      </div>
-                      {on ? <Check size={18} /> : <Music size={16} style={{ opacity: 0.5 }} />}
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </>
         )}
