@@ -378,6 +378,78 @@ function liveSharedSubscribe(fn: () => void) {
   };
 }
 function liveSharedSnapshot() { return liveShared.version; }
+
+// ── TREASURE-BOX-OUTSIDE-PATCH ─────────────────────────────────────────────────────────────
+// While a host's live shows on the home page (top circle + live card) we watch ITS Treasure Box room (read-only: no uid is sent,
+// so watching never counts as presence). If a box is running: the host's ring turns purple and the avatar swaps with the chest
+// every 5 s — ONE shared clock so the top circle and the card of the same live always change at the exact same moment.
+// The buyer / the timer are never shown outside; they appear only inside the live. When the box ends everything returns to normal.
+const HOME_BOX_PURPLE = 'linear-gradient(135deg,#f0abfc 0%,#d946ef 45%,#a855f7 100%)';
+const boxOut = {
+  on: new Map<string, boolean>(), watch: new Map<string, number>(), poll: new Map<string, number>(),
+  listeners: new Set<() => void>(), version: 0, phase: 0, ticker: 0,
+};
+function boxOutRoom(hostId: string) { return `gifts-${String(hostId || 'public').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 48) || 'public'}`; }
+function boxOutEmit() { boxOut.version++; boxOut.listeners.forEach(l => l()); }
+async function boxOutPoll(id: string) {
+  try {
+    const r = await fetch(`/api/live-box?room=${encodeURIComponent(boxOutRoom(id))}`, { credentials: 'include', cache: 'no-store' });
+    if (!r.ok || !boxOut.watch.has(id)) return;
+    const d = await r.json() as { box?: unknown } | null;
+    const has = !!(d && d.box);
+    if (boxOut.on.get(id) !== has) { boxOut.on.set(id, has); boxOutEmit(); }
+  } catch { /* keep last state */ }
+}
+function boxOutStart(id: string) {
+  if (!id || typeof window === 'undefined') return;
+  const n = boxOut.watch.get(id) || 0;
+  boxOut.watch.set(id, n + 1);
+  if (n === 0) {
+    void boxOutPoll(id);
+    boxOut.poll.set(id, window.setInterval(() => { if (!document.hidden) void boxOutPoll(id); }, 3000));
+  }
+  if (!boxOut.ticker) {
+    boxOut.phase = Math.floor(Date.now() / 5000) % 2;
+    boxOut.ticker = window.setInterval(() => {
+      const ph = Math.floor(Date.now() / 5000) % 2;
+      if (ph === boxOut.phase) return;
+      boxOut.phase = ph;
+      for (const v of boxOut.on.values()) { if (v) { boxOutEmit(); break; } }
+    }, 250);
+  }
+}
+function boxOutStop(id: string) {
+  const n = (boxOut.watch.get(id) || 0) - 1;
+  if (n > 0) { boxOut.watch.set(id, n); return; }
+  boxOut.watch.delete(id);
+  const t = boxOut.poll.get(id);
+  if (t) { window.clearInterval(t); boxOut.poll.delete(id); }
+  if (boxOut.on.delete(id)) boxOutEmit();
+  if (!boxOut.watch.size && boxOut.ticker) { window.clearInterval(boxOut.ticker); boxOut.ticker = 0; }
+}
+function boxOutSubscribe(fn: () => void) { boxOut.listeners.add(fn); return () => { boxOut.listeners.delete(fn); }; }
+function boxOutSnapshot() { return boxOut.version; }
+/** Watch the Treasure Box of these live hosts (pass [] when nothing is live). Re-renders when a box starts/ends or the 5 s face flips. */
+function useTreasureBoxWatch(hostIds: string[]): number {
+  const key = hostIds.filter(Boolean).join('|');
+  useEffect(() => {
+    const list = key ? key.split('|') : [];
+    list.forEach(boxOutStart);
+    return () => { list.forEach(boxOutStop); };
+  }, [key]);
+  return useSyncExternalStore(boxOutSubscribe, boxOutSnapshot, boxOutSnapshot);
+}
+function treasureBoxOn(hostId: string): boolean { return boxOut.on.get(String(hostId)) === true; }
+/** 1 = show the chest (purple ring), 0 = show the host's own photo (yellow ring) — same value for every circle/card. */
+function treasureBoxFace(): 0 | 1 { return boxOut.phase === 1 ? 1 : 0; }
+/** The chest picture laid over a host avatar (fades in/out with the shared 5 s clock). */
+function treasureBoxOverlay(show: boolean) {
+  return (
+    <div aria-hidden style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#14081f', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: show ? 1 : 0, transition: 'opacity 0.4s ease', pointerEvents: 'none' }}>
+      <img src="/treasure-box.png" alt="" draggable={false} style={{ width: '78%', height: '78%', objectFit: 'contain', display: 'block' }} />
+    </div>
+  );
+}
 // كاش قوائم الأصدقاء/القصص: تنعرض فوراً عند الرجوع بدل ما تبدأ فاضية لين يرجع السيرفر
 const headerListsCache: { uid: string; friends: any[]; stories: any[] } = { uid: '', friends: [], stories: [] };
 
@@ -3071,6 +3143,9 @@ function HeaderStoryCircle({
   const liveKind = useLiveBroadcastKind(userId, true);
   const liveActive = liveKind != null;
   const splitPartner = useLiveSplitPartner(userId, liveKind === 'camera'); // SPLIT-CARD-PATCH
+  useTreasureBoxWatch(liveActive ? [String(userId)] : []); // TREASURE-BOX-OUTSIDE-PATCH
+  const boxOn = liveActive && treasureBoxOn(String(userId));
+  const boxFace = boxOn && treasureBoxFace() === 1;
   const hasStory = items.length > 0;
   const hasUnseen = items.some(it => !it.seen);
   const [choiceOpen, setChoiceOpen] = useState(false);
@@ -3164,15 +3239,15 @@ function HeaderStoryCircle({
       >
         <div style={{
           position: 'absolute', inset: 0, borderRadius: '50%',
-          background: liveActive ? '#facc15' : storyRingColor(items, '#a855f7', '#0ea5e9'),
+          background: liveActive ? (boxFace ? '#d946ef' : '#facc15') : storyRingColor(items, '#a855f7', '#0ea5e9'),
           padding: 3, boxSizing: 'border-box',
-          boxShadow: liveActive ? '0 0 10px rgba(250,204,21,0.6)' : (hasUnseen ? '0 0 8px rgba(168,85,247,0.55)' : 'none'),
+          boxShadow: liveActive ? (boxFace ? '0 0 12px rgba(217,70,239,0.75)' : '0 0 10px rgba(250,204,21,0.6)') : (hasUnseen ? '0 0 8px rgba(168,85,247,0.55)' : 'none'),
         }}>
           {liveActive ? (
             <motion.div
               animate={{ opacity: [1, 0.45, 1] }}
               transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-              style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid #facc15' }}
+              style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `2px solid ${boxFace ? '#d946ef' : '#facc15'}` }}
             />
           ) : (!hasUnseen && hasStory && (
             <div
@@ -3213,6 +3288,7 @@ function HeaderStoryCircle({
                 <UserAvatar name={name ?? ''} avatarUrl={avatarUrl} size={42} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
               </VipAvatarFrame>
             )}
+            {boxOn ? treasureBoxOverlay(boxFace) : null}
           </div>
         </div>
       </motion.button>
@@ -22145,6 +22221,8 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
   liveScrollHiddenRef.current = !!collapsed;
   const liveVisibleList = showCards ? entries.filter(e => !dismissed.has(e.id) && liveSharedIsHeld(e.id)) : [];
   const liveCount = liveVisibleList.length;
+  useTreasureBoxWatch(liveVisibleList.map(x => String(x.id))); // TREASURE-BOX-OUTSIDE-PATCH: same clock as the top circles
+  const boxFaceNow = treasureBoxFace() === 1;
   // ── بطاقات Ads (فيديو / صورة / PDF) تظهر مع بطاقات اللايف بنفس الحجم ──
   const [adsTick, setAdsTick] = useState(0);
   useEffect(() => {
@@ -22696,6 +22774,8 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
             const name = e.name || e.username || 'Host';
             const isActiveLive = e.id === activeLiveId;
             const soundOff = mutedIds.has(e.id) || !isActiveLive;
+            const boxOn = treasureBoxOn(String(e.id)); // TREASURE-BOX-OUTSIDE-PATCH
+            const boxFace = boxOn && boxFaceNow;
             return (
               <motion.div
                 key={e.id}
@@ -22731,8 +22811,8 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
                   position: 'relative', width: '100%', flexShrink: 0,
                   aspectRatio: HOME_LIVE_COMPACT_CARD ? undefined : '1080 / 514', minHeight: HOME_LIVE_COMPACT_CARD ? HOME_CARD_MIN_H : 150, boxSizing: 'border-box',
                   borderRadius: 20, border: '2px solid transparent',
-                  background: `radial-gradient(ellipse 80% 90% at 50% 100%, #0e2b30 0%, #0a1a1c 55%, #071011 100%) padding-box, ${HOME_LIVE_SILVER} border-box`,
-                  boxShadow: '0 8px 22px rgba(0,0,0,0.45), 0 0 10px rgba(200,205,215,0.22)',
+                  background: `radial-gradient(ellipse 80% 90% at 50% 100%, #0e2b30 0%, #0a1a1c 55%, #071011 100%) padding-box, ${boxOn ? HOME_BOX_PURPLE : HOME_LIVE_SILVER} border-box`,
+                  boxShadow: boxOn ? '0 8px 22px rgba(0,0,0,0.45), 0 0 12px rgba(217,70,239,0.45)' : '0 8px 22px rgba(0,0,0,0.45), 0 0 10px rgba(200,205,215,0.22)',
                   overflow: 'hidden', cursor: 'pointer', color: '#cfe8e8',
                   display: 'flex', flexDirection: 'column', justifyContent: HOME_LIVE_COMPACT_CARD ? 'center' : undefined, padding: HOME_LIVE_COMPACT_CARD ? '12px 14px' : '10px 12px 0',
                   pointerEvents: lifted ? 'none' : 'auto',
@@ -22741,8 +22821,9 @@ function HomeLiveStack({ myId, hosts, enabled, showCards, collapsed, dockVisible
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative', zIndex: 2 }}>
                   <div style={{ position: 'relative', width: 46, height: 46, flexShrink: 0 }}>
-                    <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid #facc15', boxShadow: '0 0 10px rgba(250,204,21,0.55)', boxSizing: 'border-box', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: `3px solid ${boxFace ? '#d946ef' : '#facc15'}`, boxShadow: boxFace ? '0 0 10px rgba(217,70,239,0.7)' : '0 0 10px rgba(250,204,21,0.55)', boxSizing: 'border-box', overflow: 'hidden' }}>
                       <UserAvatar name={e.name ?? ''} avatarUrl={e.avatarUrl} size={40} style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }} />
+                      {boxOn ? treasureBoxOverlay(boxFace) : null}
                     </div>
                     <span style={{ position: 'absolute', right: -1, bottom: -1, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', border: '2px solid #0a1a1c' }} />
                   </div>
