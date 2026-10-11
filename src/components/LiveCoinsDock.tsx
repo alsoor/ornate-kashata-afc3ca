@@ -20,6 +20,7 @@ import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, Doll
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
 import { useLiveSwitches } from '@/lib/liveIconsVisibility';
 import { useSession } from '@/lib/auth/auth-client';
+import { LiveTreasureBox } from './LiveTreasureBox'; // TREASURE-BOX: shared 4-minute chest under the $ / gift icons
 
 const OWNER_LIVE_ICONS_KEY = 'stooorna_owner_live_icons_private';
 function readOwnerLiveIconsPrivate(): boolean {
@@ -1141,6 +1142,26 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
 
   return (
     <>
+      {/* TREASURE-BOX: chest under the $ and gift icons — anyone can buy (250/500/1000), 4:00 shared countdown, then everyone taps to win Coins */}
+      {uid && (showCoinsIcon || showGiftsIcon) ? (
+        <LiveTreasureBox
+          room={giftRoom}
+          uid={uid}
+          name={String(currentUserName || '')}
+          avatar={currentUserAvatar ?? null}
+          balance={balance}
+          centerRight={showCoinsIcon && showGiftsIcon ? ((yellowRight - 1) + (BLUE_DOT_RIGHT + 5)) / 2 : (showCoinsIcon ? yellowRight - 1 : BLUE_DOT_RIGHT + 5)}
+          getBalance={() => readBalance(uid)}
+          spend={(price: number) => { const next = deductSpendable(uid, price); setBalance(next); return next; }}
+          credit={(coins: number) => {
+            const next = readBalance(uid) + Math.max(0, Math.floor(coins));
+            writeBalance(uid, next);
+            try { writeUserGiftBalance(uid, next); } catch { /* ignore */ }
+            setBalance(next);
+          }}
+          onNeedCoins={() => { setGiftsOpen(false); setCoinsOpen(true); }}
+        />
+      ) : null}
       {showCoinsIcon && dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
       {showGiftsIcon && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
         setCoinsOpen(false);

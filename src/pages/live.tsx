@@ -2563,7 +2563,7 @@ export default function LivePage() {
           onClose={() => setHostProfileOpen(false)}
         />
       ) : null}
-      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} />
+      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} />
     </div>
     </>
   );
