@@ -162,14 +162,14 @@ async function extractFileText(name: string, buf: Buffer): Promise<string> {
 /* ---------------------------------------------------------------- routes */
 
 export function registerAiFreeRoutes(app: Express, opts: { json?: any } = {}) {
-  const cors = (_req: Request, res: Response, next: () => void) => {
+  const cors = (req: Request, res: Response, next: () => void) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    if (req.method === "OPTIONS") { res.sendStatus(204); return; } // preflight (works on Express 4 and 5)
     next();
   };
   app.use("/ai", cors);
-  app.options("/ai/*", (_req, res) => { res.sendStatus(204); });
 
   app.get("/ai/health", (_req, res) => {
     res.json({
