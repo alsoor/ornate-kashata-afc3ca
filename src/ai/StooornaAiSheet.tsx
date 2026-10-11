@@ -4,7 +4,7 @@ import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, F
 import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
 import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
 import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
-import { publishToTemplates } from './mediaPublish'; // PUBLISH-TEMPLATES
+import { publishToTemplates, startTemplateUpload } from './mediaPublish'; // PUBLISH-TEMPLATES
 
 interface Attachment {
   id: string;
@@ -568,6 +568,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [publishing, setPublishing] = useState(false);
   const [publishErr, setPublishErr] = useState('');
   const [publishPct, setPublishPct] = useState(0); // PUBLISH-PROGRESS: 0..100
+  const publishPre = useRef<{ url: string; promise: Promise<string>; pct: number } | null>(null); // upload started in the background while the preview box is open
   const [publishFull, setPublishFull] = useState(false); // tap the preview = bigger, tap again = smaller
   const [mediaView, setMediaView] = useState<{ url: string; kind: 'image' | 'video' } | null>(null);
 
@@ -740,16 +741,20 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   // PUBLISH-TEMPLATES: Publish -> preview box -> "Share To Templates"
   const doPublish = async () => {
     if (!publishFor || publishing) return;
-    setPublishing(true); setPublishErr(''); setPublishPct(0); setPublishFull(false);
+    setPublishing(true); setPublishErr(''); setPublishFull(false);
+    setPublishPct(p => (publishPre.current?.url === publishFor.url ? Math.max(p, publishPre.current.pct) : 0));
     try {
       const blob = editedBlobs.current.get(publishFor.url) || (await (await fetch(publishFor.url)).blob());
-      await publishToTemplates(blob, user as any, publishFor.kind, p => setPublishPct(p));
+      let pre: Promise<string> | null = publishPre.current?.url === publishFor.url ? publishPre.current.promise : null;
+      if (pre) { try { await pre; } catch { pre = null; } } // background upload failed -> try again normally
+      await publishToTemplates(blob, user as any, publishFor.kind, p => setPublishPct(prev => Math.max(prev, p)), pre);
       setPublishPct(100);
-      await new Promise(r => setTimeout(r, 350)); // let the bar visibly reach 100%
+      await new Promise(r => setTimeout(r, 300)); // let the bar visibly reach 100%
       setPublishFor(null);
       flashPhotoNote('Published to Templates ✓', 3000);
     } catch (e) {
       console.error('[Stooorna Ai] publish error:', e);
+      publishPre.current = null;
       setPublishErr(/signed in/.test(String((e as any)?.message)) ? 'Please sign in first.' : 'Could not publish. Check your connection and try again.');
     } finally { setPublishing(false); }
   };
@@ -1103,6 +1108,23 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     el.style.height = 'auto';
     el.style.height = `${Math.min(el.scrollHeight, 129)}px`;
   }, [input, open]);
+
+  // PUBLISH-PREFETCH: start uploading as soon as the preview box opens, so Share To Templates is (almost) instant
+  useEffect(() => {
+    if (!publishFor) { publishPre.current = null; return; }
+    if (publishPre.current?.url === publishFor.url) return;
+    const target = publishFor;
+    const entry = { url: target.url, pct: 0, promise: Promise.resolve('') };
+    publishPre.current = entry;
+    setPublishPct(0);
+    (async () => {
+      try {
+        const blob = editedBlobs.current.get(target.url) || (await (await fetch(target.url)).blob());
+        entry.promise = startTemplateUpload(blob, user as any, target.kind, p => { entry.pct = p; setPublishPct(prev => Math.max(prev, p)); });
+        entry.promise.catch(() => { /* handled when the user taps Share */ });
+      } catch (e) { entry.promise = Promise.reject(e); entry.promise.catch(() => { /* */ }); }
+    })();
+  }, [publishFor]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // VIDEO-FULL: start the video with sound as soon as it opens (falls back to muted if the phone refuses)
   useEffect(() => {

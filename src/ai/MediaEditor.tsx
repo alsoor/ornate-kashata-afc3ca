@@ -393,7 +393,7 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
   const MIMES = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
   const makeRecorder = (stream: MediaStream) => {
     const mime = MIMES.find(m => (window as any).MediaRecorder?.isTypeSupported?.(m));
-    const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 4_000_000 } : undefined);
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 2_500_000 } : undefined);
     const chunks: Blob[] = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
     const finished = new Promise<Blob>(res => {

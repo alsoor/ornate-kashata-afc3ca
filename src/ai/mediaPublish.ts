@@ -1,5 +1,5 @@
 /**
- * Stooorna Ai — Publish to Templates (v1.1.0)
+ * Stooorna Ai — Publish to Templates (v1.2.0)
  * Place at: src/ai/mediaPublish.ts
  *
  * Uploads an edited photo / video (with its music + sound) and posts it to the Templates store,
@@ -49,7 +49,28 @@ function pickUrl(ct: string, loc: string | null, raw: string): string | null {
   return validUrl(first) ? usable(toAbs(first)) : null;
 }
 
-async function uploadMedia(blob: Blob, userId: string, isVid: boolean, onPct?: (p: number) => void): Promise<string> {
+/** Big photos upload much faster as a 1920px JPEG (edited photos are often several MB). Videos are untouched. */
+async function shrinkImage(blob: Blob): Promise<Blob> {
+  try {
+    if (!/^image\//.test(blob.type) || /gif|svg/.test(blob.type) || blob.size < 600 * 1024) return blob;
+    const bmp = await createImageBitmap(blob);
+    const k = Math.min(1, 1920 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bmp.width * k));
+    c.height = Math.max(1, Math.round(bmp.height * k));
+    const ctx = c.getContext('2d');
+    if (!ctx) return blob;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.drawImage(bmp, 0, 0, c.width, c.height);
+    (bmp as any).close?.();
+    const out: Blob | null = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.88));
+    return out && out.size < blob.size ? out : blob;
+  } catch { return blob; }
+}
+
+async function uploadMedia(rawBlob: Blob, userId: string, isVid: boolean, onPct?: (p: number) => void): Promise<string> {
+  const blob = isVid ? rawBlob : await shrinkImage(rawBlob);
   const type = (blob.type || '').split(';')[0] || (isVid ? 'video/mp4' : 'image/jpeg');
   const ext = isVid ? (/webm/i.test(type) ? 'webm' : 'mp4') : (/png/i.test(type) ? 'png' : /webp/i.test(type) ? 'webp' : 'jpg');
   const name = `live-chat-${isVid ? 'video' : 'image'}-${Date.now()}.${ext}`;
@@ -72,16 +93,26 @@ async function uploadMedia(blob: Blob, userId: string, isVid: boolean, onPct?: (
     fd.append('skipStory', '1');
     return fd;
   };
+  // Watchdog instead of a fixed total timeout: a big video on a slow connection may legitimately take minutes,
+  // so we only give up when NOTHING moves for a while (before: 60s total -> restarted the whole upload on the next route).
   const post = (endpoint: string, body: FormData, ms: number) =>
     new Promise<string | null>(resolve => {
       const x = new XMLHttpRequest();
       let settled = false;
-      const done = (v: string | null, why?: string) => { if (settled) return; settled = true; if (why) lastErr = why; resolve(v); };
+      let wd = 0;
+      const arm = (limit: number) => { window.clearTimeout(wd); wd = window.setTimeout(() => { try { x.abort(); } catch { /* */ } done(null, `${endpoint} stalled`); }, limit); };
+      const done = (v: string | null, why?: string) => { if (settled) return; settled = true; window.clearTimeout(wd); if (why) lastErr = why; resolve(v); };
       try {
         x.open('POST', endpoint);
         x.withCredentials = true;
-        x.timeout = ms;
-        if (x.upload && onPct) x.upload.onprogress = ev => { if (ev.lengthComputable && ev.total > 0) onPct(Math.min(0.99, ev.loaded / ev.total)); };
+        arm(Math.max(ms, 30000));
+        if (x.upload) {
+          x.upload.onprogress = ev => {
+            arm(30000); // still sending -> keep waiting
+            if (onPct && ev.lengthComputable && ev.total > 0) onPct(Math.min(0.99, ev.loaded / ev.total));
+          };
+          x.upload.onload = () => arm(90000); // all bytes sent -> give the server up to 90s to answer
+        }
         x.onload = () => {
           if (x.status < 200 || x.status >= 300) { done(null, `${endpoint} ${x.status}`); return; }
           done(pickUrl(x.getResponseHeader('content-type') || '', x.getResponseHeader('location'), x.responseText));
@@ -141,21 +172,34 @@ async function uploadMedia(blob: Blob, userId: string, isVid: boolean, onPct?: (
   throw new Error(lastErr || 'upload failed');
 }
 
-/** Upload + post to Templates. Throws on failure. */
+/** Step 1: upload only (can start early, e.g. while the preview box is open). Resolves to the media URL. */
+export function startTemplateUpload(
+  blob: Blob,
+  user: PublishUser | null | undefined,
+  kind: 'image' | 'video',
+  onProgress?: PublishProgress,
+): Promise<string> {
+  const uid = String(user?.id || '');
+  if (!uid) return Promise.reject(new Error('not signed in'));
+  let top = 0;
+  const report = (p: number) => { top = Math.max(top, p); onProgress?.(Math.round(top), 'upload'); };
+  report(1);
+  return uploadMedia(blob, uid, kind === 'video', f => report(1 + f * 89));
+}
+
+/** Upload (or reuse an upload already started with startTemplateUpload) + post to Templates. Throws on failure. */
 export async function publishToTemplates(
   blob: Blob,
   user: PublishUser | null | undefined,
   kind: 'image' | 'video',
   onProgress?: PublishProgress,
+  preUpload?: Promise<string> | null,
 ): Promise<void> {
   const uid = String(user?.id || '');
   if (!uid) throw new Error('not signed in');
-  // 0-90% = upload, 90-99% = posting the row, 100% = done. Never goes backwards (a retry on another route restarts from 0 inside).
-  let top = 0;
-  const report = (p: number, stage: 'upload' | 'post' | 'done') => { top = Math.max(top, p); onProgress?.(Math.round(top), stage); };
-  report(1, 'upload');
-  const url = await uploadMedia(blob, uid, kind === 'video', f => report(1 + f * 89, 'upload'));
-  report(92, 'post');
+  // 0-90% = upload, 90-99% = posting the row, 100% = done. Never goes backwards.
+  const url = await (preUpload || startTemplateUpload(blob, user, kind, onProgress));
+  onProgress?.(95, 'post');
   const row = {
     id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     userId: uid,
@@ -171,7 +215,7 @@ export async function publishToTemplates(
   };
   markTemplatePending(row.id);
   await postTemplateRow(row as any);
-  report(100, 'done');
+  onProgress?.(100, 'done');
   try {
     localStorage.setItem('stooorna_tpl_fresh_at', String(Date.now()));
     window.dispatchEvent(new CustomEvent('stooorna:template-published'));
