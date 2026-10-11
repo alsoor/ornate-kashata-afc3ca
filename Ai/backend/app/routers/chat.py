@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio  # CLAUDE
+import logging  # CLAUDE
 
 from fastapi import APIRouter, HTTPException
 
@@ -11,6 +12,20 @@ from app.services import llm, vectors
 from app.services import claude_llm  # CLAUDE: second provider
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+log = logging.getLogger("stooorna.ai")  # CLAUDE
+
+
+@router.get("/claude-check")  # CLAUDE: shows the real reason when Claude does not answer
+async def claude_check():
+    key = claude_llm.api_key()
+    info = {"key_set": bool(key), "key_looks_valid": key.startswith("sk-ant-"), "key_length": len(key)}
+    if not key:
+        return {"ok": False, "error": "ANTHROPIC_API_KEY is not set on this service", **info}
+    try:
+        r = await claude_llm.chat_completion("Reply with the single word OK", None, timeout=20)
+        return {"ok": True, "model": r["model"], "reply": r["reply"], **info}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:400], **info}
 
 
 @router.post("", response_model=ChatResponse)
@@ -80,6 +95,7 @@ async def chat(req: ChatRequest):
             errors.append(f"{name} timeout")
         except Exception as e:
             errors.append(f"{name} error: {e}")
+            log.warning("[Stooorna Ai] %s failed: %s", name, e)  # CLAUDE
     if result is None:
         raise HTTPException(502, " | ".join(errors) or "LLM error")
 
