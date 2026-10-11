@@ -19,7 +19,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Volume2, VolumeX, X, Users, Snowflake, LogOut, Hand, Minimize2 } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, X, Users, Snowflake, LogOut, Hand, Minimize2, ChevronDown } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import UserAvatar from '@/components/UserAvatar';
 import HostProfileSheet from './HostProfileSheet';
@@ -198,6 +198,7 @@ export default function LivePage() {
   const [membersSheetOpen, setMembersSheetOpen] = useState(false);
   // VOICE-INVITE-PATCH state
   const [voiceInvOpen, setVoiceInvOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false); // TOOLS-ARROW-PATCH
   const [voiceInvToast, setVoiceInvToast] = useState('');
   const voiceInvToastTimerRef = useRef<number | null>(null);
   useVoiceInviteReplies(!!(joined && isHostRoom), (r) => {
@@ -1696,34 +1697,82 @@ export default function LivePage() {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-        {isHostRoom && (
-          <VoiceInviteButton active={voiceInvOpen} onClick={() => setVoiceInvOpen(true)} />
-        )}
-        <button
-          type="button"
-          onClick={() => setMembersSheetOpen(true)}
-          aria-label="Viewers and members"
+{/* TOOLS-ARROW-PATCH: viewers icon first, then an arrow that drops a bubble with requests + invite buttons */}
+<button
+  type="button"
+  onClick={() => setMembersSheetOpen(true)}
+  aria-label="Viewers and members"
+  style={{
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    color: 'rgba(150,200,200,0.9)',
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    padding: '6px 10px',
+    borderRadius: 20,
+    background: membersSheetOpen ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.1)',
+    border: '1px solid rgba(0,188,212,0.35)',
+    cursor: 'pointer',
+  }}
+>
+  <Users size={14} />
+  <span>{members.length}</span>
+</button>
+{isHostRoom && (
+  <div style={{ position: 'relative', flexShrink: 0 }}>
+    <button
+      type="button"
+      onClick={() => setToolsOpen(v => !v)}
+      aria-label="Tools"
+      aria-expanded={toolsOpen}
+      style={{
+        position: 'relative',
+        width: 36,
+        height: 36,
+        borderRadius: '50%',
+        padding: 0,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#00BCD4',
+        background: toolsOpen ? 'rgba(0,188,212,0.28)' : 'rgba(0,188,212,0.12)',
+        border: '1.5px solid rgba(0,188,212,0.6)',
+      }}
+    >
+      <ChevronDown size={18} strokeWidth={2.6} style={{ transform: toolsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+      {amHost && !toolsOpen && micRequests.length > 0 && (
+        <span style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0a1f22' }} />
+      )}
+    </button>
+    {toolsOpen && (
+      <>
+        <div onClick={() => setToolsOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />
+        <motion.div
+          initial={{ opacity: 0, y: -8, scaleY: 0.85 }}
+          animate={{ opacity: 1, y: 0, scaleY: 1 }}
           style={{
+            position: 'absolute',
+            top: 'calc(100% + 8px)',
+            right: 0,
+            zIndex: 40,
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
-            gap: 6,
-            color: 'rgba(150,200,200,0.9)',
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            padding: '6px 10px',
-            borderRadius: 20,
-            background: membersSheetOpen ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.1)',
+            gap: 10,
+            padding: 8,
+            borderRadius: 24,
+            background: 'rgba(6,16,18,0.97)',
             border: '1px solid rgba(0,188,212,0.35)',
-            cursor: 'pointer',
+            boxShadow: '0 10px 28px rgba(0,0,0,0.5)',
+            transformOrigin: 'top right',
           }}
         >
-          <Users size={14} />
-          <span>{members.length}</span>
-        </button>
-        {isHostRoom && (
           <button
             type="button"
             onClick={() => {
+              setToolsOpen(false);
               if (amHost) setRequestsOpen(true);
               else void toggleMic();
             }}
@@ -1732,22 +1781,19 @@ export default function LivePage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 4,
-              color: '#111',
-              fontSize: '0.7rem',
-              fontWeight: 800,
-              width: isHostRoom ? 36 : 46,
-              height: isHostRoom ? 36 : 46,
+              width: 36,
+              height: 36,
               padding: 0,
               borderRadius: '50%',
               background: 'radial-gradient(circle at 30% 30%, #ffe08a, #eab308)',
               border: '1.5px solid rgba(234,179,8,0.85)',
-              boxShadow: isHostRoom ? '0 0 8px rgba(234,179,8,0.5)' : '0 0 12px rgba(234,179,8,0.5)',
+              boxShadow: '0 0 8px rgba(234,179,8,0.5)',
               cursor: 'pointer',
+              flexShrink: 0,
             }}
             title="Mic requests"
           >
-            <Hand size={isHostRoom ? 17 : 16} color="#111" />
+            <Hand size={17} color="#111" />
             {amHost && micRequests.length > 0 && (
               <span
                 style={{
@@ -1773,7 +1819,12 @@ export default function LivePage() {
               </span>
             )}
           </button>
-        )}
+          <VoiceInviteButton active={voiceInvOpen} onClick={() => { setToolsOpen(false); setVoiceInvOpen(true); }} />
+        </motion.div>
+      </>
+    )}
+  </div>
+)}
         <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
           style={{
             position: 'absolute',
