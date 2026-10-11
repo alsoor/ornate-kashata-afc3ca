@@ -136,10 +136,14 @@ async function generateImageFree(prompt: string): Promise<{ data: string; mime: 
   } catch { return null; }
 }
 
+// names kept in variables so Vite/Rollup does not try to resolve them at build time
+const OPTIONAL_PDF = "pdf-parse";
+const OPTIONAL_DOCX = "mammoth";
+
 async function extractFileText(name: string, buf: Buffer): Promise<string> {
   if (/\.pdf$/i.test(name)) {
     try {
-      const mod: any = await import("pdf-parse"); // npm i pdf-parse  (optional)
+      const mod: any = await import(/* @vite-ignore */ OPTIONAL_PDF); // npm i pdf-parse  (optional, loaded at runtime only)
       const fn = mod.default || mod;
       const d = await fn(buf);
       return String(d?.text || "");
@@ -147,7 +151,7 @@ async function extractFileText(name: string, buf: Buffer): Promise<string> {
   }
   if (/\.docx$/i.test(name)) {
     try {
-      const mammoth: any = await import("mammoth"); // npm i mammoth  (optional)
+      const mammoth: any = await import(/* @vite-ignore */ OPTIONAL_DOCX); // npm i mammoth  (optional, loaded at runtime only)
       const d = await (mammoth.default || mammoth).extractRawText({ buffer: buf });
       return String(d?.value || "");
     } catch { return ""; }
