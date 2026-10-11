@@ -111,8 +111,12 @@ function ChestImg({ size, style }: { size: number; style?: React.CSSProperties }
 
 export function LiveTreasureBox({
   room, uid, name, avatar, balance, centerRight,
-  getBalance, spend, credit, onNeedCoins,
+  getBalance, spend, credit, onNeedCoins, hideIcon, openKey,
 }: {
+  /** hide the floating chest icon (the chest is opened from the bottom menu instead) */
+  hideIcon?: boolean;
+  /** change this number to open the buy sheet from outside */
+  openKey?: number;
   room: string;
   uid: string;
   name: string;
@@ -134,6 +138,7 @@ export function LiveTreasureBox({
   const seenPhaseRef = useRef('');
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sel, setSel] = useState<number>(PRICES[0]);
+  useEffect(() => { if (openKey) setSheetOpen(true); }, [openKey]);
   const [buying, setBuying] = useState(false);
   const [claiming, setClaiming] = useState(false);
   const [dismissedId, setDismissedId] = useState('');
@@ -296,7 +301,7 @@ export function LiveTreasureBox({
         @keyframes stooornaCoinFly { from { transform: translate(0,0) scale(.4); opacity: 1; } to { transform: translate(var(--dx), var(--dy)) scale(1.1); opacity: 0; } }
       `}</style>
 
-      {/* chest icon — under the $ and gift icons */}
+      {!hideIcon ? (
       <button
         type="button"
         aria-label="Treasure Box"
@@ -313,6 +318,7 @@ export function LiveTreasureBox({
       >
         <ChestImg size={ICON} style={{ animation: opened ? 'stooornaBoxShake .7s ease-in-out infinite' : undefined }} />
       </button>
+      ) : null}
 
       {/* toast */}
       {msg ? (

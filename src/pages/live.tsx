@@ -49,7 +49,6 @@ import { LiveVipDock } from '@/components/LiveVipDock';
 import { LiveCoinsDock, SupportCrown, useSupportLeaders } from '@/components/LiveCoinsDock';
 // VOICE-INVITE-PATCH: invite any online person to this voice live (box reaches them anywhere in the app)
 import {
-  VoiceInviteButton,
   VoiceInvitePanel,
   VoiceInviteToast,
   useVoiceInviteReplies,
@@ -1793,14 +1792,6 @@ export default function LivePage() {
         <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>Mic Requests</span>
       </div>
 
-      <div
-        role="button"
-        onClick={() => { setToolsOpen(false); setVoiceInvOpen(true); }}
-        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, cursor: 'pointer', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)' }}
-      >
-        <span style={{ pointerEvents: 'none', display: 'flex' }}><VoiceInviteButton active={false} onClick={() => {}} /></span>
-        <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>Invite Users</span>
-      </div>
     </motion.div>
   </div>,
   document.body,
@@ -2594,7 +2585,7 @@ export default function LivePage() {
           onClose={() => setHostProfileOpen(false)}
         />
       ) : null}
-      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} />
+      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} onInvite={isHostRoom ? () => setVoiceInvOpen(true) : undefined} />
     </div>
     </>
   );

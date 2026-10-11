@@ -114,7 +114,6 @@ import { useSplitAnnounce, useSplitViewer, useBattleServerSync, closeAllSplitVie
 // // SPLIT-VIEW-PATCH: both players visible in either room + server-side round score
 // VOICE-INVITE-PATCH (video): anyone in the room invites ONLINE people (not only people who are live); they get the Accept / Decline box anywhere in the app
 import {
-  VoiceInviteButton,
   VoiceInvitePanel,
   VoiceInviteToast,
   useVoiceInviteReplies,
@@ -2671,14 +2670,6 @@ export default function LiveCameraPage() {
         <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>Mic Requests</span>
       </div>
 
-      <div
-        role="button"
-        onClick={() => { setToolsOpen(false); setVoiceInvOpen(true); }}
-        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, cursor: 'pointer', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)' }}
-      >
-        <span style={{ pointerEvents: 'none', display: 'flex' }}><VoiceInviteButton kind="camera" active={false} onClick={() => {}} /></span>
-        <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>Invite Users</span>
-      </div>
 
       {amHost ? (
         <div
@@ -3632,7 +3623,7 @@ export default function LiveCameraPage() {
           </div>
         </div>
       )}
-      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} />
+      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} onInvite={isHostRoom ? () => setVoiceInvOpen(true) : undefined} />
     </div>
     </>
   );

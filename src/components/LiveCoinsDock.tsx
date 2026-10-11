@@ -16,7 +16,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign } from 'lucide-react';
+import { X, Plus, CreditCard, Lock, Pencil, ExternalLink, Gift as GiftIcon, DollarSign, Forward } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { GIFTS, TOP_GIFTS, ALL_GIFTS } from '@/lib/index';
 import { useLiveSwitches } from '@/lib/liveIconsVisibility';
 import { useSession } from '@/lib/auth/auth-client';
@@ -652,7 +653,7 @@ export function grantAppCoins(targetUserId: string, coins: number): { ok: boolea
   return { ok: true, id };
 }
 
-export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentUserAvatar, yellowRight = YELLOW_DOT_RIGHT }: { hostId?: string; currentUserId?: string; currentUserName?: string; currentUserAvatar?: string | null; yellowRight?: number }) {
+export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentUserAvatar, yellowRight = YELLOW_DOT_RIGHT, onInvite }: { hostId?: string; currentUserId?: string; currentUserName?: string; currentUserAvatar?: string | null; yellowRight?: number; onInvite?: () => void }) {
   const uid = String(currentUserId || '');
   // Warm Play Billing so the first coin tap can open the native 1-tap sheet inside the user gesture.
   useEffect(() => { void getGooglePlayService(); }, []);
@@ -666,6 +667,8 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   const showGiftsIcon = ((liveSw.gifts && !hideFlags.gifts) || ownerPrivateIcons);
   const [balance, setBalance] = useState<number>(() => readBalance(uid));
   const [coinsOpen, setCoinsOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false); // BOTTOM-MENU-PATCH: yellow dot -> centered Charge / Gifts / Treasure Box
+  const [boxOpenKey, setBoxOpenKey] = useState(0);
   const [giftsOpen, setGiftsOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [packId, setPackId] = useState<string>(PACKS[0].id);
@@ -1143,13 +1146,15 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
   return (
     <>
       {/* TREASURE-BOX: chest under the $ and gift icons — anyone can buy (250/500/1000), 4:00 shared countdown, then everyone taps to win Coins */}
-      {uid && (showCoinsIcon || showGiftsIcon) ? (
+      {uid ? (
         <LiveTreasureBox
           room={giftRoom}
           uid={uid}
           name={String(currentUserName || '')}
           avatar={currentUserAvatar ?? null}
           balance={balance}
+          hideIcon
+          openKey={boxOpenKey}
           centerRight={showCoinsIcon && showGiftsIcon ? ((yellowRight - 1) + (BLUE_DOT_RIGHT + 5)) / 2 : (showCoinsIcon ? yellowRight - 1 : BLUE_DOT_RIGHT + 5)}
           getBalance={() => readBalance(uid)}
           spend={(price: number) => { const next = deductSpendable(uid, price); setBalance(next); return next; }}
@@ -1162,16 +1167,54 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
           onNeedCoins={() => { setGiftsOpen(false); setCoinsOpen(true); }}
         />
       ) : null}
-      {showCoinsIcon && dot(yellowRight + (BTN - 36), '#facc15', 'Coins', <DollarSign size={ICON + 1} color="#facc15" strokeWidth={2.6} />, () => { setGiftsOpen(false); setCoinsOpen(true); })}
-      {showGiftsIcon && dot(BLUE_DOT_RIGHT, '#1d7cf2', 'Gifts', <GiftIcon size={ICON} color="#1d7cf2" strokeWidth={2.2} />, () => {
-        setCoinsOpen(false);
-        if (appGiftNotice) {
-          try { localStorage.removeItem(giftNoticeKey(uid)); } catch { /* ignore */ }
-          setAppGiftNotice(null);
-        }
-        if (!resolveGiftTarget()) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
-        setGiftsOpen(true);
-      })}
+      {/* BOTTOM-MENU-PATCH: yellow share-arrow (Invite Users) where $ was; yellow dot where the gift icon was opens the centered menu */}
+      {onInvite && dot(yellowRight + (BTN - 36), '#facc15', 'Invite Users', <Forward size={ICON + 3} color="#facc15" strokeWidth={2.6} />, () => onInvite())}
+      {uid && dot(BLUE_DOT_RIGHT, '#facc15', 'Menu', <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#facc15', display: 'block' }} />, () => setMenuOpen(true))}
+      {menuOpen && typeof document !== 'undefined' ? createPortal(
+        <div
+          onClick={() => setMenuOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 9100, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
+            dir="ltr"
+            style={{ width: '100%', maxWidth: 320, background: '#0b1618', border: '1px solid rgba(0,188,212,0.4)', borderRadius: 20, padding: '14px 14px 12px', display: 'flex', flexDirection: 'column', gap: 10, boxShadow: '0 14px 44px rgba(0,0,0,0.55)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px 2px' }}>
+              <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>Coins &amp; Gifts</span>
+              <button type="button" onClick={() => setMenuOpen(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'rgba(200,230,230,0.8)', cursor: 'pointer', padding: 4, display: 'flex' }}>
+                <X size={18} />
+              </button>
+            </div>
+            {[
+              showCoinsIcon ? { key: 'charge', label: 'Charge', color: '#facc15', icon: <DollarSign size={17} color="#facc15" strokeWidth={2.6} />, act: () => { setGiftsOpen(false); setCoinsOpen(true); } } : null,
+              showGiftsIcon ? { key: 'gifts', label: 'Gifts', color: '#1d7cf2', icon: <GiftIcon size={16} color="#1d7cf2" strokeWidth={2.2} />, act: () => {
+                setCoinsOpen(false);
+                if (appGiftNotice) {
+                  try { localStorage.removeItem(giftNoticeKey(uid)); } catch { /* ignore */ }
+                  setAppGiftNotice(null);
+                }
+                if (!resolveGiftTarget()) { flashGiftMsg('اضغط على صورة متحدث واختر إرسال هدية'); return; }
+                setGiftsOpen(true);
+              } } : null,
+              { key: 'box', label: 'Treasure Box', color: '#d946ef', icon: <img src="/treasure-box.png" alt="" draggable={false} style={{ width: 24, height: 24, objectFit: 'contain', pointerEvents: 'none' }} />, act: () => setBoxOpenKey(k => k + 1) },
+            ].filter(Boolean).map((r: any) => (
+              <div
+                key={r.key}
+                role="button"
+                onClick={() => { setMenuOpen(false); r.act(); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, cursor: 'pointer', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)' }}
+              >
+                <span style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.35)', border: `1.5px solid ${r.color}`, boxShadow: `0 0 8px ${r.color}88` }}>{r.icon}</span>
+                <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>{r.label}</span>
+              </div>
+            ))}
+          </motion.div>
+        </div>,
+        document.body,
+      ) : null}
       {appGiftNotice ? (
         <button
           type="button"
