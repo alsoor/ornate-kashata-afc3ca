@@ -6,4 +6,5 @@ export { installStooornaAiImagePatch, STOOORNA_AI_IMAGE_PATCH_VERSION } from './
 export { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
 export { getCredits, spendCredits, AI_POST_COST, AI_PLAN } from './aiCredits'; // AI-CREDITS
 export { default as AiQuickActions } from './AiQuickActions'; // APP-ASSISTANT
+export { default as AiInfoPanel } from './AiInfoPanel'; // APP-ASSISTANT
 export { detectAppIntent, answerAppIntent, openGeneralChat, loadDashboard, clearAssistantCache } from './appAssistant'; // APP-ASSISTANT

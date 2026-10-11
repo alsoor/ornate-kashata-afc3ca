@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { loadDashboard, type AssistUser, type DashboardNumbers } from './appAssistant';
+import { loadDashboard, type AssistUser, type DashboardNumbers, type PanelKind } from './appAssistant';
 
 /**
  * Stooorna Ai — quick actions (v1.0.0)
@@ -15,9 +15,10 @@ const DARK_GREEN = '#0a1f1a';
 interface Props {
   user?: AssistUser | null;
   onAsk: (text: string) => void;
+  onOpen: (kind: PanelKind) => void;
 }
 
-export default function AiQuickActions({ user, onAsk }: Props) {
+export default function AiQuickActions({ user, onAsk, onOpen }: Props) {
   const ar = typeof navigator !== 'undefined' && /^ar/i.test(navigator.language || '');
   const [nums, setNums] = useState<DashboardNumbers | null>(null);
   const uid = String(user?.id || '');
@@ -33,16 +34,28 @@ export default function AiQuickActions({ user, onAsk }: Props) {
 
   if (!uid) return null;
 
-  const tiles: Array<{ icon: string; label: string; value: number | null; ask: string; dot?: boolean }> = [
-    { icon: '👥', label: ar ? 'الأصدقاء' : 'Friends', value: nums?.friends ?? null, ask: ar ? 'كم مستخدم أنا ضايف؟' : 'How many friends do I have?' },
-    { icon: '🟢', label: ar ? 'أونلاين' : 'Online', value: nums?.online ?? null, ask: ar ? 'منو أونلاين من أصدقائي؟' : 'Who is online?', dot: true },
-    { icon: '🖼', label: ar ? 'منشوراتي' : 'My posts', value: nums?.posts ?? null, ask: ar ? 'كم بوست أرسلت؟' : 'How many posts did I send?' },
-    { icon: '📩', label: ar ? 'الطلبات' : 'Requests', value: nums?.requests ?? null, ask: ar ? 'طلبات الصداقة' : 'Friend requests' },
+  const tiles: Array<{ icon: string; label: string; value: number | null; kind: PanelKind }> = [
+    { icon: '👥', label: ar ? 'الأصدقاء' : 'Friends', value: nums?.friends ?? null, kind: 'friends' },
+    { icon: '🟢', label: ar ? 'أونلاين' : 'Online', value: nums?.online ?? null, kind: 'online' },
+    { icon: '🖼', label: ar ? 'منشوراتي' : 'My posts', value: nums?.posts ?? null, kind: 'posts' },
+    { icon: '📩', label: ar ? 'الطلبات' : 'Requests', value: nums?.requests ?? null, kind: 'requests' },
   ];
 
-  const chips = ar
-    ? ['منو أونلاين من أصدقائي؟', 'افتح الشات العام', 'ملخص حسابي', 'كم رصيدي؟', 'وش هو التطبيق؟']
-    : ['Who is online?', 'Open the general chat', 'Account summary', 'My balance', 'What is Stooorna?'];
+  const chips: Array<{ label: string; kind?: PanelKind; ask?: string }> = ar
+    ? [
+        { label: 'منو أونلاين من أصدقائي؟', kind: 'online' },
+        { label: 'افتح الشات العام', ask: 'افتح الشات العام' },
+        { label: 'ملخص حسابي', kind: 'summary' },
+        { label: 'كم رصيدي؟', ask: 'كم رصيدي؟' },
+        { label: 'وش هو التطبيق؟', kind: 'app' },
+      ]
+    : [
+        { label: 'Who is online?', kind: 'online' },
+        { label: 'Open the general chat', ask: 'Open the general chat' },
+        { label: 'Account summary', kind: 'summary' },
+        { label: 'My balance', ask: 'My balance' },
+        { label: 'What is Stooorna?', kind: 'app' },
+      ];
 
   return (
     <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -51,7 +64,7 @@ export default function AiQuickActions({ user, onAsk }: Props) {
           <button
             key={t.label}
             type="button"
-            onClick={() => onAsk(t.ask)}
+            onClick={() => onOpen(t.kind)}
             style={{
               border: '1px solid #e5e7eb', background: '#fff', borderRadius: 16, padding: '10px 4px 9px',
               cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
@@ -70,16 +83,16 @@ export default function AiQuickActions({ user, onAsk }: Props) {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center' }}>
         {chips.map(c => (
           <button
-            key={c}
+            key={c.label}
             type="button"
             dir="auto"
-            onClick={() => onAsk(c)}
+            onClick={() => (c.kind ? onOpen(c.kind) : onAsk(c.ask || c.label))}
             style={{
               border: '1px solid rgba(10,31,26,0.18)', background: '#f4f4f5', color: DARK_GREEN,
               borderRadius: 999, padding: '8px 13px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
             }}
           >
-            {c}
+            {c.label}
           </button>
         ))}
       </div>

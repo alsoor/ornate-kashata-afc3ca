@@ -5441,6 +5441,16 @@ function GlobalPublicChatHost({ user }: { user: any }) {
       window.removeEventListener('storage', sync);
     };
   }, []);
+  // APP-ASSISTANT: "افتح الشات العام" from Stooorna Ai -> turn the general chat on and slide it up
+  useEffect(() => {
+    const h = () => {
+      try { localStorage.setItem('stooorna_public_chat_on', '1'); } catch { /* */ }
+      setOn(true);
+      setOpen(true);
+    };
+    window.addEventListener('stooorna:open-public-chat', h);
+    return () => window.removeEventListener('stooorna:open-public-chat', h);
+  }, []);
   if (!user?.id || !on) return null;
   return (
     <>

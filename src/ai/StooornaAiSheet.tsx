@@ -8,7 +8,8 @@ import { publishToTemplates, startTemplateUpload } from './mediaPublish'; // PUB
 import { getCredits, spendCredits, canAfford, onCreditsChange, AI_POST_COST } from './aiCredits'; // AI-CREDITS
 import { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
 import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
-import { detectAppIntent, answerAppIntent } from './appAssistant'; // APP-ASSISTANT
+import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
+import { detectAppIntent, answerAppIntent, intentToPanel, type PanelKind } from './appAssistant'; // APP-ASSISTANT
 
 interface Attachment {
   id: string;
@@ -563,6 +564,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachMenu, setAttachMenu] = useState(false);
   const [credits, setCredits] = useState<number | null>(null); // AI-CREDITS: points balance (30 P welcome, 5 P per published photo / video)
+  const [infoPanel, setInfoPanel] = useState<PanelKind | null>(null); // APP-ASSISTANT: white list page (friends / online / posts ...)
   const [planOpen, setPlanOpen] = useState(false); // AI-CREDITS: centered "Stooorna Ai" plan box
   const [cameraOpen, setCameraOpen] = useState(false);
   // MEDIA-EDITOR: full-screen photo / video editor + the pending "do you want to edit?" offer
@@ -806,7 +808,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   // APP-ASSISTANT: lets the assistant slide this sheet down (e.g. "افتح الشات العام")
   useEffect(() => {
-    const h = () => onClose();
+    const h = () => { setInfoPanel(null); onClose(); };
     window.addEventListener('stooorna:ai-close', h);
     return () => window.removeEventListener('stooorna:ai-close', h);
   }, [onClose]);
@@ -918,6 +920,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     // APP-ASSISTANT: questions about the app / friends / posts / online users / "open the general chat"
     const appIntent = pending.length === 0 ? detectAppIntent(trimmed) : null;
     if (appIntent) {
+      const panelKind = intentToPanel(appIntent);
+      if (panelKind) { // lists open as a white page instead of text in the chat
+        setInfoPanel(panelKind);
+        pushAi(ar ? 'فتحت لك القائمة 👆' : 'Opened the list for you 👆');
+        endTurn();
+        return;
+      }
       void (async () => {
         try {
           pushAi(await answerAppIntent(appIntent, trimmed, user));
@@ -1478,7 +1487,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               <p style={{ fontSize: 22, fontWeight: 700, color: '#1a1a1a', textAlign: 'center' }}>
                 How can I help you?
               </p>
-              <AiQuickActions user={user} onAsk={t => sendMessage(t)} /> {/* APP-ASSISTANT */}
+              <AiQuickActions user={user} onAsk={t => sendMessage(t)} onOpen={k => setInfoPanel(k)} /> {/* APP-ASSISTANT */}
             </div>
           )}
 
@@ -1914,6 +1923,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         )}
       </div>
 
+      {open && infoPanel && <AiInfoPanel kind={infoPanel} user={user} onClose={() => setInfoPanel(null)} onKind={k => setInfoPanel(k)} />} {/* APP-ASSISTANT */}
       <AiPlanDialog open={planOpen} balance={credits} onClose={() => setPlanOpen(false)} />
 
       {publishFor && createPortal(

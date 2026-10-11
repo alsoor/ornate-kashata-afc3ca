@@ -33,9 +33,12 @@ export interface AssistUser {
 
 export type AppIntent = 'openChat' | 'online' | 'requests' | 'posts' | 'credits' | 'friends' | 'summary' | 'appInfo';
 
-interface Person { id: string; name: string; username: string }
+export interface Person { id: string; name: string; username: string; avatar: string }
 
-interface PostStats {
+export interface PostItemInfo { id: string; text: string; kind: 'photo' | 'video' | 'text'; media: string; likes: number; comments: number; views: number; at: number }
+
+export interface PostStats {
+  items: PostItemInfo[];
   total: number;
   photos: number;
   videos: number;
@@ -100,6 +103,7 @@ function toPerson(f: any): Person {
     id: String(f?.friendId ?? f?.userId ?? f?.requesterId ?? f?.id ?? ''),
     name: String(f?.name ?? '').trim(),
     username: String(f?.username ?? '').replace(/^@/, '').trim(),
+    avatar: String(f?.avatarUrl ?? f?.avatar ?? f?.image ?? '').trim(),
   };
 }
 
@@ -111,7 +115,7 @@ function personLine(p: Person, i: number): string {
 
 /* ───────────────────────── data loaders ───────────────────────── */
 
-interface FriendsData { friends: Person[]; incoming: number; outgoing: number }
+interface FriendsData { friends: Person[]; incoming: number; incomingPeople: Person[]; outgoing: number }
 
 function loadFriendsData(uid: string): Promise<FriendsData> {
   return memo(`friends:${uid}`, 15000, async () => {
@@ -123,7 +127,8 @@ function loadFriendsData(uid: string): Promise<FriendsData> {
     const c = await getJson('/api/friends/requests/count', 6000);
     const n = Number(c?.count ?? c?.total ?? c?.requests);
     if (Number.isFinite(n)) incoming = Math.max(incoming, n);
-    return { friends: accepted, incoming, outgoing: outgoingList.length };
+    const incomingPeople = incomingList.map(toPerson).filter(x => x.id);
+    return { friends: accepted, incoming, incomingPeople, outgoing: outgoingList.length };
   });
 }
 
@@ -193,7 +198,7 @@ function loadMyPosts(uid: string): Promise<PostStats> {
         mine.set(String(p?.id ?? p?.repostKey ?? Math.random()), p);
       }
     }
-    const st: PostStats = { total: 0, photos: 0, videos: 0, textOnly: 0, likes: 0, comments: 0, views: 0, latest: [] };
+    const st: PostStats = { items: [], total: 0, photos: 0, videos: 0, textOnly: 0, likes: 0, comments: 0, views: 0, latest: [] };
     const rows: PostStats['latest'] = [];
     mine.forEach(p => {
       const types: string[] = firstArray(p?.mediaTypes).length ? p.mediaTypes : p?.mediaType ? [p.mediaType] : [];
@@ -204,6 +209,16 @@ function loadMyPosts(uid: string): Promise<PostStats> {
       st.likes += Number(p?.likesCount) || 0;
       st.comments += Number(p?.commentsCount) || 0;
       st.views += Number(p?.viewsCount ?? p?.views) || 0;
+      st.items.push({
+        id: String(p?.id ?? p?.repostKey ?? ''),
+        text: String(p?.text || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+        kind: hasVideo ? 'video' : hasImage ? 'photo' : 'text',
+        media: String((firstArray(p?.mediaUrls)[0] ?? p?.mediaUrl) || ''),
+        likes: Number(p?.likesCount) || 0,
+        comments: Number(p?.commentsCount) || 0,
+        views: Number(p?.viewsCount ?? p?.views) || 0,
+        at: Date.parse(String(p?.createdAt || '')) || 0,
+      });
       rows.push({
         text: String(p?.text || '').replace(/\s+/g, ' ').trim().slice(0, 42),
         kind: hasVideo ? 'video' : hasImage ? 'photo' : 'text',
@@ -212,6 +227,7 @@ function loadMyPosts(uid: string): Promise<PostStats> {
         at: Date.parse(String(p?.createdAt || '')) || 0,
       });
     });
+    st.items.sort((a, b) => b.at - a.at);
     st.latest = rows.sort((a, b) => b.at - a.at).slice(0, 3);
     return st;
   });
@@ -229,25 +245,20 @@ export async function loadDashboard(user: AssistUser | null | undefined): Promis
 /* ───────────────────────── "open the general chat" ───────────────────────── */
 
 /**
- * Turns the general chat ON (same switch as the one under the profile frame), takes the user to the
- * home page where it lives and closes the Stooorna Ai sheet (it slides down, the chat is right there).
- * If your general chat opens another way, change ONLY this function.
+ * Opens the GENERAL CHAT (the floating chat button's panel in RootLayout): the Stooorna Ai sheet slides
+ * down first, then RootLayout's GlobalPublicChatHost hears "stooorna:open-public-chat", turns the chat ON
+ * and slides it up. (Needs the small listener added to RootLayout.tsx — see INTEGRATION.)
  */
 export function openGeneralChat(): void {
-  try {
-    localStorage.setItem('stooorna_public_chat_on', '1');
-    (window as any).__stooornaPublicChatOn = true;
-    window.dispatchEvent(new CustomEvent('stooorna:public-chat-switch', { detail: { on: true } }));
-  } catch { /* */ }
-  try {
-    if (window.location.pathname !== '/') {
-      window.history.pushState({}, '', '/');
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    }
-  } catch { /* */ }
+  try { window.dispatchEvent(new CustomEvent('stooorna:ai-close')); } catch { /* */ }
   window.setTimeout(() => {
-    try { window.dispatchEvent(new CustomEvent('stooorna:ai-close')); } catch { /* */ }
-  }, 650);
+    try {
+      localStorage.setItem('stooorna_public_chat_on', '1');
+      (window as any).__stooornaPublicChatOn = true;
+      window.dispatchEvent(new CustomEvent('stooorna:public-chat-switch', { detail: { on: true } }));
+      window.dispatchEvent(new CustomEvent('stooorna:open-public-chat'));
+    } catch { /* */ }
+  }, 380);
 }
 
 /* ───────────────────────── intent detection ───────────────────────── */
@@ -421,5 +432,51 @@ export async function answerAppIntent(intent: AppIntent, text: string, user: Ass
     case 'credits': return answerCredits(user, ar);
     case 'summary': return answerSummary(user, uid, ar);
     default: return '';
+  }
+}
+
+/* ───────────────────────── data for the white list pages (AiInfoPanel) ───────────────────────── */
+
+export async function getFriendsList(user: AssistUser | null | undefined): Promise<Person[]> {
+  const uid = String(user?.id || '');
+  return uid ? (await loadFriendsData(uid)).friends : [];
+}
+
+export async function getOnlineList(user: AssistUser | null | undefined): Promise<{ online: Person[]; total: number }> {
+  const uid = String(user?.id || '');
+  if (!uid) return { online: [], total: 0 };
+  const fd = await loadFriendsData(uid);
+  return { online: await loadOnline(uid, fd.friends), total: fd.friends.length };
+}
+
+export async function getRequestsList(user: AssistUser | null | undefined): Promise<{ people: Person[]; count: number }> {
+  const uid = String(user?.id || '');
+  if (!uid) return { people: [], count: 0 };
+  const fd = await loadFriendsData(uid);
+  return { people: fd.incomingPeople, count: fd.incoming };
+}
+
+export async function getPostsPanel(user: AssistUser | null | undefined): Promise<PostStats | null> {
+  const uid = String(user?.id || '');
+  return uid ? loadMyPosts(uid) : null;
+}
+
+export async function getBalance(user: AssistUser | null | undefined): Promise<number | null> {
+  const c = await getCredits(user);
+  return c ? c.balance : null;
+}
+
+export type PanelKind = 'friends' | 'online' | 'requests' | 'posts' | 'app' | 'summary';
+
+/** Intents that open a white list page instead of writing text in the chat. */
+export function intentToPanel(i: AppIntent): PanelKind | null {
+  switch (i) {
+    case 'friends': return 'friends';
+    case 'online': return 'online';
+    case 'requests': return 'requests';
+    case 'posts': return 'posts';
+    case 'summary': return 'summary';
+    case 'appInfo': return 'app';
+    default: return null;
   }
 }
