@@ -1241,7 +1241,7 @@ registerTemplatesRoutes(app, {
 });
 registerTemplatesShareRoutes(app, { dataDir: join(ASSETS_DIR, "_private", "templates-share"), getUser: (req) => session.user(req) as any }); // TEMPLATES-SHARE-PATCH
 registerAiIconRoutes(app, { pool: templatesPool, dataDir: join(ASSETS_DIR, "_private", "ai-icon"), getUser: (req) => session.user(req) as any, isAdmin: (u) => session.isAdmin(u as any) }); // AI-ICON-PATCH
-registerAiCreditsRoutes(app, { pool: templatesPool, getUser: (req) => session.user(req) as any }); // AI-CREDITS: 30 P welcome, 5 P per published photo / video
+registerAiCreditsRoutes(app, { pool: templatesPool, getUser: (req) => session.user(req) as any, isAdmin: (u) => session.isAdmin(u as any) }); // AI-CREDITS: 30 P welcome, 5 P per published photo / video
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
 const needUser = async (req: Request, res: Response) => {

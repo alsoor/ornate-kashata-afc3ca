@@ -18,6 +18,7 @@ const OwnerNotePanelLazy = React.lazy(() => import('./add-friend').then((m) => (
 import { activateVip, deactivateVip, setVipColor as persistVipColor, vipRenameUsed, markVipRenameUsed, VIP_COLORS, setVipFeat, hydrateVipFromServer, hydrateVipDirectory, resolveVipNameStyle, VIP_PRICE_KD, getVipExpiry, formatVipCountdown, ownerGrantEightMics, getVipFeats } from '@/lib/vipPatch';
 import { getAppProfitsSnapshot, syncAppProfitsFromServer, syncEarningsFromServer, readUserEarnings, PAYPAL_WITHDRAW_URL, isOwnerIdentity } from '@/lib/giftProfitSplit';
 import { readOwnerSupportProfit, syncOwnerSupportProfit } from '@/lib/ownerSupportProfitPatch';
+import { OwnerFreePublishSwitch } from '@/lib/ownerFreePublish'; // OWNER-FREE-PUBLISH: Active switch next to each user
 import AppUploadSection from '@/components/AppUploadSection';
 import { type StoreKind, type StoreLinks, readStoreLinks, fetchStoreLinks, normalizeStoreUrl, setStoreLink, setBannerShown, setIntroShown, uploadIntroFile, setIntroActive, clearIntroSlot, setBuiltinHidden, verifyStoreLinks, type IntroSlot } from '@/lib/storeLinks';
 // VIP frame cancelled — avatar renders without frame
@@ -10749,6 +10750,7 @@ export default function SettingsPage() {
                           {subtitle}
                         </p>
                       </div>
+                      {!isCo && <OwnerFreePublishSwitch userId={String(u.id)} />}{/* OWNER-FREE-PUBLISH */}
                       {isCo && (
                         <span style={{
                           fontSize: '0.58rem', fontWeight: 800, color: '#00BCD4',

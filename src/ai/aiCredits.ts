@@ -19,6 +19,10 @@ export interface CreditUser { id?: string | null }
 export interface CreditsState { balance: number; source: 'server' | 'local' }
 
 const EVT = 'stooorna:ai-credits';
+
+// OWNER-FREE-PUBLISH: the owner can let a user publish without paying (server tells us with free:true)
+let freePass = false;
+export const hasFreePass = () => freePass;
 const localKey = (uid: string) => `stooorna_ai_credits_v1_${uid}`;
 
 function readLocal(uid: string): number {
@@ -40,7 +44,7 @@ export async function getCredits(user: CreditUser | null | undefined): Promise<C
     const r = await fetch('/api/ai-credits', { credentials: 'include', cache: 'no-store' });
     if (r.ok) {
       const d: any = await r.json();
-      if (typeof d?.balance === 'number') { announce(d.balance); return { balance: d.balance, source: 'server' }; }
+      if (typeof d?.balance === 'number') { freePass = !!d.free; announce(d.balance); return { balance: d.balance, source: 'server' }; }
     }
   } catch { /* server routes not reachable -> local ledger */ }
   const b = readLocal(uid);
@@ -60,7 +64,7 @@ export async function spendCredits(user: CreditUser | null | undefined, ref = ''
     if (r.status === 402) { const d: any = await r.json().catch(() => ({})); const b = Number(d?.balance) || 0; announce(b); return null; }
     if (r.ok) {
       const d: any = await r.json();
-      if (typeof d?.balance === 'number') { announce(d.balance); return d.balance; }
+      if (typeof d?.balance === 'number') { if (d.free !== undefined) freePass = !!d.free; announce(d.balance); return d.balance; }
     }
   } catch { /* local ledger */ }
   const cur = readLocal(uid);
@@ -71,7 +75,7 @@ export async function spendCredits(user: CreditUser | null | undefined, ref = ''
   return next;
 }
 
-export const canAfford = (balance: number | null | undefined) => (balance ?? 0) >= AI_POST_COST;
+export const canAfford = (balance: number | null | undefined) => freePass || (balance ?? 0) >= AI_POST_COST; // OWNER-FREE-PUBLISH: free pass never hits the paywall
 
 /** Subscribe to balance changes (returns the unsubscribe function). */
 export function onCreditsChange(cb: (balance: number) => void): () => void {

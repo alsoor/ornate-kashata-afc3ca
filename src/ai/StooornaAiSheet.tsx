@@ -5,7 +5,7 @@ import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // 
 import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
 import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
 import { publishToTemplates, startTemplateUpload } from './mediaPublish'; // PUBLISH-TEMPLATES
-import { getCredits, spendCredits, canAfford, onCreditsChange, AI_POST_COST } from './aiCredits'; // AI-CREDITS
+import { getCredits, spendCredits, canAfford, onCreditsChange, AI_POST_COST, hasFreePass } from './aiCredits'; // AI-CREDITS
 import { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
 import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
 import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
@@ -790,7 +790,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       await new Promise(r => setTimeout(r, 300)); // let the bar visibly reach 100%
       if (dead()) return;
       setPublishFor(null);
-      flashPhotoNote(left !== null ? `Published to Templates ✓  −${AI_POST_COST} P` : 'Published to Templates ✓', 3000);
+      flashPhotoNote(left !== null && !hasFreePass() ? `Published to Templates ✓  −${AI_POST_COST} P` : 'Published to Templates ✓', 3000);
     } catch (e) {
       if (dead() || /aborted/.test(String((e as any)?.message))) return; // cancelled by the user
       console.error('[Stooorna Ai] publish error:', e);
@@ -1938,7 +1938,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 {[
                   { key: 'camera', label: 'Camera', icon: <CameraIcon size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); setCameraOpen(true); } },
                   { key: 'photos', label: 'Photos', icon: <ImageIcon size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); imageInputRef.current?.click(); } },
-                  { key: 'files', label: 'Files', icon: <FileUp size={28} strokeWidth={1.8} />, run: () => { setAttachMenu(false); fileInputRef.current?.click(); } },
+                  { key: 'files', label: 'Files', icon: <FileUp size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); fileInputRef.current?.click(); } }, // AI-CREDITS: no points -> plan box instead of the file picker
                 ].map(t => (
                   <button
                     key={t.key}

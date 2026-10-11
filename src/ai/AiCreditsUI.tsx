@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, X as XIcon } from 'lucide-react';
 import { AI_PLAN, AI_POST_COST, canAfford, startPayment } from './aiCredits';
 
-/** Header chip: "30 P" while there are points, "Upgrade" (light-blue pill, white text, black frame) when the balance is empty. */
+/** Header chip: "30 P" while there are points, "Upgrade" (matte-black pill, white text, black frame) when the balance is empty. */
 export function CreditsChip({ balance, onClick }: { balance: number | null; onClick: () => void }) {
   if (balance === null) return <span style={{ width: 8 }} />;
   const empty = !canAfford(balance);
@@ -14,7 +14,7 @@ export function CreditsChip({ balance, onClick }: { balance: number | null; onCl
       aria-label={empty ? 'Upgrade' : 'Balance'}
       style={{
         border: empty ? '2px solid #000' : '1px solid rgba(0,0,0,0.08)',
-        background: empty ? '#9fd0fd' : 'rgba(0,0,0,0.045)',
+        background: empty ? '#17171a' : 'rgba(0,0,0,0.045)', // matte black (was light blue)
         color: empty ? '#fff' : '#111',
         textShadow: empty ? '0 1px 2px rgba(0,0,0,0.45)' : 'none',
         borderRadius: 999, padding: empty ? '5px 14px' : '5px 11px',
