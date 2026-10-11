@@ -23269,7 +23269,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
   if (!sc || typeof document === 'undefined' || !user?.id) return null;
   const close = () => dockShortcutSet(null);
   const vw = window.innerWidth;
-  const boxW = sc.kind === 'call' ? 212 : 64;
+  const boxW = sc.kind === 'call' ? 212 : 196; // DOCK-SHORTCUTS: LIVE rows now show names like the Call bubble
   const boxLeft = Math.max(8, Math.min(vw - boxW - 8, sc.x - boxW / 2));
   const tailLeft = Math.max(14, Math.min(boxW - 14, sc.x - boxLeft));
   const bottom = window.innerHeight - sc.top + 12;
@@ -23309,11 +23309,11 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
         onContextMenu={e => e.preventDefault()}
         style={{
           position: 'fixed', zIndex: 12061, left: boxLeft, bottom, width: boxW,
-          borderRadius: 18, padding: sc.kind === 'call' ? '8px 8px' : '9px 8px',
+          borderRadius: 18, padding: '8px 8px',
           background: 'linear-gradient(180deg, rgba(14,36,40,0.98) 0%, rgba(6,16,18,0.98) 100%)',
           border: '1.5px solid #0f4040', boxShadow: '0 10px 28px rgba(0,0,0,0.5)',
           animation: 'stooornaDockShortcutPop .18s ease-out', transformOrigin: `${tailLeft}px 100%`,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: sc.kind === 'call' ? 4 : 9,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
           maxHeight: 'min(52vh, 360px)', overflowY: sc.kind === 'call' ? 'auto' : 'visible',
           WebkitOverflowScrolling: 'touch', userSelect: 'none', WebkitUserSelect: 'none',
         }}
@@ -23321,21 +23321,24 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
         <style>{`@keyframes stooornaDockShortcutPop { from { transform: scale(0.6) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }`}</style>
         {sc.kind === 'live' && (
           <>
-            <button type="button" role="menuitem" aria-label="Public LIVE" title="Public LIVE"
-              onClick={() => { close(); setProfilePlusOpen(false); setShowPublicVoice(true); }}
-              style={circle(pubC, pubRgb, hot)}>
-              <Mic size={22} strokeWidth={2.3} />
-            </button>
-            <button type="button" role="menuitem" aria-label="Voice Live" title="Voice Live"
-              onClick={() => startLive('/live')}
-              style={circle('#facc15', '250,204,21', myLiveBroadcastKind === 'voice')}>
-              <Mic size={22} strokeWidth={2.3} />
-            </button>
-            <button type="button" role="menuitem" aria-label="Video Live" title="Video Live"
-              onClick={() => startLive('/live-camera')}
-              style={circle('#00BCD4', '0,188,212', myLiveBroadcastKind === 'camera')}>
-              <Video size={22} strokeWidth={2.3} />
-            </button>
+            {([
+              { key: 'pub', label: 'Public LIVE', c: pubC, rgb: pubRgb, text: hot ? '#fdba74' : '#fca5a5', glow: hot, icon: <Mic size={20} strokeWidth={2.3} />, run: () => { close(); setProfilePlusOpen(false); setShowPublicVoice(true); } },
+              { key: 'voice', label: 'Voice Live', c: '#facc15', rgb: '250,204,21', text: '#facc15', glow: myLiveBroadcastKind === 'voice', icon: <Mic size={20} strokeWidth={2.3} />, run: () => startLive('/live') },
+              { key: 'video', label: 'Video Live', c: '#00BCD4', rgb: '0,188,212', text: '#67e8f9', glow: myLiveBroadcastKind === 'camera', icon: <Video size={20} strokeWidth={2.3} />, run: () => startLive('/live-camera') },
+            ]).map(it => (
+              <button
+                key={it.key}
+                type="button"
+                role="menuitem"
+                aria-label={it.label}
+                title={it.label}
+                onClick={it.run}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px 5px 6px', borderRadius: 14, border: `1px solid rgba(${it.rgb},0.3)`, background: `rgba(${it.rgb},0.07)`, cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
+              >
+                <span style={{ ...circle(it.c, it.rgb, it.glow), width: 38, height: 38 }}>{it.icon}</span>
+                <span style={{ flex: 1, minWidth: 0, color: it.text, fontWeight: 800, fontSize: '0.84rem', whiteSpace: 'nowrap' }}>{it.label}</span>
+              </button>
+            ))}
           </>
         )}
         {sc.kind === 'call' && (
