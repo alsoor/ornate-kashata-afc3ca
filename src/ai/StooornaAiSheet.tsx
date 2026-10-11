@@ -5,6 +5,8 @@ import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // 
 import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
 import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
 import { publishToTemplates, startTemplateUpload } from './mediaPublish'; // PUBLISH-TEMPLATES
+import { getCredits, spendCredits, canAfford, onCreditsChange, AI_POST_COST } from './aiCredits'; // AI-CREDITS
+import { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
 
 interface Attachment {
   id: string;
@@ -558,6 +560,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachMenu, setAttachMenu] = useState(false);
+  const [credits, setCredits] = useState<number | null>(null); // AI-CREDITS: points balance (30 P welcome, 5 P per published photo / video)
+  const [planOpen, setPlanOpen] = useState(false); // AI-CREDITS: centered "Stooorna Ai" plan box
   const [cameraOpen, setCameraOpen] = useState(false);
   // MEDIA-EDITOR: full-screen photo / video editor + the pending "do you want to edit?" offer
   const [editor, setEditor] = useState<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
@@ -586,7 +590,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   useEffect(() => {
     // Keyboard no longer opens automatically; it opens only when the user taps the input.
-    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); setPublishFull(false); }
+    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); setPublishFull(false); setPlanOpen(false); }
   }, [open]);
 
   useEffect(() => {
@@ -738,6 +742,16 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     setEditor(null);
   };
 
+  // AI-CREDITS: no points left -> the plan box opens instead of photo / video upload and publishing
+  const needPoints = () => {
+    if (user?.id && credits !== null && !canAfford(credits)) { setAttachMenu(false); setPlanOpen(true); return true; }
+    return false;
+  };
+  const openPublish = (v: { url: string; kind: 'image' | 'video' }) => {
+    if (needPoints()) return;
+    setPublishErr(''); setPublishFor(v);
+  };
+
   // PUBLISH-TEMPLATES: Publish -> preview box -> "Share To Templates"
   const doPublish = async () => {
     if (!publishFor || publishing) return;
@@ -748,10 +762,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       let pre: Promise<string> | null = publishPre.current?.url === publishFor.url ? publishPre.current.promise : null;
       if (pre) { try { await pre; } catch { pre = null; } } // background upload failed -> try again normally
       await publishToTemplates(blob, user as any, publishFor.kind, p => setPublishPct(prev => Math.max(prev, p)), pre);
+      const left = await spendCredits(user as any, publishFor.url); // AI-CREDITS: 5 P per published photo / video, taken automatically
+      if (left !== null) setCredits(left);
       setPublishPct(100);
       await new Promise(r => setTimeout(r, 300)); // let the bar visibly reach 100%
       setPublishFor(null);
-      flashPhotoNote('Published to Templates ✓', 3000);
+      flashPhotoNote(left !== null ? `Published to Templates ✓  −${AI_POST_COST} P` : 'Published to Templates ✓', 3000);
     } catch (e) {
       console.error('[Stooorna Ai] publish error:', e);
       publishPre.current = null;
@@ -1109,6 +1125,15 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     el.style.height = `${Math.min(el.scrollHeight, 129)}px`;
   }, [input, open]);
 
+  // AI-CREDITS: load the balance (first time = 30 P welcome credit) and keep it in sync
+  useEffect(() => {
+    if (!open || !user?.id) return;
+    let alive = true;
+    void getCredits(user as any).then(r => { if (alive && r) setCredits(r.balance); });
+    const off = onCreditsChange(b => { if (alive) setCredits(b); });
+    return () => { alive = false; off(); };
+  }, [open, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // PUBLISH-PREFETCH: start uploading as soon as the preview box opens, so Share To Templates is (almost) instant
   useEffect(() => {
     if (!publishFor) { publishPre.current = null; return; }
@@ -1246,6 +1271,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               }}
             />
           </div>
+
+          <CreditsChip balance={user?.id ? credits : null} onClick={() => setPlanOpen(true)} />
 
           <div style={{ display: 'flex', gap: 6 }}>
             <button
@@ -1517,7 +1544,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                       </button>
                       <button
                         type="button"
-                      onClick={() => { setPublishErr(''); setPublishFor({ url: m.data.url, kind: 'image' }); }}
+                      onClick={() => openPublish({ url: m.data.url, kind: 'image' })}
                       style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
                     >
                       Publish
@@ -1578,7 +1605,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setPublishErr(''); setPublishFor({ url: m.data.url, kind: 'video' }); }}
+                      onClick={() => openPublish({ url: m.data.url, kind: 'video' })}
                       style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
                     >
                       Publish
@@ -1819,8 +1846,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                 {[
-                  { key: 'camera', label: 'Camera', icon: <CameraIcon size={28} strokeWidth={1.8} />, run: () => { setAttachMenu(false); setCameraOpen(true); } },
-                  { key: 'photos', label: 'Photos', icon: <ImageIcon size={28} strokeWidth={1.8} />, run: () => { setAttachMenu(false); imageInputRef.current?.click(); } },
+                  { key: 'camera', label: 'Camera', icon: <CameraIcon size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); setCameraOpen(true); } },
+                  { key: 'photos', label: 'Photos', icon: <ImageIcon size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); imageInputRef.current?.click(); } },
                   { key: 'files', label: 'Files', icon: <FileUp size={28} strokeWidth={1.8} />, run: () => { setAttachMenu(false); fileInputRef.current?.click(); } },
                 ].map(t => (
                   <button
@@ -1841,6 +1868,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           </>
         )}
       </div>
+
+      <AiPlanDialog open={planOpen} balance={credits} onClose={() => setPlanOpen(false)} />
 
       {publishFor && createPortal(
         <div

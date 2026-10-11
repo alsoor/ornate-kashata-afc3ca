@@ -15,6 +15,7 @@ import { registerLiveBurstRoutes } from "./live-burst.js"; // EMOJI-BURST-PATCH
 import { registerAppReleaseRoutes } from "./app-releases-routes.js"; // APP-RELEASES-PATCH
 import { registerTemplatesRoutes } from "./templates-routes.js"; // TEMPLATES-PATCH
 import { registerTemplatesShareRoutes } from "./templates-share-patch.js"; // TEMPLATES-SHARE-PATCH
+import { registerAiCreditsRoutes } from "./ai-credits-routes.js"; // AI-CREDITS
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
 import { registerSavedRoomRoutes } from "./saved-room-patch.js";
@@ -1238,6 +1239,7 @@ registerTemplatesRoutes(app, {
 });
 registerTemplatesShareRoutes(app, { dataDir: join(ASSETS_DIR, "_private", "templates-share"), getUser: (req) => session.user(req) as any }); // TEMPLATES-SHARE-PATCH
 registerAiIconRoutes(app, { pool: templatesPool, dataDir: join(ASSETS_DIR, "_private", "ai-icon"), getUser: (req) => session.user(req) as any, isAdmin: (u) => session.isAdmin(u as any) }); // AI-ICON-PATCH
+registerAiCreditsRoutes(app, { pool: templatesPool, getUser: (req) => session.user(req) as any }); // AI-CREDITS: 30 P welcome, 5 P per published photo / video
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
 const needUser = async (req: Request, res: Response) => {
