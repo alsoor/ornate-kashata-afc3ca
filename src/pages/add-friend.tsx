@@ -23202,6 +23202,185 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
   );
 }
 
+// ───────────────────────────────────────────────────────────────────────────────────────────
+// DOCK-SHORTCUTS: long-press on LIVE / Call (bottom dock) → small bubble above the icon (upward only).
+//  • LIVE long-press → Video Live / Voice Live / Public LIVE icons, same colours as the LIVE page.
+//  • Call long-press → friends (avatar + name); one tap calls directly.
+// A normal tap still opens the full page exactly as before.
+// ───────────────────────────────────────────────────────────────────────────────────────────
+type DockShortcutState = null | { kind: 'live' | 'call'; x: number; top: number; at: number };
+let dockShortcutState: DockShortcutState = null;
+const dockShortcutSubs = new Set<() => void>();
+function dockShortcutGet(): DockShortcutState { return dockShortcutState; }
+function dockShortcutSubscribe(f: () => void) { dockShortcutSubs.add(f); return () => { dockShortcutSubs.delete(f); }; }
+function dockShortcutSet(n: DockShortcutState) {
+  if (n === dockShortcutState) return;
+  dockShortcutState = n;
+  dockShortcutSubs.forEach(f => f());
+}
+function makeDockLongPress(ms = 450) {
+  const st = { timer: 0, fired: false };
+  return {
+    st,
+    start(onFire: () => void) {
+      st.fired = false;
+      if (st.timer) window.clearTimeout(st.timer);
+      st.timer = window.setTimeout(() => {
+        st.timer = 0;
+        st.fired = true;
+        try { if (navigator.vibrate) navigator.vibrate(15); } catch { /* */ }
+        onFire();
+      }, ms);
+    },
+    end() { if (st.timer) { window.clearTimeout(st.timer); st.timer = 0; } },
+  };
+}
+const liveDockLongPress = makeDockLongPress();
+const callDockLongPress = makeDockLongPress();
+function openDockShortcut(kind: 'live' | 'call', el: HTMLElement | null) {
+  const r = el?.getBoundingClientRect();
+  const x = r ? r.left + r.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 180);
+  const top = r ? r.top : (typeof window !== 'undefined' ? window.innerHeight - 90 : 600);
+  dockShortcutSet({ kind, x, top, at: Date.now() });
+}
+
+function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusOpen, setShowPublicVoice }: {
+  user: any;
+  navigate: (to: string) => void;
+  myLiveBroadcastKind: any;
+  setProfilePlusOpen: (v: boolean) => void;
+  setShowPublicVoice: (v: boolean) => void;
+}) {
+  const sc = useSyncExternalStore(dockShortcutSubscribe, dockShortcutGet, dockShortcutGet);
+  const dock = useSyncExternalStore(dockSubscribe, dockGet, dockGet);
+  const publicVoiceStatus = usePublicVoiceRoomStatus(sc?.kind === 'live');
+  const [friends, setFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
+  const kind = sc?.kind;
+  useEffect(() => {
+    if (kind !== 'call') return;
+    let off = false;
+    if (dockFriendsCache.list) setFriends(dockFriendsCache.list);
+    void refreshDockFriends().then(list => { if (!off && list) setFriends(list); });
+    return () => { off = true; };
+  }, [kind]);
+  // a full dock page opened (or the user left this page) → close the shortcut bubble
+  useEffect(() => { if (dock) dockShortcutSet(null); }, [dock]);
+  useEffect(() => () => { dockShortcutSet(null); }, []);
+  if (!sc || typeof document === 'undefined' || !user?.id) return null;
+  const close = () => dockShortcutSet(null);
+  const vw = window.innerWidth;
+  const boxW = sc.kind === 'call' ? 212 : 64;
+  const boxLeft = Math.max(8, Math.min(vw - boxW - 8, sc.x - boxW / 2));
+  const tailLeft = Math.max(14, Math.min(boxW - 14, sc.x - boxLeft));
+  const bottom = window.innerHeight - sc.top + 12;
+  const startLive = (path: '/live' | '/live-camera') => {
+    close();
+    setProfilePlusOpen(false);
+    try { sessionStorage.setItem('stooorna_return_text_posts', '1'); } catch { /* ignore */ }
+    const qs = new URLSearchParams({
+      hostId: String(user?.id ?? ''),
+      hostName: String((user as any)?.name || (user as any)?.username || 'Host'),
+    });
+    if ((user as any)?.username) qs.set('hostUsername', String((user as any).username));
+    const av = (user as any)?.avatarUrl || (user as any)?.image;
+    if (av) qs.set('hostAvatar', String(av));
+    navigate(`${path}?${qs.toString()}`);
+  };
+  const hot = publicVoiceStatus.present || publicVoiceStatus.talking;
+  const pubC = hot ? '#f97316' : '#ef4444';
+  const pubRgb = hot ? '249,115,22' : '239,68,68';
+  const circle = (c: string, rgb: string, glow: boolean): React.CSSProperties => ({
+    width: 46, height: 46, borderRadius: '50%', cursor: 'pointer', padding: 0, flexShrink: 0,
+    background: `rgba(${rgb},0.14)`, border: `1.5px solid rgba(${rgb},0.8)`, color: c,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: `0 0 ${glow ? 16 : 9}px rgba(${rgb},${glow ? 0.55 : 0.28})`,
+  });
+  return createPortal(
+    <>
+      {/* ignore the click that is generated when the finger lifts right after the long-press */}
+      <div
+        aria-hidden="true"
+        onClick={() => { if (Date.now() - sc.at < 450) return; close(); }}
+        onContextMenu={e => e.preventDefault()}
+        style={{ position: 'fixed', inset: 0, zIndex: 12060, background: 'transparent' }}
+      />
+      <div
+        role="menu"
+        onContextMenu={e => e.preventDefault()}
+        style={{
+          position: 'fixed', zIndex: 12061, left: boxLeft, bottom, width: boxW,
+          borderRadius: 18, padding: sc.kind === 'call' ? '8px 8px' : '9px 8px',
+          background: 'linear-gradient(180deg, rgba(14,36,40,0.98) 0%, rgba(6,16,18,0.98) 100%)',
+          border: '1.5px solid #0f4040', boxShadow: '0 10px 28px rgba(0,0,0,0.5)',
+          animation: 'stooornaDockShortcutPop .18s ease-out', transformOrigin: `${tailLeft}px 100%`,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: sc.kind === 'call' ? 4 : 9,
+          maxHeight: 'min(52vh, 360px)', overflowY: sc.kind === 'call' ? 'auto' : 'visible',
+          WebkitOverflowScrolling: 'touch', userSelect: 'none', WebkitUserSelect: 'none',
+        }}
+      >
+        <style>{`@keyframes stooornaDockShortcutPop { from { transform: scale(0.6) translateY(10px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }`}</style>
+        {sc.kind === 'live' && (
+          <>
+            <button type="button" role="menuitem" aria-label="Public LIVE" title="Public LIVE"
+              onClick={() => { close(); setProfilePlusOpen(false); setShowPublicVoice(true); }}
+              style={circle(pubC, pubRgb, hot)}>
+              <Mic size={22} strokeWidth={2.3} />
+            </button>
+            <button type="button" role="menuitem" aria-label="Voice Live" title="Voice Live"
+              onClick={() => startLive('/live')}
+              style={circle('#facc15', '250,204,21', myLiveBroadcastKind === 'voice')}>
+              <Mic size={22} strokeWidth={2.3} />
+            </button>
+            <button type="button" role="menuitem" aria-label="Video Live" title="Video Live"
+              onClick={() => startLive('/live-camera')}
+              style={circle('#00BCD4', '0,188,212', myLiveBroadcastKind === 'camera')}>
+              <Video size={22} strokeWidth={2.3} />
+            </button>
+          </>
+        )}
+        {sc.kind === 'call' && (
+          <>
+            {friends.length === 0 && (
+              <p style={{ margin: '10px 4px', textAlign: 'center', fontSize: '0.74rem', color: 'rgba(150,200,200,0.7)' }}>
+                {dockFriendsCache.list === null ? 'Loading…' : 'No friends to call yet'}
+              </p>
+            )}
+            {friends.map(f => (
+              <button
+                key={f.friendId}
+                type="button"
+                role="menuitem"
+                aria-label={`Call ${f.name || f.username || 'friend'}`}
+                onClick={() => {
+                  close();
+                  try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
+                }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '5px 6px', borderRadius: 12, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.06)', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
+              >
+                <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={34} style={{ flexShrink: 0, border: 'none' }} />
+                <span style={{ flex: 1, minWidth: 0, color: '#d7eeee', fontWeight: 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f.name || f.username || 'Friend'}
+                </span>
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+      {/* tail pointing down at the pressed icon */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'fixed', zIndex: 12062, pointerEvents: 'none',
+          left: boxLeft + tailLeft - 7, bottom: bottom - 7, width: 14, height: 14,
+          transform: 'rotate(45deg)', background: 'rgba(6,16,18,0.98)',
+          borderRight: '1.5px solid #0f4040', borderBottom: '1.5px solid #0f4040',
+        }}
+      />
+    </>,
+    document.body
+  );
+}
+
 export default function AddFriendPage() {
   const navigate = useNavigate();
   const routeLocation = useLocation();
@@ -29084,7 +29263,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           document.body,
         ) : null}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && (
+          <>
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
+          <DockShortcutHost user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} /> {/* DOCK-SHORTCUTS */}
+          </>
         )}
         <StooornaAiSheet
           open={aiOpen && aiIconVisible}
@@ -29140,7 +29322,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 <button
                       type="button"
                       onContextMenu={(e) => e.preventDefault()}
-                      onPointerDown={() => {
+                      onPointerDown={(e) => {
+                        // DOCK-SHORTCUTS: not ringing → long-press shows friends (avatar + name) above the icon; tap one to call directly.
+                        if (!profilePlusIncomingCallUi.ringing) {
+                          const el = e.currentTarget;
+                          callDockLongPress.start(() => openDockShortcut('call', el));
+                          return;
+                        }
                         // Long-press no longer opens chat. Only declines incoming call when ringing.
                         if (!profilePlusIncomingCallUi.ringing) return;
                         profilePlusCallPressRef.current.long = false;
@@ -29152,7 +29340,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           setProfilePlusOpen(false);
                         }, 550);
                       }}
+                      onPointerCancel={callDockLongPress.end}
                       onPointerUp={() => {
+                        callDockLongPress.end();
                         if (profilePlusCallPressRef.current.timer) {
                           clearTimeout(profilePlusCallPressRef.current.timer);
                           profilePlusCallPressRef.current.timer = null;
@@ -29161,12 +29351,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       onPointerLeave={(e) => {
                         // اللمس: ما نلغي المؤقت عند المغادرة (الأندرويد يطلقها مع أي حركة بسيطة) — الإلغاء عند الرفع فقط
                         if ((e as any).pointerType === 'touch') return;
+                        callDockLongPress.end();
                         if (profilePlusCallPressRef.current.timer) {
                           clearTimeout(profilePlusCallPressRef.current.timer);
                           profilePlusCallPressRef.current.timer = null;
                         }
                       }}
                       onClick={(e) => {
+                        if (callDockLongPress.st.fired) { callDockLongPress.st.fired = false; return; } // DOCK-SHORTCUTS
                         if (profilePlusCallPressRef.current.long) {
                           profilePlusCallPressRef.current.long = false;
                           return;
@@ -29217,9 +29409,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
 <button
                       type="button"
-                      onClick={(e) => openDockBubble('live', e.currentTarget)}
+                      onPointerDown={(e) => { const el = e.currentTarget; liveDockLongPress.start(() => openDockShortcut('live', el)); }} /* DOCK-SHORTCUTS */
+                      onPointerUp={liveDockLongPress.end}
+                      onPointerLeave={liveDockLongPress.end}
+                      onPointerCancel={liveDockLongPress.end}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onClick={(e) => {
+                        if (liveDockLongPress.st.fired) { liveDockLongPress.st.fired = false; return; }
+                        openDockBubble('live', e.currentTarget);
+                      }}
                       aria-label="Live broadcast"
                       style={{
+                        WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
                         width: 44, height: 44, borderRadius: '50%',
                         border: '1.5px solid #ffffff',
                         background: 'transparent',
