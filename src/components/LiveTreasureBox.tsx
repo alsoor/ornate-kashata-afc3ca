@@ -304,7 +304,7 @@ export function LiveTreasureBox({
         onClick={() => setSheetOpen(true)}
         style={{
           position: 'fixed', zIndex: 9000,
-          right: centerRight - ICON / 2, bottom: `calc(${bottomCss} - 8px)`, // lowered a bit more
+          right: centerRight - ICON / 2, bottom: bottomCss,
           width: ICON, height: ICON, padding: 0, border: 'none', background: 'transparent', cursor: 'pointer',
           WebkitTapHighlightColor: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
           filter: 'drop-shadow(0 0 5px rgba(217,70,239,.7))',

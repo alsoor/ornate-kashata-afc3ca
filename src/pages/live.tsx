@@ -19,7 +19,7 @@ import { createPortal } from 'react-dom';
 import { useNavigate, useSearchParams } from 'react-router';
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { Mic, MicOff, Volume2, VolumeX, X, Users, Snowflake, LogOut, Hand, Minimize2, Forward } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, X, Users, Snowflake, LogOut, Hand, Minimize2 } from 'lucide-react';
 import { useSession } from '@/lib/auth/auth-client';
 import UserAvatar from '@/components/UserAvatar';
 import HostProfileSheet from './HostProfileSheet';
@@ -49,6 +49,7 @@ import { LiveVipDock } from '@/components/LiveVipDock';
 import { LiveCoinsDock, SupportCrown, useSupportLeaders } from '@/components/LiveCoinsDock';
 // VOICE-INVITE-PATCH: invite any online person to this voice live (box reaches them anywhere in the app)
 import {
+  VoiceInviteButton,
   VoiceInvitePanel,
   VoiceInviteToast,
   useVoiceInviteReplies,
@@ -1695,6 +1696,9 @@ export default function LivePage() {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        {isHostRoom && (
+          <VoiceInviteButton active={voiceInvOpen} onClick={() => setVoiceInvOpen(true)} />
+        )}
         <button
           type="button"
           onClick={() => setMembersSheetOpen(true)}
@@ -1716,20 +1720,7 @@ export default function LivePage() {
           <Users size={14} />
           <span>{members.length}</span>
         </button>
-        <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
-          style={{
-            position: 'absolute',
-            top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
-            right: 14,
-            zIndex: 30,
-            width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
-            background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
-            color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-          }}>
-          <Minimize2 size={16} strokeWidth={2.4} />
-        </button>
-        {/* MIC-REQUEST-PATCH: hand sits under the minimize button; host sees it only while someone asks for the mic */}
-        {isHostRoom && (!amHost || micRequests.length > 0) && (
+        {isHostRoom && (
           <button
             type="button"
             onClick={() => {
@@ -1737,10 +1728,7 @@ export default function LivePage() {
               else void toggleMic();
             }}
             style={{
-              position: 'absolute',
-              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 114px)',
-              right: 14,
-              zIndex: 30,
+              position: 'relative',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1748,8 +1736,8 @@ export default function LivePage() {
               color: '#111',
               fontSize: '0.7rem',
               fontWeight: 800,
-              width: 36,
-              height: 36,
+              width: isHostRoom ? 36 : 46,
+              height: isHostRoom ? 36 : 46,
               padding: 0,
               borderRadius: '50%',
               background: 'radial-gradient(circle at 30% 30%, #ffe08a, #eab308)',
@@ -1784,29 +1772,20 @@ export default function LivePage() {
                 {micRequests.length > 9 ? '9+' : micRequests.length}
               </span>
             )}
-        {/* INVITE-ARROW-PATCH: yellow share arrow under the hand slot (same anchor as the hand/minimize buttons) */}
-        {isHostRoom && (
-          <button
-            type="button"
-            onClick={() => setVoiceInvOpen(true)}
-            aria-label="Invite"
-            title="Invite"
-            style={{
-              position: 'absolute',
-              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 160px)',
-              right: 14,
-              zIndex: 30,
-              width: 36, height: 36, padding: 0, background: 'none', border: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-              WebkitTapHighlightColor: 'transparent',
-              filter: voiceInvOpen ? 'drop-shadow(0 0 6px rgba(250,204,21,0.9))' : 'drop-shadow(0 0 4px rgba(250,204,21,0.45))',
-            }}
-          >
-            <Forward size={28} color="#facc15" fill="#facc15" strokeWidth={1.6} />
           </button>
         )}
-          </button>
-        )}
+        <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
+          style={{
+            position: 'absolute',
+            top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+            right: 14,
+            zIndex: 30,
+            width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
+            background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
+            color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+          }}>
+          <Minimize2 size={16} strokeWidth={2.4} />
+        </button>
         <button type="button" onClick={dismissLivePage} aria-label="خروج من البث"
           style={{
             width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
