@@ -5,3 +5,5 @@ export { default as MediaEditor } from './MediaEditor'; // MEDIA-EDITOR
 export { installStooornaAiImagePatch, STOOORNA_AI_IMAGE_PATCH_VERSION } from './imageEditPatch';
 export { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
 export { getCredits, spendCredits, AI_POST_COST, AI_PLAN } from './aiCredits'; // AI-CREDITS
+export { default as AiQuickActions } from './AiQuickActions'; // APP-ASSISTANT
+export { detectAppIntent, answerAppIntent, openGeneralChat, loadDashboard, clearAssistantCache } from './appAssistant'; // APP-ASSISTANT

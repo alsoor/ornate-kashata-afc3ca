@@ -7,6 +7,8 @@ import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
 import { publishToTemplates, startTemplateUpload } from './mediaPublish'; // PUBLISH-TEMPLATES
 import { getCredits, spendCredits, canAfford, onCreditsChange, AI_POST_COST } from './aiCredits'; // AI-CREDITS
 import { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
+import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
+import { detectAppIntent, answerAppIntent } from './appAssistant'; // APP-ASSISTANT
 
 interface Attachment {
   id: string;
@@ -802,6 +804,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     });
   };
 
+  // APP-ASSISTANT: lets the assistant slide this sheet down (e.g. "افتح الشات العام")
+  useEffect(() => {
+    const h = () => onClose();
+    window.addEventListener('stooorna:ai-close', h);
+    return () => window.removeEventListener('stooorna:ai-close', h);
+  }, [onClose]);
+
   const sendMessage = (text: string) => {
     const trimmed = (text || '').trim();
     const pending = attachments;
@@ -904,6 +913,23 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       if (!trimmed) { pushOffer(media); endTurn(); return; }
       if (wantsEditor(trimmed)) { setEditor(media); endTurn(); return; }
       if (f.kind === 'video') { pushOffer(media); endTurn(); return; }
+    }
+
+    // APP-ASSISTANT: questions about the app / friends / posts / online users / "open the general chat"
+    const appIntent = pending.length === 0 ? detectAppIntent(trimmed) : null;
+    if (appIntent) {
+      void (async () => {
+        try {
+          pushAi(await answerAppIntent(appIntent, trimmed, user));
+        } catch (err) {
+          console.error('[Stooorna Ai] app assistant error:', err);
+          pushAi(ar ? '⚠️ ما قدرت أجيب البيانات الحين، جرّب بعد شوي.' : '⚠️ Could not load the data right now, try again shortly.');
+        } finally {
+          if (timer) window.clearTimeout(timer);
+          if (!stale()) setIsTyping(false);
+        }
+      })();
+      return;
     }
 
     // PHOTO-SEARCH: "ابي صور سيارات" -> photos from Pixabay shown inside the chat
@@ -1448,10 +1474,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           }}
         >
           {messages.length === 0 && (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
               <p style={{ fontSize: 22, fontWeight: 700, color: '#1a1a1a', textAlign: 'center' }}>
                 How can I help you?
               </p>
+              <AiQuickActions user={user} onAsk={t => sendMessage(t)} /> {/* APP-ASSISTANT */}
             </div>
           )}
 
