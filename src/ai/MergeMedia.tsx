@@ -428,7 +428,7 @@ export default function MergeMedia({ open, items: initial = [], onClose, onDone,
       <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 16px', display: 'flex', flexDirection: 'column', gap: 18 }}>
         {result ? (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-            <video src={result.url} autoPlay loop playsInline controls style={{ width: '100%', maxWidth: 320, maxHeight: '62dvh', borderRadius: 16, background: '#000' }} />
+            <video src={result.url} autoPlay loop playsInline controls controlsList="nofullscreen nodownload noplaybackrate noremoteplayback" disablePictureInPicture disableRemotePlayback onContextMenu={e => e.preventDefault()} style={{ width: '100%', maxWidth: 320, maxHeight: '62dvh', borderRadius: 16, background: '#000' }} />
             <div style={{ display: 'flex', gap: 10 }}>
               <button type="button" onClick={useResult} style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '12px 26px', fontWeight: 800, fontSize: 15, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <Check size={18} /> {t('استخدم الفيديو', 'Use video')}
