@@ -1,5 +1,5 @@
 /**
- * Stooorna Ai — Capabilities (v1.0.0)
+ * Stooorna Ai — Capabilities (v1.1.0)
  * Place at: src/ai/aiCapabilities.ts
  *
  * ChatGPT-style abilities, as ONE separate file. Nothing in the existing files is removed or changed.
@@ -23,7 +23,7 @@
  *   window.__STOOORNA_AI_LANG__ = 'ar' | 'en'
  */
 
-export const STOOORNA_AI_CAPS_VERSION = '1.0.0';
+export const STOOORNA_AI_CAPS_VERSION = '1.1.0';
 
 const FLAG = '__stooornaAiCaps__';
 const FALLBACK_BASES = ['https://www.stooorna.com/ai'];
@@ -251,6 +251,42 @@ export async function generateImage(prompt: string, chatUrl = ''): Promise<{ dat
   return null;
 }
 
+/* ------------------------------------------------------------------ instant local answers + safe fetch (v1.1.0) */
+
+const TIME_RE = /(كم الساع[هة]|ما هي الساع[هة]|ما الساع[هة]|الساع[هة] كم|الساع[هة] الان|الساع[هة] الآن|كم الوقت|ما الوقت|الوقت الان|الوقت الآن|what time is it|what('s| is) the time|current time)/i;
+const DATE_RE = /(ما التاريخ|تاريخ اليوم|التاريخ الان|التاريخ الآن|اي يوم|أي يوم|شنو اليوم|what('s| is) (the )?date|today'?s date|what day is it)/i;
+
+function localAnswer(text: string, ar: boolean): string {
+  const t = text.trim();
+  if (t.length > 60) return '';
+  const now = new Date();
+  const loc = ar ? 'ar-KW' : 'en-US';
+  if (TIME_RE.test(t)) {
+    const time = now.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' });
+    return ar ? `الساعة الحين ${time} ⏰` : `It is ${time} now ⏰`;
+  }
+  if (DATE_RE.test(t)) {
+    const d = now.toLocaleDateString(loc, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    return ar ? `اليوم ${d} 📅` : `Today is ${d} 📅`;
+  }
+  return '';
+}
+
+/** fetch with a timeout (so the sheet never spins forever). Respects the sheet's own stop button. */
+async function fetchWithTimeout(nativeFetch: typeof fetch, input: RequestInfo | URL, init: RequestInit, ms: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const outer = init.signal as AbortSignal | undefined;
+  const onAbort = () => ctrl.abort();
+  if (outer) { if (outer.aborted) ctrl.abort(); else outer.addEventListener('abort', onAbort); }
+  const timer = window.setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await nativeFetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    window.clearTimeout(timer);
+    if (outer) outer.removeEventListener('abort', onAbort);
+  }
+}
+
 /* ------------------------------------------------------------------ the /chat interceptor */
 
 type BodyAccess = { text: string; set: (t: string) => void; obj: any };
@@ -284,6 +320,13 @@ async function handleChat(nativeFetch: typeof fetch, input: RequestInfo | URL, i
   const chatUrl = urlOf(input);
   const ar = isArabic(original);
 
+  // instant local answer (time / date): no server needed, never hangs
+  const quick = pendingFiles.length === 0 ? localAnswer(original, ar) : '';
+  if (quick) {
+    remember(original, quick);
+    return jsonRes({ reply: quick });
+  }
+
   // image creation: answer here, the sheet gets { reply, image_base64, image_mime }
   if (IMAGE_GEN_RE.test(original) && pendingFiles.length === 0) {
     const img = await generateImage(original.replace(IMAGE_GEN_RE, '').trim() || original, chatUrl);
@@ -304,14 +347,35 @@ async function handleChat(nativeFetch: typeof fetch, input: RequestInfo | URL, i
     const found = await webSearch(original, chatUrl).catch(() => '');
     if (found) parts.push(`[Web search results — use them and mention the source link]\n${found}`);
   }
+  parts.push(`[Device date & time now: ${new Date().toLocaleString(ar ? 'ar-KW' : 'en-US')} — use it only if the user asks about time/date]`);
   if (parts.length) acc.set(`${parts.join('\n\n')}\n\n${original}`);
   if (obj.history === undefined) obj.history = recentHistory();
   if (obj.lang === undefined) obj.lang = ar ? 'ar' : 'en';
   pendingFiles = [];
 
-  const res = await nativeFetch(input, { ...init, body: JSON.stringify(obj) });
+  const plainObj = JSON.parse(String(init.body));
+  let res: Response | null = null;
   try {
-    if (res.ok && (res.headers.get('content-type') || '').includes('json')) {
+    res = await fetchWithTimeout(nativeFetch, input, { ...init, body: JSON.stringify(obj) }, 45000);
+    if (!res.ok) res = null;
+  } catch { res = null; }
+
+  // the enriched request failed / timed out -> retry once exactly as the sheet sent it
+  if (!res) {
+    try {
+      res = await fetchWithTimeout(nativeFetch, input, { ...init, body: JSON.stringify(plainObj) }, 45000);
+      if (!res.ok) res = null;
+    } catch { res = null; }
+  }
+
+  // still nothing -> answer with a clear message instead of an endless spinner
+  if (!res) {
+    const msg = ar ? 'السيرفر ما رد الحين، جرب مرة ثانية بعد لحظات.' : 'The server did not answer. Please try again in a moment.';
+    return jsonRes({ reply: msg });
+  }
+
+  try {
+    if ((res.headers.get('content-type') || '').includes('json')) {
       const reply = replyOf(await res.clone().json());
       if (reply) remember(original, reply);
     }
