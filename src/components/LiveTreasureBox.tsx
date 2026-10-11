@@ -21,6 +21,7 @@ import { X, Package } from 'lucide-react';
 const TREASURE_IMG = '/treasure-box.png';
 const PRICES = [250, 500, 1000] as const;
 const ICON = 32;
+const CIRCLE = 48; // compact banner circle (px)
 const POLL_MS = 1200;
 
 type Person = { id: string; name: string; avatar: string | null };
@@ -90,14 +91,15 @@ const fmtClock = (ms: number) => {
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 };
 
-function Avatar({ name, src, size }: { name: string; src?: string | null; size: number }) {
+function Avatar({ name, src, size, noBorder }: { name: string; src?: string | null; size: number; noBorder?: boolean }) {
+  const bd = noBorder ? 'none' : '1.5px solid rgba(217,70,239,0.7)';
   const [bad, setBad] = useState(false);
   useEffect(() => { setBad(false); }, [src]);
   if (src && !bad) {
-    return <img src={src} alt="" onError={() => setBad(true)} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: '1.5px solid rgba(217,70,239,0.7)' }} />;
+    return <img src={src} alt="" onError={() => setBad(true)} style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, border: bd }} />;
   }
   return (
-    <span style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(217,70,239,0.25)', color: '#f5d0fe', fontWeight: 800, fontSize: size * 0.45, border: '1.5px solid rgba(217,70,239,0.7)' }}>
+    <span style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(217,70,239,0.25)', color: '#f5d0fe', fontWeight: 800, fontSize: size * 0.45, border: bd }}>
       {(name || '?').trim().slice(0, 1).toUpperCase()}
     </span>
   );
@@ -145,6 +147,15 @@ export function LiveTreasureBox({
   const [claimedId, setClaimedId] = useState('');
   const [win, setWin] = useState<{ coins: number; key: number } | null>(null);
   const [msg, setMsg] = useState('');
+  // compact mode: the banner is a small round avatar (default); tap -> full rectangle; tap again -> back to the circle
+  const [expanded, setExpanded] = useState(false);
+  const [face, setFace] = useState<0 | 1>(0); // 0 = buyer's photo, 1 = chest (swaps every 2 s)
+  useEffect(() => { setExpanded(false); setFace(0); }, [box?.id]);
+  useEffect(() => {
+    if (!box || expanded) return;
+    const id = window.setInterval(() => setFace(f => (f === 0 ? 1 : 0)), 2000);
+    return () => window.clearInterval(id);
+  }, [box?.id, expanded]);
   const msgTimer = useRef(0);
   const flash = (t: string) => {
     setMsg(t);
@@ -329,36 +340,98 @@ export function LiveTreasureBox({
         }}>{msg}</div>
       ) : null}
 
-      {/* banner: who bought + big countdown, visible to everybody */}
-      {box ? (
-        <div
-          role={opened ? 'button' : undefined}
-          onClick={() => { if (opened && !iHaveClaimed) setDismissedId(''); }}
-          style={{
-            position: 'fixed', zIndex: 9060, left: '50%', transform: 'translateX(-50%)',
-            top: 'var(--stooorna-box-top, calc(env(safe-area-inset-top, 0px) + 150px))',
-            width: 'min(92vw, 360px)', boxSizing: 'border-box', overflow: 'hidden',
-            display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px',
-            borderRadius: 18, background: 'rgba(10,8,20,0.93)', border: '1.5px solid #d946ef',
-            boxShadow: '0 6px 22px rgba(217,70,239,0.35)', cursor: opened && !iHaveClaimed ? 'pointer' : 'default',
-          }}
-        >
-          <Avatar name={buyerName} src={box.buyer?.avatar} size={36} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: '#fff', fontWeight: 800, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{buyerName}</div>
-            <div style={{ color: '#f0abfc', fontWeight: 700, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {counting ? `bought a ${fmtCoins(box.coins)} Coins Treasure Box` : iHaveClaimed ? `Box opened · ${box.left} left` : `Box is open — tap to grab!`}
+      {/* banner: circle (buyer photo + countdown under it) <-> full rectangle, toggled by tapping */}
+      <AnimatePresence mode="wait" initial={false}>
+        {box && !expanded ? (
+          <motion.div
+            key={`circle_${box.id}`}
+            initial={{ opacity: 0, scale: 0.6 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.6 }}
+            transition={{ duration: 0.18 }}
+            style={{
+              position: 'fixed', zIndex: 9060, right: 14, transformOrigin: 'top right',
+              top: 'var(--stooorna-box-circle-top, calc(env(safe-area-inset-top, 0px) + 112px))',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+            }}
+          >
+            <button
+              type="button"
+              aria-label="Treasure Box"
+              onClick={() => setExpanded(true)}
+              style={{
+                position: 'relative', width: CIRCLE, height: CIRCLE, padding: 0, borderRadius: '50%', cursor: 'pointer',
+                boxSizing: 'border-box', border: '2.5px solid #d946ef', background: 'rgba(10,8,20,0.93)', overflow: 'hidden',
+                WebkitTapHighlightColor: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 14px rgba(217,70,239,0.55)',
+                animation: opened ? 'stooornaBoxPulse 1.2s ease-out infinite' : undefined,
+              }}
+            >
+              <motion.span
+                animate={{ opacity: face === 0 ? 1 : 0, scale: face === 0 ? 1 : 0.7 }}
+                transition={{ duration: 0.35 }}
+                style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Avatar name={buyerName} src={box.buyer?.avatar} size={CIRCLE - 5} noBorder />
+              </motion.span>
+              <motion.span
+                animate={{ opacity: face === 1 ? 1 : 0, scale: face === 1 ? 1 : 0.7 }}
+                transition={{ duration: 0.35 }}
+                style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              >
+                <ChestImg size={CIRCLE - 14} style={{ animation: opened ? 'stooornaBoxShake .7s ease-in-out infinite' : undefined }} />
+              </motion.span>
+            </button>
+            <div
+              onClick={() => setExpanded(true)}
+              style={{
+                padding: '1px 7px', borderRadius: 999, background: 'rgba(10,8,20,0.88)', border: '1px solid rgba(217,70,239,0.7)',
+                color: opened ? '#fde047' : '#fff', fontWeight: 900, fontSize: 12, letterSpacing: 0.3, cursor: 'pointer',
+                fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              }}
+            >
+              {counting ? fmtClock(remainMs) : fmtClock(claimLeftMs)}
             </div>
-          </div>
-          <ChestImg size={34} style={{ animation: 'stooornaBoxShake 1.4s ease-in-out infinite', flexShrink: 0 }} />
-          <div style={{ minWidth: 58, textAlign: 'center', color: opened ? '#fde047' : '#fff', fontWeight: 900, fontSize: 19, letterSpacing: 0.5, fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
-            {counting ? fmtClock(remainMs) : fmtClock(claimLeftMs)}
-          </div>
-          {counting ? (
-            <div style={{ position: 'absolute', left: 0, bottom: 0, height: 3, width: `${Math.min(100, Math.max(0, (1 - remainMs / totalMs) * 100))}%`, background: 'linear-gradient(90deg,#d946ef,#f472b6)' }} />
-          ) : null}
-        </div>
-      ) : null}
+          </motion.div>
+        ) : null}
+
+        {box && expanded ? (
+          <motion.div
+            key={`rect_${box.id}`}
+            initial={{ opacity: 0, scale: 0.85 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.85 }}
+            transition={{ duration: 0.18 }}
+            style={{
+              position: 'fixed', zIndex: 9060, left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none',
+              top: 'var(--stooorna-box-top, calc(env(safe-area-inset-top, 0px) + 150px))',
+            }}
+          >
+            <div
+              role="button"
+              onClick={() => { setExpanded(false); if (opened && !iHaveClaimed) setDismissedId(''); }}
+              style={{
+                pointerEvents: 'auto', position: 'relative',
+                width: 'min(92vw, 360px)', boxSizing: 'border-box', overflow: 'hidden',
+                display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px',
+                borderRadius: 18, background: 'rgba(10,8,20,0.93)', border: '1.5px solid #d946ef',
+                boxShadow: '0 6px 22px rgba(217,70,239,0.35)', cursor: 'pointer',
+              }}
+            >
+              <Avatar name={buyerName} src={box.buyer?.avatar} size={36} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#fff', fontWeight: 800, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{buyerName}</div>
+                <div style={{ color: '#f0abfc', fontWeight: 700, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {counting ? `bought a ${fmtCoins(box.coins)} Coins Treasure Box` : iHaveClaimed ? `Box opened · ${box.left} left` : `Box is open — tap to grab!`}
+                </div>
+              </div>
+              <ChestImg size={34} style={{ animation: 'stooornaBoxShake 1.4s ease-in-out infinite', flexShrink: 0 }} />
+              <div style={{ minWidth: 58, textAlign: 'center', color: opened ? '#fde047' : '#fff', fontWeight: 900, fontSize: 19, letterSpacing: 0.5, fontVariantNumeric: 'tabular-nums', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
+                {counting ? fmtClock(remainMs) : fmtClock(claimLeftMs)}
+              </div>
+              {counting ? (
+                <div style={{ position: 'absolute', left: 0, bottom: 0, height: 3, width: `${Math.min(100, Math.max(0, (1 - remainMs / totalMs) * 100))}%`, background: 'linear-gradient(90deg,#d946ef,#f472b6)' }} />
+              ) : null}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {/* the opened box: tap to take your share */}
       <AnimatePresence>
