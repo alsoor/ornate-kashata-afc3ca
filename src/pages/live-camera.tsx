@@ -2584,26 +2584,6 @@ export default function LiveCameraPage() {
             />
           ) : null}
           {/* VOICE-INVITE-PATCH (video): everyone in the room invites their online friends (replaces the live-only duet list) */}
-          {isHostRoom ? (
-                  <button
-                    type="button"
-                    onClick={() => setVoiceInvOpen(true)}
-                    aria-label="Invite"
-                    title="Invite"
-                    style={{
-                      position: 'fixed',
-                      left: 16,
-                      bottom: 'calc(max(env(safe-area-inset-bottom, 0px), 12px) + 4px)',
-                      zIndex: 9000,
-                      width: 34, height: 34, padding: 0, background: 'none', border: 'none',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                      WebkitTapHighlightColor: 'transparent',
-                      filter: voiceInvOpen ? 'drop-shadow(0 0 6px rgba(250,204,21,0.9))' : 'drop-shadow(0 0 4px rgba(250,204,21,0.45))',
-                    }}
-                  >
-                    <Forward size={28} color="#facc15" fill="#facc15" strokeWidth={1.6} />
-                  </button>
-          ) : null}
           <button
             type="button"
             onClick={() => setMembersSheetOpen(true)}
@@ -2701,6 +2681,27 @@ export default function LiveCameraPage() {
                 {micRequests.length > 9 ? '9+' : micRequests.length}
               </span>
             )}
+        {/* INVITE-ARROW-PATCH: yellow share arrow under the hand slot (same anchor as the hand/minimize buttons) */}
+        {isHostRoom && (
+          <button
+            type="button"
+            onClick={() => setVoiceInvOpen(true)}
+            aria-label="Invite"
+            title="Invite"
+            style={{
+              position: 'absolute',
+              top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 174px)',
+              right: 14,
+              zIndex: 30,
+              width: 36, height: 36, padding: 0, background: 'none', border: 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              WebkitTapHighlightColor: 'transparent',
+              filter: voiceInvOpen ? 'drop-shadow(0 0 6px rgba(250,204,21,0.9))' : 'drop-shadow(0 0 4px rgba(250,204,21,0.45))',
+            }}
+          >
+            <Forward size={28} color="#facc15" fill="#facc15" strokeWidth={1.6} />
+          </button>
+        )}
           </button>
           )}
         </div>
