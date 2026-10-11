@@ -2575,7 +2575,35 @@ export default function LiveCameraPage() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-{/* TOOLS-ARROW-PATCH: viewers icon first, then an arrow that drops a bubble with requests + invite buttons */}
+{/* TOOLS-ARROW-PATCH: arrow first, viewers icon second; the arrow opens a centered menu with labelled actions */}
+{isHostRoom && (
+  <button
+    type="button"
+    onClick={() => setToolsOpen(v => !v)}
+    aria-label="Menu"
+    aria-expanded={toolsOpen}
+    style={{
+      position: 'relative',
+      width: 36,
+      height: 36,
+      borderRadius: '50%',
+      padding: 0,
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#00BCD4',
+      background: toolsOpen ? 'rgba(0,188,212,0.28)' : 'rgba(0,188,212,0.12)',
+      border: '1.5px solid rgba(0,188,212,0.6)',
+      flexShrink: 0,
+    }}
+  >
+    <ChevronDown size={18} strokeWidth={2.6} style={{ transform: toolsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
+    {amHost && !toolsOpen && micRequests.length > 0 && (
+      <span style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0a1f22' }} />
+    )}
+  </button>
+)}
 <button
   type="button"
   onClick={() => setMembersSheetOpen(true)}
@@ -2597,122 +2625,81 @@ export default function LiveCameraPage() {
   <Users size={14} />
   <span>{members.length}</span>
 </button>
-{isHostRoom && (
-  <div style={{ position: 'relative', flexShrink: 0 }}>
-    <button
-      type="button"
-      onClick={() => setToolsOpen(v => !v)}
-      aria-label="Tools"
-      aria-expanded={toolsOpen}
+{isHostRoom && toolsOpen && typeof document !== 'undefined' ? createPortal(
+  <div
+    onClick={() => setToolsOpen(false)}
+    style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+  >
+    <motion.div
+      initial={{ opacity: 0, scale: 0.92 }}
+      animate={{ opacity: 1, scale: 1 }}
+      onClick={e => e.stopPropagation()}
+      dir="ltr"
       style={{
-        position: 'relative',
-        width: 36,
-        height: 36,
-        borderRadius: '50%',
-        padding: 0,
-        cursor: 'pointer',
+        width: '100%',
+        maxWidth: 320,
+        background: '#0b1618',
+        border: '1px solid rgba(0,188,212,0.4)',
+        borderRadius: 20,
+        padding: '14px 14px 12px',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: '#00BCD4',
-        background: toolsOpen ? 'rgba(0,188,212,0.28)' : 'rgba(0,188,212,0.12)',
-        border: '1.5px solid rgba(0,188,212,0.6)',
+        flexDirection: 'column',
+        gap: 10,
+        boxShadow: '0 14px 44px rgba(0,0,0,0.55)',
       }}
     >
-      <ChevronDown size={18} strokeWidth={2.6} style={{ transform: toolsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
-      {amHost && !toolsOpen && micRequests.length > 0 && (
-        <span style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0a1f22' }} />
-      )}
-    </button>
-    {toolsOpen && (
-      <>
-        <div onClick={() => setToolsOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 39 }} />
-        <motion.div
-          initial={{ opacity: 0, y: -8, scaleY: 0.85 }}
-          animate={{ opacity: 1, y: 0, scaleY: 1 }}
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            right: 0,
-            zIndex: 40,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 10,
-            padding: 8,
-            borderRadius: 24,
-            background: 'rgba(6,16,18,0.97)',
-            border: '1px solid rgba(0,188,212,0.35)',
-            boxShadow: '0 10px 28px rgba(0,0,0,0.5)',
-            transformOrigin: 'top right',
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2px 2px' }}>
+        <span style={{ color: '#fff', fontWeight: 800, fontSize: '0.92rem' }}>Live tools</span>
+        <button type="button" onClick={() => setToolsOpen(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'rgba(200,230,230,0.8)', cursor: 'pointer', padding: 4, display: 'flex' }}>
+          <X size={18} />
+        </button>
+      </div>
+
+      <div
+        role="button"
+        onClick={() => { setToolsOpen(false); if (amHost) setRequestsOpen(true); else void toggleMic(); }}
+        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, cursor: 'pointer', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)' }}
+      >
+        <span style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(circle at 30% 30%, #ffe08a, #eab308)', border: '1.5px solid rgba(234,179,8,0.85)' }}>
+          <Hand size={17} color="#111" />
+          {amHost && micRequests.length > 0 && (
+            <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, background: '#ef4444', color: '#fff', fontSize: '0.62rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', border: '1.5px solid #0a1f22', lineHeight: 1 }}>
+              {micRequests.length > 9 ? '9+' : micRequests.length}
+            </span>
+          )}
+        </span>
+        <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>Mic Requests</span>
+      </div>
+
+      <div
+        role="button"
+        onClick={() => { setToolsOpen(false); setVoiceInvOpen(true); }}
+        style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, cursor: 'pointer', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)' }}
+      >
+        <span style={{ pointerEvents: 'none', display: 'flex' }}><VoiceInviteButton kind="camera" active={false} onClick={() => {}} /></span>
+        <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>Invite Users</span>
+      </div>
+
+      {amHost ? (
+        <div
+          role="button"
+          onClick={() => {
+            setToolsOpen(false);
+            if (duet || splitWith) setGameMenuOpen(v => !v);
+            else setDuetPanelOpen(true);
           }}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 14, cursor: 'pointer', background: 'rgba(250,204,21,0.08)', border: '1px solid rgba(250,204,21,0.25)' }}
         >
-          <button
-            type="button"
-            onClick={() => {
-              setToolsOpen(false);
-              if (amHost) setRequestsOpen(true);
-              else void toggleMic();
-            }}
-            style={{
-              position: 'relative',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              width: 36,
-              height: 36,
-              padding: 0,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle at 30% 30%, #ffe08a, #eab308)',
-              border: '1.5px solid rgba(234,179,8,0.85)',
-              boxShadow: '0 0 8px rgba(234,179,8,0.5)',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-            title="Mic requests"
-          >
-            <Hand size={17} color="#111" />
-            {amHost && micRequests.length > 0 && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: -4,
-                  right: -4,
-                  minWidth: 18,
-                  height: 18,
-                  borderRadius: 9,
-                  background: '#ef4444',
-                  color: '#fff',
-                  fontSize: '0.62rem',
-                  fontWeight: 900,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '0 4px',
-                  border: '1.5px solid #0a1f22',
-                  lineHeight: 1,
-                }}
-              >
-                {micRequests.length > 9 ? '9+' : micRequests.length}
-              </span>
-            )}
-          </button>
-          <VoiceInviteButton kind="camera" active={voiceInvOpen} onClick={() => { setToolsOpen(false); setVoiceInvOpen(true); }} />
-              {amHost ? (
-                <SplitInviteButton
-                  active={duetPanelOpen || splitExitOpen || gameMenuOpen}
-                  onClick={() => {
-                    setToolsOpen(false);
-                    if (duet || splitWith) setGameMenuOpen(v => !v);
-                    else setDuetPanelOpen(true);
-                  }}
-                />
-              ) : null}
-        </motion.div>
-      </>
-    )}
-  </div>
-)}
+          <span style={{ pointerEvents: 'none', display: 'flex' }}>
+            <SplitInviteButton active={duetPanelOpen || splitExitOpen || gameMenuOpen} onClick={() => {}} />
+          </span>
+          <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>Invite Live Hosts</span>
+        </div>
+      ) : null}
+    </motion.div>
+  </div>,
+  document.body,
+) : null}
           <button type="button" onClick={dismissLivePage} aria-label="Leave live"
             style={{
               width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
