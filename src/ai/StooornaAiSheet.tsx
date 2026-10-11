@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square } from 'lucide-react';
+import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square, Volume2, VolumeX } from 'lucide-react';
 import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
 import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
 import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
@@ -146,6 +146,59 @@ const NO_RE = /^(لا|لأ|لا شكرا|لا شكراً|no|nope|n)[\s!.،]*$/i;
 const EDIT_WORD_RE = /(تعديل|اعدل|أعدل|عدل|عدّل|ابي اعدل|edit)/i;
 // specific AI edit instructions (still go to the Ai server) – everything else with "edit" opens the editor
 const AI_SPECIFIC_RE = /(لبس|البس|ألبس|غير|غيّر|احذف|امسح|شيل|ازل|أزل|ضيف|أضف|اضف|حول|حوّل|بدل|استبدل|لون|ارسم|كبر|صغر|حسن|نظار|remove|delete|add|change|replace|background|filter|enhance|colorize|retouch|cartoon|anime|wear|put|turn|convert|erase)/i;
+/** PUBLISH-PREVIEW: video with its own light controls (time, volume, seek bar). No fullscreen button and no 3-dots menu: tap the video to enlarge, tap again to shrink. */
+function PublishPreviewVideo({ src, full, onToggle, style }: { src: string; full: boolean; onToggle: () => void; style?: React.CSSProperties }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(0);
+  const [muted, setMuted] = useState(false);
+  const fmt = (n: number) => `${Math.floor(n / 60)}:${String(Math.floor(n % 60)).padStart(2, '0')}`;
+  const seek = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
+    const v = ref.current; if (!v || !dur) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+    v.currentTime = Math.max(0, Math.min(1, (x - r.left) / r.width)) * dur;
+  };
+  return (
+    <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', ...style }}>
+      <video
+        ref={ref}
+        src={src}
+        autoPlay
+        loop
+        playsInline
+        disablePictureInPicture
+        controlsList="nodownload nofullscreen noremoteplayback noplaybackrate"
+        onClick={e => { e.stopPropagation(); onToggle(); }}
+        onLoadedMetadata={e => setDur(e.currentTarget.duration || 0)}
+        onTimeUpdate={e => setCur(e.currentTarget.currentTime)}
+        style={{ width: '100%', height: '100%', maxHeight: full ? '100dvh' : '62dvh', objectFit: 'contain', background: '#000', display: 'block' }}
+      />
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '18px 14px 10px', background: 'linear-gradient(transparent, rgba(0,0,0,0.65))', display: 'flex', flexDirection: 'column', gap: 6 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff', fontSize: 13 }}>
+          <span>{fmt(cur)} / {fmt(dur)}</span>
+          <button
+            type="button"
+            aria-label="Sound"
+            onClick={() => { const v = ref.current; if (!v) return; v.muted = !v.muted; setMuted(v.muted); }}
+            style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', padding: 4, display: 'flex' }}
+          >
+            {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+          </button>
+        </div>
+        <div onClick={seek} onTouchMove={seek} style={{ height: 18, display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+          <div style={{ position: 'relative', width: '100%', height: 4, borderRadius: 4, background: 'rgba(255,255,255,0.35)' }}>
+            <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${dur ? (cur / dur) * 100 : 0}%`, borderRadius: 4, background: '#fff' }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function wantsEditor(text: string): boolean {
   const t = (text || '').trim();
   if (!t || !EDIT_WORD_RE.test(t)) return false;
@@ -514,6 +567,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [publishFor, setPublishFor] = useState<{ url: string; kind: 'image' | 'video' } | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishErr, setPublishErr] = useState('');
+  const [publishPct, setPublishPct] = useState(0); // PUBLISH-PROGRESS: 0..100
+  const [publishFull, setPublishFull] = useState(false); // tap the preview = bigger, tap again = smaller
   const [mediaView, setMediaView] = useState<{ url: string; kind: 'image' | 'video' } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -530,7 +585,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   useEffect(() => {
     // Keyboard no longer opens automatically; it opens only when the user taps the input.
-    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); }
+    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); setPublishFull(false); }
   }, [open]);
 
   useEffect(() => {
@@ -632,7 +687,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       const blob = await getPhotoBlob(u);
       const ext = blob.type.includes('video') ? (blob.type.includes('webm') ? 'webm' : 'mp4') : blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
       const where = await saveToLibrary(blob, `stooorna-${Date.now()}.${ext}`); // photo library when the app allows it, else a normal download
-      flashPhotoNote(where === 'gallery' ? 'Saved to your library ✓' : 'Saved ✓');
+      flashPhotoNote(where === 'gallery' ? 'Saved to your library ✓' : where === 'share' ? 'Choose “Save to device / Gallery” ✓' : 'Saved ✓');
     } catch (err) {
       console.error('[Stooorna Ai] save photo error:', err);
       if (/^(data:|blob:)/.test(u)) { downloadImage(u); flashPhotoNote('Saved ✓'); return; }
@@ -685,10 +740,12 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   // PUBLISH-TEMPLATES: Publish -> preview box -> "Share To Templates"
   const doPublish = async () => {
     if (!publishFor || publishing) return;
-    setPublishing(true); setPublishErr('');
+    setPublishing(true); setPublishErr(''); setPublishPct(0); setPublishFull(false);
     try {
       const blob = editedBlobs.current.get(publishFor.url) || (await (await fetch(publishFor.url)).blob());
-      await publishToTemplates(blob, user as any, publishFor.kind);
+      await publishToTemplates(blob, user as any, publishFor.kind, p => setPublishPct(p));
+      setPublishPct(100);
+      await new Promise(r => setTimeout(r, 350)); // let the bar visibly reach 100%
       setPublishFor(null);
       flashPhotoNote('Published to Templates ✓', 3000);
     } catch (e) {
@@ -1765,37 +1822,60 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
       {publishFor && createPortal(
         <div
-          onClick={e => { e.stopPropagation(); if (!publishing) setPublishFor(null); }}
-          style={{ position: 'fixed', inset: 0, zIndex: 31500, background: 'rgba(0,0,0,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+          onClick={e => { e.stopPropagation(); if (!publishing) { if (publishFull) setPublishFull(false); else setPublishFor(null); } }}
+          style={{ position: 'fixed', inset: 0, zIndex: 31500, background: publishFull ? '#000' : 'rgba(0,0,0,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: publishFull ? 0 : 18 }}
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 380, maxHeight: '92dvh', background: '#111', borderRadius: 22, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+            style={{
+              width: '100%', maxWidth: publishFull ? 'none' : 380, height: publishFull ? '100%' : undefined, maxHeight: publishFull ? '100dvh' : '92dvh',
+              background: publishFull ? '#000' : '#111', borderRadius: publishFull ? 0 : 22, padding: publishFull ? 0 : 14,
+              display: 'flex', flexDirection: 'column', gap: 12, boxShadow: publishFull ? 'none' : '0 20px 50px rgba(0,0,0,0.5)',
+            }}
           >
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', borderRadius: 14, overflow: 'hidden' }}>
+            <div
+              onClick={() => { if (publishFor.kind === 'image' && !publishing) setPublishFull(v => !v); }}
+              style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', borderRadius: publishFull ? 0 : 14, overflow: 'hidden' }}
+            >
               {publishFor.kind === 'video' ? (
-                <video src={publishFor.url} controls autoPlay loop playsInline style={{ width: '100%', maxHeight: '62dvh', objectFit: 'contain', background: '#000' }} />
+                <PublishPreviewVideo src={publishFor.url} full={publishFull} onToggle={() => { if (!publishing) setPublishFull(v => !v); }} />
               ) : (
-                <img src={publishFor.url} alt="" style={{ width: '100%', maxHeight: '62dvh', objectFit: 'contain' }} />
+                <img src={publishFor.url} alt="" style={{ width: '100%', maxHeight: publishFull ? '100dvh' : '62dvh', objectFit: 'contain' }} />
               )}
             </div>
-            {publishErr && <div style={{ color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{publishErr}</div>}
-            <button
-              type="button"
-              disabled={publishing}
-              onClick={() => { void doPublish(); }}
-              style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '13px 18px', fontSize: 16, fontWeight: 800, cursor: 'pointer', opacity: publishing ? 0.7 : 1 }}
-            >
-              {publishing ? 'Publishing…' : 'Share To Templates'}
-            </button>
-            <button
-              type="button"
-              disabled={publishing}
-              onClick={() => setPublishFor(null)}
-              style={{ border: 'none', background: 'transparent', color: '#9ca3af', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 4 }}
-            >
-              Cancel
-            </button>
+            {!publishFull && (
+              <>
+                {publishErr && <div style={{ color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{publishErr}</div>}
+                <button
+                  type="button"
+                  disabled={publishing}
+                  onClick={() => { void doPublish(); }}
+                  style={{
+                    position: 'relative', overflow: 'hidden', border: 'none', borderRadius: 999, padding: '13px 18px', fontSize: 16, fontWeight: 800,
+                    cursor: publishing ? 'default' : 'pointer', color: '#fff',
+                    background: publishing ? '#3a3a3a' : '#ef4444',
+                  }}
+                >
+                  {publishing && (
+                    <span
+                      aria-hidden="true"
+                      style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: `${publishPct}%`, background: 'linear-gradient(90deg, #f59e0b, #facc15)', transition: 'width 0.25s ease-out' }}
+                    />
+                  )}
+                  <span style={{ position: 'relative', color: publishing && publishPct > 45 ? '#1a1300' : '#fff' }}>
+                    {publishing ? `Publishing to Templates  ${publishPct}/100%` : 'Share To Templates'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={publishing}
+                  onClick={() => setPublishFor(null)}
+                  style={{ border: 'none', background: 'transparent', color: '#9ca3af', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 4, opacity: publishing ? 0.4 : 1 }}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
           </div>
         </div>,
         document.body,

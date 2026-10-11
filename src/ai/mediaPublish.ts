@@ -1,5 +1,5 @@
 /**
- * Stooorna Ai — Publish to Templates (v1.0.0)
+ * Stooorna Ai — Publish to Templates (v1.1.0)
  * Place at: src/ai/mediaPublish.ts
  *
  * Uploads an edited photo / video (with its music + sound) and posts it to the Templates store,
@@ -19,6 +19,12 @@ export interface PublishUser {
 const LIVE_VIDEO_CAPTION = '🎬 AI Video'; // same markers the Templates gallery already uses
 const LIVE_PHOTO_CAPTION = '🖼 Photo';
 const LIVE_TPL_SUFFIX = '\u200b\u200bTPL';
+
+export type PublishProgress = (percent: number, stage: 'upload' | 'post' | 'done') => void;
+
+const EP_KEY = 'stooorna_pub_ep_v1'; // remembers the upload route that worked, so the next publish goes straight to it
+const readEp = (): string => { try { return localStorage.getItem(EP_KEY) || ''; } catch { return ''; } };
+const saveEp = (v: string) => { try { localStorage.setItem(EP_KEY, v); } catch { /* */ } };
 
 const toAbs = (u: string): string => {
   const s = String(u).trim();
@@ -43,7 +49,7 @@ function pickUrl(ct: string, loc: string | null, raw: string): string | null {
   return validUrl(first) ? usable(toAbs(first)) : null;
 }
 
-async function uploadMedia(blob: Blob, userId: string, isVid: boolean): Promise<string> {
+async function uploadMedia(blob: Blob, userId: string, isVid: boolean, onPct?: (p: number) => void): Promise<string> {
   const type = (blob.type || '').split(';')[0] || (isVid ? 'video/mp4' : 'image/jpeg');
   const ext = isVid ? (/webm/i.test(type) ? 'webm' : 'mp4') : (/png/i.test(type) ? 'png' : /webp/i.test(type) ? 'webp' : 'jpg');
   const name = `live-chat-${isVid ? 'video' : 'image'}-${Date.now()}.${ext}`;
@@ -75,6 +81,7 @@ async function uploadMedia(blob: Blob, userId: string, isVid: boolean): Promise<
         x.open('POST', endpoint);
         x.withCredentials = true;
         x.timeout = ms;
+        if (x.upload && onPct) x.upload.onprogress = ev => { if (ev.lengthComputable && ev.total > 0) onPct(Math.min(0.99, ev.loaded / ev.total)); };
         x.onload = () => {
           if (x.status < 200 || x.status >= 300) { done(null, `${endpoint} ${x.status}`); return; }
           done(pickUrl(x.getResponseHeader('content-type') || '', x.getResponseHeader('location'), x.responseText));
@@ -98,9 +105,14 @@ async function uploadMedia(blob: Blob, userId: string, isVid: boolean): Promise<
     ['/api/posts/media', 'file', 60000],
     ['/api/posts/media', 'media', 60000],
   ];
-  for (const [ep, field, ms] of endpoints) {
+  // the route that worked last time goes first (saves re-uploading the whole file to routes that refuse it)
+  const last = readEp();
+  const ordered = last
+    ? [...endpoints.filter(e => `${e[0]}|${e[1]}` === last), ...endpoints.filter(e => `${e[0]}|${e[1]}` !== last)]
+    : endpoints;
+  for (const [ep, field, ms] of ordered) {
     const hit = await post(ep, form(field), ms);
-    if (hit && !/^blob:/i.test(hit)) return hit;
+    if (hit && !/^blob:/i.test(hit)) { saveEp(`${ep}|${field}`); onPct?.(1); return hit; }
   }
 
   // small files: JSON body with a data URL (same last resort the studio uses)
@@ -130,10 +142,20 @@ async function uploadMedia(blob: Blob, userId: string, isVid: boolean): Promise<
 }
 
 /** Upload + post to Templates. Throws on failure. */
-export async function publishToTemplates(blob: Blob, user: PublishUser | null | undefined, kind: 'image' | 'video'): Promise<void> {
+export async function publishToTemplates(
+  blob: Blob,
+  user: PublishUser | null | undefined,
+  kind: 'image' | 'video',
+  onProgress?: PublishProgress,
+): Promise<void> {
   const uid = String(user?.id || '');
   if (!uid) throw new Error('not signed in');
-  const url = await uploadMedia(blob, uid, kind === 'video');
+  // 0-90% = upload, 90-99% = posting the row, 100% = done. Never goes backwards (a retry on another route restarts from 0 inside).
+  let top = 0;
+  const report = (p: number, stage: 'upload' | 'post' | 'done') => { top = Math.max(top, p); onProgress?.(Math.round(top), stage); };
+  report(1, 'upload');
+  const url = await uploadMedia(blob, uid, kind === 'video', f => report(1 + f * 89, 'upload'));
+  report(92, 'post');
   const row = {
     id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     userId: uid,
@@ -149,6 +171,7 @@ export async function publishToTemplates(blob: Blob, user: PublishUser | null | 
   };
   markTemplatePending(row.id);
   await postTemplateRow(row as any);
+  report(100, 'done');
   try {
     localStorage.setItem('stooorna_tpl_fresh_at', String(Date.now()));
     window.dispatchEvent(new CustomEvent('stooorna:template-published'));
