@@ -13,7 +13,7 @@ import { X as XIcon, Plus, Check, Search, ChevronLeft, ChevronRight, Music, Play
 
 export interface MergeItem { url: string; kind: 'image' | 'video'; name: string }
 interface Item extends MergeItem { id: string; own: boolean }
-type Trans = 'fade' | 'slide' | 'zoom' | 'none';
+type Trans = 'fade' | 'slide' | 'zoom' | 'wipe' | 'flash' | 'up' | 'left' | 'spin' | 'zoomout' | 'circle' | 'split' | 'none';
 type Music = { type: 'none' } | { type: 'track'; id: string } | { type: 'file'; file: File };
 
 interface Track { id: string; ar: string; en: string; tags: string; bpm: number; notes: number[]; root: number }
@@ -174,11 +174,19 @@ async function renderMerge(items: Item[], opts: Opts, onPct: (p: number) => void
     const local = T - start[i];
     const el = els[i];
     const p = i > 0 && tr > 0 && local < tr ? Math.max(0, Math.min(1, local / tr)) : 1;
+    if (opts.trans === 'flash' && p < 0.5) return; // flash: the new clip appears after the white peak
     ctx.save();
     if (p < 1) {
       if (opts.trans === 'fade') ctx.globalAlpha = p;
       else if (opts.trans === 'slide') ctx.translate((1 - p) * W, 0);
       else if (opts.trans === 'zoom') { ctx.globalAlpha = p; ctx.translate(W / 2, H / 2); const s = 1.4 - 0.4 * p; ctx.scale(s, s); ctx.translate(-W / 2, -H / 2); }
+      else if (opts.trans === 'wipe') { ctx.beginPath(); ctx.rect(0, 0, W * p, H); ctx.clip(); }
+      else if (opts.trans === 'up') ctx.translate(0, (1 - p) * H);
+      else if (opts.trans === 'left') ctx.translate(-(1 - p) * W, 0);
+      else if (opts.trans === 'spin') { ctx.globalAlpha = p; ctx.translate(W / 2, H / 2); ctx.rotate((1 - p) * -Math.PI / 3); const s = 0.6 + 0.4 * p; ctx.scale(s, s); ctx.translate(-W / 2, -H / 2); }
+      else if (opts.trans === 'zoomout') { ctx.globalAlpha = p; ctx.translate(W / 2, H / 2); const s = 0.6 + 0.4 * p; ctx.scale(s, s); ctx.translate(-W / 2, -H / 2); }
+      else if (opts.trans === 'circle') { ctx.beginPath(); ctx.arc(W / 2, H / 2, p * Math.hypot(W, H) / 2, 0, Math.PI * 2); ctx.clip(); }
+      else if (opts.trans === 'split') { ctx.beginPath(); ctx.rect((W / 2) * (1 - p), 0, W * p, H); ctx.clip(); }
     }
     const zoom = el instanceof HTMLVideoElement ? 1 : 1 + 0.06 * (local / dur[i]);
     drawCover(ctx, el, zoom);
@@ -206,6 +214,16 @@ async function renderMerge(items: Item[], opts: Opts, onPct: (p: number) => void
           ended.add(i);
           const e = els[i];
           if (e instanceof HTMLVideoElement) { try { e.pause(); } catch { /* */ } }
+        }
+      }
+      if (opts.trans === 'flash' && tr > 0) {
+        for (let i = 1; i < n; i++) {
+          const lc = T - start[i];
+          if (lc >= 0 && lc < tr) {
+            const pp = lc / tr;
+            ctx.fillStyle = `rgba(255,255,255,${(1 - Math.abs(pp - 0.5) * 2) * 0.9})`;
+            ctx.fillRect(0, 0, W, H);
+          }
         }
       }
       onPct(Math.min(99, Math.round((T / total) * 100)));
@@ -236,6 +254,14 @@ const TRANS: { id: Trans; ar: string; en: string }[] = [
   { id: 'fade', ar: 'تلاشي', en: 'Fade' },
   { id: 'slide', ar: 'انزلاق', en: 'Slide' },
   { id: 'zoom', ar: 'زوم', en: 'Zoom' },
+  { id: 'wipe', ar: 'سحب', en: 'Wipe' },
+  { id: 'flash', ar: 'فلاش', en: 'Flash' },
+  { id: 'up', ar: 'للأعلى', en: 'Up' },
+  { id: 'left', ar: 'من اليسار', en: 'Left' },
+  { id: 'spin', ar: 'دوران', en: 'Spin' },
+  { id: 'zoomout', ar: 'تصغير', en: 'Zoom out' },
+  { id: 'circle', ar: 'دائرة', en: 'Circle' },
+  { id: 'split', ar: 'فتح', en: 'Split' },
   { id: 'none', ar: 'بدون', en: 'None' },
 ];
 
@@ -434,7 +460,7 @@ export default function MergeMedia({ open, items: initial = [], onClose, onDone,
                 {[2, 3, 4, 5].map(s => <button key={s} type="button" onClick={() => setPer(s)} style={chip(per === s)}>{s} {t('ث', 's')}</button>)}
               </div>
               <p style={{ ...label, marginTop: 14 }}>{t('الانتقال بين المقاطع', 'Transition')}</p>
-              <div style={{ display: 'flex', gap: 8, overflowX: 'auto' }}>
+              <div style={{ display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
                 {TRANS.map(x => <button key={x.id} type="button" onClick={() => setTrans(x.id)} style={chip(trans === x.id)}>{ar ? x.ar : x.en}</button>)}
               </div>
               {hasVideo && (
