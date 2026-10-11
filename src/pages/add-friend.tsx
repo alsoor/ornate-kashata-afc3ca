@@ -19040,6 +19040,75 @@ function tplLongPressEnd() {
   if (tplLongPress.timer) { window.clearTimeout(tplLongPress.timer); tplLongPress.timer = 0; }
 }
 
+// TPL-LONGPRESS-HINT: animated arrow + "Long-press to publish a post" above the dock Templates icon.
+// Drawn in a fixed portal (the dock bar has overflow:hidden, so an absolute tooltip would be clipped).
+// Hidden while any dock bubble is open; disappears for good after the first long-press (publish page opened).
+const TPL_HINT_DONE_KEY = 'stooorna_tpl_longpress_hint_done';
+function TplLongPressHint() {
+  const holderRef = useRef<HTMLSpanElement | null>(null);
+  const [pos, setPos] = useState<{ x: number; b: number } | null>(null);
+  const [done, setDone] = useState(() => { try { return localStorage.getItem(TPL_HINT_DONE_KEY) === '1'; } catch { return false; } });
+  const dock = useSyncExternalStore(dockSubscribe, dockGet, dockGet);
+  useEffect(() => {
+    const f = () => setDone(true);
+    window.addEventListener('stooorna:tpl-hint-done', f);
+    return () => window.removeEventListener('stooorna:tpl-hint-done', f);
+  }, []);
+  useEffect(() => {
+    if (done) return;
+    const m = () => {
+      const el = holderRef.current?.parentElement;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (!r.width || !r.height) { setPos(null); return; }
+      const next = { x: Math.round(r.left + r.width / 2), b: Math.round(window.innerHeight - r.top) };
+      setPos(cur => (cur && cur.x === next.x && cur.b === next.b) ? cur : next);
+    };
+    m();
+    const id = window.setInterval(m, 700);
+    window.addEventListener('resize', m);
+    return () => { window.clearInterval(id); window.removeEventListener('resize', m); };
+  }, [done]);
+  return (
+    <>
+      <span ref={holderRef} hidden />
+      {(!done && !dock && pos && typeof document !== 'undefined') ? createPortal(
+        <>
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'fixed', zIndex: 12049, pointerEvents: 'none',
+              left: Math.min(Math.max(pos.x, 105), Math.max(105, window.innerWidth - 105)),
+              bottom: pos.b + 22,
+              transform: 'translateX(-50%)',
+              whiteSpace: 'nowrap',
+              padding: '5px 10px', borderRadius: 999,
+              background: 'rgba(6,16,18,0.92)', border: '1px solid rgba(255,255,255,0.55)',
+              color: '#ffffff', fontSize: 11, fontWeight: 700, letterSpacing: 0.2,
+            }}
+          >
+            Long-press to publish a post
+          </div>
+          <svg
+            aria-hidden="true"
+            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
+            style={{
+              position: 'fixed', zIndex: 12049, pointerEvents: 'none',
+              left: pos.x - 9, bottom: pos.b + 2,
+              animation: 'stooornaTplHintBounce 1s ease-in-out infinite',
+            }}
+          >
+            <path d="M12 4v16" />
+            <path d="M5 13l7 7 7-7" />
+          </svg>
+          <style>{`@keyframes stooornaTplHintBounce { 0%,100% { transform: translateY(-4px); opacity: 0.6; } 50% { transform: translateY(3px); opacity: 1; } }`}</style>
+        </>,
+        document.body
+      ) : null}
+    </>
+  );
+}
+
 /** Film-icon screen: video-only (the old Titanic/WW2 template tab was removed on request). */
 function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
   open: boolean;
@@ -29181,6 +29250,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       type="button"
                       onPointerDown={() => tplLongPressStart(() => {
                         dockSet(null);
+                        try { localStorage.setItem(TPL_HINT_DONE_KEY, '1'); window.dispatchEvent(new CustomEvent('stooorna:tpl-hint-done')); } catch { /* */ }
                         try { window.dispatchEvent(new CustomEvent('stooorna:templates-studio')); } catch { /* */ }
                       })}
                       onPointerUp={tplLongPressEnd}
@@ -29208,6 +29278,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     >
                       <Film size={22} strokeWidth={2.2} />
                     </button>
+                    <TplLongPressHint /> {/* TPL-LONGPRESS-HINT */}
 </div>
                   )}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
