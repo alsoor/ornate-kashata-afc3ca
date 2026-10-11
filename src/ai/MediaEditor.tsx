@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X as XIcon, Check, Type, Square, Crop as CropIcon, Scissors, Trash2, Play, Pause } from 'lucide-react';
+import { X as XIcon, Check, Type, Square, Crop as CropIcon, Scissors, Trash2, Play, Pause, Music, Search, Volume2, VolumeX, Upload } from 'lucide-react';
+import { searchMusic, fetchAudioBlob, type Track, type MusicSource } from './musicSearch'; // MUSIC
 
 /**
  * Stooorna Ai — Media Editor (v1.0.0)
@@ -19,7 +20,7 @@ interface Rect { x: number; y: number; w: number; h: number }
 interface TextItem { id: string; type: 'text'; x: number; y: number; text: string; color: string; size: number }
 interface BoxItem { id: string; type: 'box'; x: number; y: number; w: number; h: number; color: string; stroke: number; fill: boolean }
 type Item = TextItem | BoxItem;
-type Tool = 'none' | 'text' | 'box' | 'crop' | 'trim';
+type Tool = 'none' | 'text' | 'box' | 'crop' | 'trim' | 'music';
 
 export interface MediaEditorProps {
   url: string;
@@ -66,6 +67,123 @@ function drawOverlays(ctx: CanvasRenderingContext2D, items: Item[], c: Rect, out
   });
 }
 
+interface MusicInfo { title: string; artist: string; url: string; duration: number }
+
+const probeDuration = (url: string) =>
+  new Promise<number>(res => {
+    const a = new Audio();
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => res(isFinite(a.duration) ? a.duration : 0);
+    a.onerror = () => res(0);
+    a.src = url;
+  });
+
+const SUGGEST_AR = ['خليجي', 'عربي', 'حماس', 'هادئ', 'Lo-fi', 'Pop', 'Beats'];
+const SUGGEST_EN = ['Arabic', 'Chill', 'Lo-fi', 'Pop', 'Hip hop', 'Piano', 'Beats'];
+
+/** Advanced music search (songs + free music) with preview and "Add". */
+function MusicPicker({ ar, pickingId, error, onClose, onPick }: {
+  ar: boolean; pickingId: string; error: string; onClose: () => void; onPick: (t: Track) => void;
+}) {
+  const [q, setQ] = useState('');
+  const [tab, setTab] = useState<MusicSource>('all');
+  const [list, setList] = useState<Track[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [playId, setPlayId] = useState('');
+  const aRef = useRef<HTMLAudioElement>(null);
+  const L = ar
+    ? { ph: 'ابحث عن أغنية أو فنان…', all: 'الكل', songs: 'أغاني', free: 'موسيقى مجانية', add: 'إضافة', none: 'ما لقينا نتائج، جرّب كلمات ثانية.', fail: 'تعذر البحث الآن، تأكد من الاتصال وجرّب مرة ثانية.', hint: 'اكتب اسم أغنية أو فنان أو نوع الموسيقى', free2: 'مجانية', song: 'أغنية (مقطع 30 ثانية)' }
+    : { ph: 'Search a song or artist…', all: 'All', songs: 'Songs', free: 'Free music', add: 'Add', none: 'No results, try other words.', fail: 'Search failed, check your connection and try again.', hint: 'Type a song, an artist or a music style', free2: 'Free', song: 'Song (30s preview)' };
+
+  const stop = () => { try { aRef.current?.pause(); } catch { /* */ } setPlayId(''); };
+  useEffect(() => () => { try { aRef.current?.pause(); } catch { /* */ } }, []);
+
+  const run = async (query: string, source: MusicSource) => {
+    if (!query.trim()) return;
+    stop(); setLoading(true); setMsg('');
+    try {
+      const r = await searchMusic(query, source);
+      setList(r);
+      if (!r.length) setMsg(L.none);
+    } catch { setList([]); setMsg(L.fail); }
+    finally { setLoading(false); }
+  };
+  const togglePreview = (t: Track) => {
+    const a = aRef.current;
+    if (!a) return;
+    if (playId === t.id) { stop(); return; }
+    a.src = t.preview;
+    a.volume = 1;
+    setPlayId(t.id);
+    void a.play().catch(() => setPlayId(''));
+  };
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, zIndex: 6, background: '#0b0b0c', display: 'flex', flexDirection: 'column' }}>
+      <audio ref={aRef} onEnded={() => setPlayId('')} />
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, padding: 'max(10px, env(safe-area-inset-top)) 12px 8px' }}>
+        <button type="button" aria-label="Back" onClick={() => { stop(); onClose(); }} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <XIcon size={22} />
+        </button>
+        <input
+          value={q}
+          onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') void run(q, tab); }}
+          placeholder={L.ph}
+          dir="auto"
+          style={{ flex: 1, minWidth: 0, height: 42, boxSizing: 'border-box', padding: '0 14px', borderRadius: 999, border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 16, outline: 'none' }}
+        />
+        <button type="button" aria-label="Search" onClick={() => void run(q, tab)} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: RED, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+          <Search size={20} />
+        </button>
+      </div>
+      <div style={{ flexShrink: 0, display: 'flex', gap: 8, padding: '4px 12px 10px' }}>
+        {([['all', L.all], ['songs', L.songs], ['free', L.free]] as Array<[MusicSource, string]>).map(([k, label]) => (
+          <button key={k} type="button" onClick={() => { setTab(k); void run(q, k); }}
+            style={{ border: 'none', borderRadius: 999, padding: '7px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', color: '#fff', background: tab === k ? RED : 'rgba(255,255,255,0.12)' }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 12px 16px' }}>
+        {error && <div style={{ color: '#fca5a5', fontSize: 13, padding: '6px 4px 10px' }}>{error}</div>}
+        {!list.length && !loading && !msg && (
+          <div style={{ textAlign: 'center', color: '#9ca3af', fontSize: 14, paddingTop: 28 }}>
+            {L.hint}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+              {(ar ? SUGGEST_AR : SUGGEST_EN).map(w => (
+                <button key={w} type="button" onClick={() => { setQ(w); void run(w, tab); }} style={{ border: 'none', borderRadius: 999, padding: '7px 14px', fontSize: 13, color: '#fff', background: 'rgba(255,255,255,0.12)', cursor: 'pointer' }}>{w}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        {loading && <div style={{ textAlign: 'center', color: '#9ca3af', paddingTop: 28 }}>…</div>}
+        {msg && !loading && <div style={{ textAlign: 'center', color: '#9ca3af', paddingTop: 28, fontSize: 14 }}>{msg}</div>}
+        {!loading && list.map(t => (
+          <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 4px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <button type="button" aria-label="Preview" onClick={() => togglePreview(t)} style={{ position: 'relative', width: 52, height: 52, borderRadius: 10, overflow: 'hidden', border: 'none', background: '#1f2937', padding: 0, cursor: 'pointer', flexShrink: 0 }}>
+              {t.art && <img src={t.art} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+              <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.38)', color: '#fff' }}>
+                {playId === t.id ? <Pause size={22} /> : <Play size={22} />}
+              </span>
+            </button>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.title}</div>
+              <div style={{ fontSize: 12, color: '#9ca3af', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {t.artist} · {t.source === 'free' ? `${L.free2}${t.license ? ' ' + t.license : ''}` : L.song}
+              </div>
+            </div>
+            <button type="button" disabled={!!pickingId} onClick={() => onPick(t)} style={{ border: 'none', borderRadius: 999, padding: '8px 16px', fontSize: 13, fontWeight: 800, color: '#fff', background: RED, cursor: 'pointer', opacity: pickingId && pickingId !== t.id ? 0.5 : 1, flexShrink: 0 }}>
+              {pickingId === t.id ? '…' : L.add}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function MediaEditor({ url, kind, name, ar = true, onClose, onDone }: MediaEditorProps) {
   const T = ar
     ? { text: 'نص', box: 'مربع', crop: 'قص', trim: 'اقتطاع', apply: 'تطبيق', reset: 'إعادة', size: 'الحجم', fill: 'تعبئة', start: 'البداية', end: 'النهاية', def: 'اكتب هنا', saving: 'جاري التجهيز…', fail: 'تعذر حفظ التعديل، حاول مرة ثانية.' }
@@ -85,6 +203,22 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
   const [playing, setPlaying] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const [err, setErr] = useState('');
+  // MUSIC
+  const [music, setMusic] = useState<MusicInfo | null>(null);
+  const [musicVol, setMusicVol] = useState(0.9);
+  const [origVol, setOrigVol] = useState(1); // 0 = original sound muted
+  const [musicStart, setMusicStart] = useState(0);
+  const [clipLen, setClipLen] = useState(10); // seconds, photo + music -> video
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickingId, setPickingId] = useState('');
+  const [pickErr, setPickErr] = useState('');
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const fileMusicRef = useRef<HTMLInputElement>(null);
+  const musicUrlRef = useRef('');
+  const M = ar
+    ? { music: 'موسيقى', search: 'بحث عن موسيقى', device: 'من جهازي', musicVol: 'صوت الموسيقى', from: 'ابدأ من', len: 'مدة الفيديو', mute: 'كتم صوت الفيديو', unmute: 'إلغاء الكتم', origVol: 'صوت الفيديو', loadFail: 'تعذر تحميل هذي الأغنية، جرّب غيرها أو اختر ملف من جهازك.', sec: 'ث' }
+    : { music: 'Music', search: 'Search music', device: 'My device', musicVol: 'Music volume', from: 'Start at', len: 'Video length', mute: 'Mute video sound', unmute: 'Unmute', origVol: 'Video volume', loadFail: 'Could not load this song, try another or pick a file from your device.', sec: 's' };
 
   // measure the free area for the picture
   useEffect(() => {
@@ -108,7 +242,7 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
   const innerH = nh * sc;
 
   const selected = items.find(i => i.id === sel) || null;
-  const hasEdits = items.length > 0 || !isFull(crop) || (kind === 'video' && (trim[0] > 0.05 || trim[1] < duration - 0.05));
+  const hasEdits = items.length > 0 || !!music || (kind === 'video' && origVol !== 1) || !isFull(crop) || (kind === 'video' && (trim[0] > 0.05 || trim[1] < duration - 0.05));
 
   const patchItem = (id: string, p: Partial<TextItem> & Partial<BoxItem>) =>
     setItems(prev => prev.map(i => (i.id === id ? ({ ...i, ...p } as Item) : i)));
@@ -173,6 +307,58 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
     window.addEventListener('pointercancel', up);
   };
 
+  // ---------- music ----------
+  useEffect(() => {
+    if (kind !== 'video') return;
+    const v = mediaRef.current as HTMLVideoElement | null;
+    if (v) { v.volume = origVol; v.muted = origVol === 0; }
+  }, [origVol, kind, nat]);
+  useEffect(() => { const a = audioRef.current; if (a) a.volume = musicVol; }, [musicVol, music]);
+  useEffect(() => () => { if (musicUrlRef.current) { try { URL.revokeObjectURL(musicUrlRef.current); } catch { /* */ } } }, []);
+
+  const applyMusic = (m: MusicInfo) => {
+    if (musicUrlRef.current) { try { URL.revokeObjectURL(musicUrlRef.current); } catch { /* */ } }
+    musicUrlRef.current = m.url;
+    setMusicPlaying(false);
+    setMusicStart(0);
+    setMusic(m);
+    setTool('music');
+  };
+  const removeMusic = () => {
+    audioRef.current?.pause();
+    if (musicUrlRef.current) { try { URL.revokeObjectURL(musicUrlRef.current); } catch { /* */ } musicUrlRef.current = ''; }
+    setMusic(null); setMusicPlaying(false);
+  };
+  const pickTrack = async (t: Track) => {
+    setPickingId(t.id); setPickErr('');
+    try {
+      const blob = await fetchAudioBlob(t.preview);
+      const url = URL.createObjectURL(blob);
+      const dur = await probeDuration(url);
+      applyMusic({ title: t.title, artist: t.artist, url, duration: dur || t.duration || 0 });
+      setPickerOpen(false);
+    } catch (e) {
+      console.error('[Stooorna Ai] music download error:', e);
+      setPickErr(M.loadFail);
+    } finally { setPickingId(''); }
+  };
+  const pickFile = async (f: File | undefined) => {
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    const dur = await probeDuration(url);
+    applyMusic({ title: f.name.replace(/\.\w+$/, ''), artist: M.device, url, duration: dur });
+  };
+  const startMusic = () => {
+    const a = audioRef.current;
+    if (!a || !music) return;
+    const v = mediaRef.current as HTMLVideoElement | null;
+    const off = kind === 'video' && v ? Math.max(0, v.currentTime - trim[0]) : 0;
+    try { a.currentTime = Math.min(musicStart + off, Math.max(0, (a.duration || 1e9) - 0.1)); } catch { /* */ }
+    void a.play().then(() => setMusicPlaying(true)).catch(() => { /* */ });
+  };
+  const stopMusic = () => { audioRef.current?.pause(); setMusicPlaying(false); };
+  const toggleMusicOnly = () => { if (musicPlaying) stopMusic(); else startMusic(); };
+
   // ---------- video preview ----------
   const togglePlay = () => {
     const v = mediaRef.current as HTMLVideoElement | null;
@@ -204,6 +390,84 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
     return blob;
   };
 
+  const MIMES = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+  const makeRecorder = (stream: MediaStream) => {
+    const mime = MIMES.find(m => (window as any).MediaRecorder?.isTypeSupported?.(m));
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 4_000_000 } : undefined);
+    const chunks: Blob[] = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    const finished = new Promise<Blob>(res => {
+      rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
+    });
+    return { rec, finished };
+  };
+  // Mix original sound (volume / muted) + chosen music into the recording. Nothing plays through the speakers.
+  const attachAudio = async (stream: MediaStream, v: HTMLVideoElement | null) => {
+    const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+    const actx: AudioContext = new AC();
+    const dest = actx.createMediaStreamDestination();
+    let a: HTMLAudioElement | null = null;
+    if (v) {
+      const g = actx.createGain();
+      g.gain.value = origVol;
+      actx.createMediaElementSource(v).connect(g);
+      g.connect(dest);
+    }
+    if (music) {
+      a = new Audio();
+      a.src = music.url; a.loop = true; a.preload = 'auto';
+      await new Promise<void>(res => { a!.oncanplay = () => res(); a!.onerror = () => res(); a!.load(); });
+      try { a.currentTime = musicStart; } catch { /* */ }
+      const g2 = actx.createGain();
+      g2.gain.value = musicVol;
+      actx.createMediaElementSource(a).connect(g2);
+      g2.connect(dest);
+    }
+    dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+    if (actx.state === 'suspended') await actx.resume();
+    return { actx, audio: a };
+  };
+
+  // photo + music -> a short video (clipLen seconds)
+  const exportImageAsVideo = async (): Promise<Blob> => {
+    const img = mediaRef.current as HTMLImageElement;
+    const W = img.naturalWidth, H = img.naturalHeight;
+    const sw = W * crop.w, sh = H * crop.h;
+    const s = Math.min(1, 1280 / Math.max(sw, sh));
+    const outW = Math.max(2, Math.round((sw * s) / 2) * 2), outH = Math.max(2, Math.round((sh * s) / 2) * 2);
+    const c = document.createElement('canvas');
+    c.width = outW; c.height = outH;
+    const ctx = c.getContext('2d');
+    if (!ctx) throw new Error('no canvas');
+    const draw = () => { ctx.drawImage(img, W * crop.x, H * crop.y, sw, sh, 0, 0, outW, outH); drawOverlays(ctx, items, crop, outW, outH); };
+    draw();
+    const stream = (c as any).captureStream(30) as MediaStream;
+    let actx: AudioContext | null = null;
+    let mAudio: HTMLAudioElement | null = null;
+    try { const r = await attachAudio(stream, null); actx = r.actx; mAudio = r.audio; } catch { /* no sound is better than no video */ }
+    const { rec, finished } = makeRecorder(stream);
+    try {
+      rec.start(250);
+      void mAudio?.play().catch(() => { /* */ });
+      const total = clipLen * 1000, t0 = Date.now();
+      await new Promise<void>(resolve => {
+        const tick = () => {
+          draw();
+          const el = Date.now() - t0;
+          setBusy(Math.min(99, Math.round((el / total) * 100)));
+          if (el >= total) { resolve(); return; }
+          requestAnimationFrame(tick);
+        };
+        tick();
+      });
+      rec.stop();
+      return await finished;
+    } finally {
+      try { mAudio?.pause(); } catch { /* */ }
+      try { actx?.close(); } catch { /* */ }
+    }
+  };
+
   const exportVideo = async (): Promise<Blob> => {
     const W = nat?.w || 640, H = nat?.h || 360;
     const sx = W * crop.x, sy = H * crop.y, sw = W * crop.w, sh = H * crop.h;
@@ -219,6 +483,7 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
     v.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none';
     document.body.appendChild(v);
     let actx: AudioContext | null = null;
+    let mAudio: HTMLAudioElement | null = null;
     try {
       await new Promise<void>((res, rej) => { v.onloadeddata = () => res(); v.onerror = () => rej(new Error('video load')); v.load(); });
       const [from, to] = trim;
@@ -226,27 +491,13 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
         await new Promise<void>(res => { v.onseeked = () => res(); v.currentTime = from; });
       }
       const stream = (c as any).captureStream(30) as MediaStream;
-      try {
-        const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
-        actx = new AC();
-        const srcNode = actx!.createMediaElementSource(v);
-        const dest = actx!.createMediaStreamDestination();
-        srcNode.connect(dest); // not connected to speakers -> silent while exporting
-        dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
-        if (actx!.state === 'suspended') await actx!.resume();
-      } catch { /* video without sound is better than no video */ }
+      try { const r = await attachAudio(stream, v); actx = r.actx; mAudio = r.audio; } catch { /* video without sound is better than no video */ }
 
-      const mime = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
-        .find(m => (window as any).MediaRecorder?.isTypeSupported?.(m));
-      const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 4_000_000 } : undefined);
-      const chunks: Blob[] = [];
-      rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-      const finished = new Promise<Blob>(res => {
-        rec.onstop = () => res(new Blob(chunks, { type: rec.mimeType || 'video/webm' }));
-      });
+      const { rec, finished } = makeRecorder(stream);
 
       rec.start(250);
       await v.play();
+      void mAudio?.play().catch(() => { /* */ });
       const deadline = Date.now() + (to - from) * 2000 + 8000;
       await new Promise<void>(resolve => {
         const tick = () => {
@@ -262,6 +513,7 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
       rec.stop();
       return await finished;
     } finally {
+      try { mAudio?.pause(); } catch { /* */ }
       try { actx?.close(); } catch { /* */ }
       v.remove();
     }
@@ -273,10 +525,11 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
     setErr('');
     setBusy(0);
     try {
-      const blob = kind === 'image' ? await exportImage() : await exportVideo();
+      const asVideo = kind === 'image' && !!music; // photo + music = video
+      const blob = kind === 'image' ? (asVideo ? await exportImageAsVideo() : await exportImage()) : await exportVideo();
       const ext = blob.type.includes('mp4') ? 'mp4' : blob.type.includes('webm') ? 'webm' : 'jpg';
       const base = (name || 'edited').replace(/\.\w+$/, '');
-      onDone(blob, kind, `${base}-edited.${ext}`);
+      onDone(blob, asVideo ? 'video' : kind, `${base}-edited.${ext}`);
     } catch (e) {
       console.error('[Stooorna Ai] editor export error:', e);
       setErr(T.fail);
@@ -300,7 +553,13 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
   );
 
   return createPortal(
-    <div style={{ position: 'fixed', inset: 0, zIndex: 31000, background: '#0b0b0c', color: '#fff', display: 'flex', flexDirection: 'column', direction: 'ltr' }}>
+    <div
+      onClick={e => e.stopPropagation()}
+      onPointerDown={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+      onTouchStart={e => e.stopPropagation()}
+      style={{ position: 'fixed', inset: 0, zIndex: 31000, background: '#0b0b0c', color: '#fff', display: 'flex', flexDirection: 'column', direction: 'ltr' }}
+    >
       {/* top bar */}
       <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'max(10px, env(safe-area-inset-top)) 12px 10px' }}>
         <button type="button" aria-label="Close" onClick={onClose} style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.12)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
@@ -341,9 +600,9 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
                   setDuration(d); setTrim([0, d]);
                   v.currentTime = 0.01;
                 }}
-                onPlay={() => setPlaying(true)}
-                onPause={() => setPlaying(false)}
-                onEnded={() => setPlaying(false)}
+                onPlay={() => { setPlaying(true); startMusic(); }}
+                onPause={() => { setPlaying(false); stopMusic(); }}
+                onEnded={() => { setPlaying(false); stopMusic(); }}
                 onTimeUpdate={onTime}
                 style={{ width: '100%', height: '100%', display: 'block', pointerEvents: 'none', background: '#000' }}
               />
@@ -489,20 +748,80 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
           </div>
         )}
 
+        {tool === 'music' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" style={{ ...chip, background: RED, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => { setPickErr(''); setPickerOpen(true); }}><Search size={15} />{M.search}</button>
+              <button type="button" style={{ ...chip, display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => fileMusicRef.current?.click()}><Upload size={15} />{M.device}</button>
+              {music && <button type="button" aria-label="Remove music" style={{ ...chip, padding: '7px 12px', display: 'flex', alignItems: 'center' }} onClick={removeMusic}><Trash2 size={16} /></button>}
+            </div>
+            {music && (
+              <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  {kind === 'image' && (
+                    <button type="button" aria-label="Play" onClick={toggleMusicOnly} style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.14)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                      {musicPlaying ? <Pause size={18} /> : <Play size={18} />}
+                    </button>
+                  )}
+                  <div style={{ minWidth: 0, fontSize: 13 }}>
+                    <div style={{ fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>🎵 {music.title}</div>
+                    <div style={{ color: '#9ca3af', fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{music.artist}</div>
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#bbb' }}>
+                  <span style={{ width: 84 }}>{M.musicVol}</span>
+                  <input type="range" min={0} max={1} step={0.05} value={musicVol} onChange={e => setMusicVol(Number(e.target.value))} style={{ flex: 1, accentColor: RED }} />
+                </label>
+                {music.duration > 2 && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#bbb' }}>
+                    <span style={{ width: 84 }}>{M.from} {Math.round(musicStart)}{M.sec}</span>
+                    <input type="range" min={0} max={Math.max(0, Math.floor(music.duration - 1))} step={1} value={musicStart} onChange={e => setMusicStart(Number(e.target.value))} style={{ flex: 1, accentColor: RED }} />
+                  </label>
+                )}
+                {kind === 'image' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#bbb' }}>
+                    <span>{M.len}</span>
+                    {[5, 10, 15, 30].map(n => (
+                      <button key={n} type="button" onClick={() => setClipLen(n)} style={{ ...chip, padding: '5px 12px', background: clipLen === n ? RED : chip.background }}>{n}{M.sec}</button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {kind === 'video' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#bbb' }}>
+                <button type="button" onClick={() => setOrigVol(origVol === 0 ? 1 : 0)} style={{ ...chip, background: origVol === 0 ? RED : chip.background, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {origVol === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}{origVol === 0 ? M.unmute : M.mute}
+                </button>
+                {origVol > 0 && (
+                  <input type="range" aria-label={M.origVol} min={0.05} max={1} step={0.05} value={origVol} onChange={e => setOrigVol(Number(e.target.value))} style={{ flex: 1, accentColor: RED }} />
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" style={btn(tool === 'text')} onClick={addText}><Type size={22} />{T.text}</button>
           <button type="button" style={btn(tool === 'box')} onClick={addBox}><Square size={22} />{T.box}</button>
           <button type="button" style={btn(tool === 'crop')} onClick={() => toggleTool('crop')}><CropIcon size={22} />{T.crop}</button>
+          <button type="button" style={btn(tool === 'music' || !!music)} onClick={() => toggleTool('music')}><Music size={22} />{M.music}</button>
           {kind === 'video' && (
             <button type="button" style={btn(tool === 'trim')} onClick={() => toggleTool('trim')}><Scissors size={22} />{T.trim}</button>
           )}
         </div>
       </div>
 
+      {music && <audio ref={audioRef} src={music.url} loop preload="auto" onEnded={() => setMusicPlaying(false)} />}
+      <input ref={fileMusicRef} type="file" accept="audio/*" style={{ display: 'none' }} onChange={e => { void pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+      {pickerOpen && (
+        <MusicPicker ar={ar} pickingId={pickingId} error={pickErr} onClose={() => setPickerOpen(false)} onPick={t => { void pickTrack(t); }} />
+      )}
+
       {busy !== null && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, zIndex: 5 }}>
           <div style={{ fontSize: 16, fontWeight: 800 }}>{T.saving}</div>
-          {kind === 'video' && <div style={{ fontSize: 22, fontWeight: 800 }}>{busy}%</div>}
+          {(kind === 'video' || !!music) && <div style={{ fontSize: 22, fontWeight: 800 }}>{busy}%</div>}
         </div>
       )}
     </div>,

@@ -1702,7 +1702,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
       {mediaView && createPortal(
         <div
-          onClick={() => setMediaView(null)}
+          onClick={e => { e.stopPropagation(); setMediaView(null); }} // stopPropagation: otherwise the click reaches the sheet backdrop and closes the whole chat
           style={{ position: 'fixed', inset: 0, zIndex: 30500, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           {mediaView.kind === 'image' ? (
