@@ -24,6 +24,7 @@ import { registerAdsRoutes } from "./ads-patch.js"; // ADS-PATCH
 import { registerAdsStoreRoutes } from "./ads-store.js"; // ADS-STORE-PATCH (MySQL, visible to everyone, real delete)
 import { registerAiIconRoutes } from "./ai-icon-patch.js"; // AI-ICON-PATCH (owner switch: hide Stooorna Ai icon)
 import { registerImageProxyRoutes } from "./image-proxy-patch.js"; // IMAGE-PROXY-PATCH (save photos from the Ai chat)
+import { registerAiFreeRoutes } from "./ai-free-routes.js"; // AI-FREE (free chat / search / image / file routes for Stooorna Ai)
 
 // <api-imports>
 import auth_action_get_0 from "./api/auth/[action]/GET";
@@ -393,6 +394,7 @@ app.get('/api/status/comment-likes', getStatusCommentLikes);
 
 // <api-registrations>
 registerImageProxyRoutes(app); // IMAGE-PROXY-PATCH — before the auth catch-all
+registerAiFreeRoutes(app); // AI-FREE — before the auth catch-all
 registerForgotPasswordRoutes(app, { db: dbClientModule as unknown as Record<string, any> }); // FORGOT-PASSWORD-PATCH before auth catch-all
 registerAdsStoreRoutes(app); // ADS-STORE-PATCH — must come BEFORE the old ads routes (first match wins)
 registerAdsRoutes(app, { db: dbClientModule as unknown as Record<string, any> }); // ADS-PATCH
