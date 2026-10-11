@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square } from 'lucide-react';
 import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
 import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
+import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
+import { publishToTemplates } from './mediaPublish'; // PUBLISH-TEMPLATES
 
 interface Attachment {
   id: string;
@@ -98,6 +100,44 @@ function pickReply(data: any): string {
   if (!data) return '';
   const v = data.reply ?? data.response ?? data.answer ?? data.message ?? data.text ?? data.content ?? '';
   return (typeof v === 'string' ? v : JSON.stringify(v)).trim();
+}
+
+// VIDEO-POSTER: a real picture of the first frame (an <img>), so Android never draws its own grey "play" placeholder
+const thumbCache = new Map<string, string>();
+function makeVideoThumb(src: string): Promise<string> {
+  return new Promise(res => {
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = src;
+    let done = false;
+    const fin = (u: string) => { if (done) return; done = true; window.clearTimeout(timer); try { v.removeAttribute('src'); v.load(); } catch { /* */ } res(u); };
+    const timer = window.setTimeout(() => fin(''), 8000);
+    const draw = () => {
+      try {
+        const w = v.videoWidth, h = v.videoHeight;
+        if (!w || !h) { fin(''); return; }
+        const k = Math.min(1, 480 / Math.max(w, h));
+        const c = document.createElement('canvas');
+        c.width = Math.round(w * k); c.height = Math.round(h * k);
+        c.getContext('2d')!.drawImage(v, 0, 0, c.width, c.height);
+        fin(c.toDataURL('image/jpeg', 0.8));
+      } catch { fin(''); }
+    };
+    v.onloadeddata = () => { try { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); } catch { draw(); } };
+    v.onseeked = draw;
+    v.onerror = () => fin('');
+  });
+}
+function VideoPoster({ src, style, onClick }: { src: string; style: React.CSSProperties; onClick?: () => void }) {
+  const [t, setT] = useState(thumbCache.get(src) || '');
+  useEffect(() => {
+    if (t || !src) return;
+    let dead = false;
+    void makeVideoThumb(src).then(u => { if (u) thumbCache.set(src, u); if (!dead && u) setT(u); });
+    return () => { dead = true; };
+  }, [src, t]);
+  return t
+    ? <img src={t} alt="" draggable={false} onClick={onClick} style={style} />
+    : <div onClick={onClick} style={{ ...style, background: '#111' }} />;
 }
 
 // MEDIA-EDITOR: intent helpers
@@ -470,6 +510,10 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [editor, setEditor] = useState<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
   const offerRef = useRef<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
   // MEDIA-VIEW: tap a photo / video in the chat -> opens full screen (no Save); tap again -> closes
+  const editedBlobs = useRef(new Map<string, Blob>()); // edited photo/video bytes kept in memory so Save / Publish never depend on re-reading a blob: URL
+  const [publishFor, setPublishFor] = useState<{ url: string; kind: 'image' | 'video' } | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [publishErr, setPublishErr] = useState('');
   const [mediaView, setMediaView] = useState<{ url: string; kind: 'image' | 'video' } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -486,7 +530,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   useEffect(() => {
     // Keyboard no longer opens automatically; it opens only when the user taps the input.
-    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); }
+    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); }
   }, [open]);
 
   useEffect(() => {
@@ -568,6 +612,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     if (ms) window.setTimeout(() => setPhotoNote(''), ms);
   };
   const getPhotoBlob = async (u: string): Promise<Blob> => {
+    const mem = editedBlobs.current.get(u);
+    if (mem) return mem;
     const enc = encodeURIComponent(u);
     const tries = [u, `/api/image-proxy?url=${enc}`, `https://www.stooorna.com/api/image-proxy?url=${enc}`];
     for (const t of tries) {
@@ -584,19 +630,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     try {
       flashPhotoNote('Saving…', 0);
       const blob = await getPhotoBlob(u);
-      const ext = blob.type.includes('video') ? 'mp4' : blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = `stooorna-${Date.now()}.${ext}`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 15000);
-      flashPhotoNote('Saved ✓');
+      const ext = blob.type.includes('video') ? (blob.type.includes('webm') ? 'webm' : 'mp4') : blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+      const where = await saveToLibrary(blob, `stooorna-${Date.now()}.${ext}`); // photo library when the app allows it, else a normal download
+      flashPhotoNote(where === 'gallery' ? 'Saved to your library ✓' : 'Saved ✓');
     } catch (err) {
       console.error('[Stooorna Ai] save photo error:', err);
-      flashPhotoNote('Could not save the photo');
+      if (/^(data:|blob:)/.test(u)) { downloadImage(u); flashPhotoNote('Saved ✓'); return; }
+      flashPhotoNote('Could not save');
     }
   };
   const reuseImage = async (url: string) => {
@@ -619,8 +659,10 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   };
 
   // MEDIA-EDITOR: the edited photo / video lands in the chat (with Save + Editor buttons)
-  const handleEditorDone = (blob: Blob, kind: 'image' | 'video', _name: string) => {
+  const handleEditorDone = (raw: Blob, kind: 'image' | 'video', _name: string) => {
+    const blob = new Blob([raw], { type: (raw.type || '').split(';')[0] || (kind === 'video' ? 'video/mp4' : 'image/jpeg') }); // no ";codecs=" in the type
     const url = URL.createObjectURL(blob);
+    editedBlobs.current.set(url, blob);
     const arE = messages.some(x => /[\u0600-\u06FF]/.test(x.content)) || /^ar/i.test(navigator.language || '');
     const aiMsg: Message = {
       id: `e-${Date.now()}`,
@@ -638,6 +680,21 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       return withAi;
     });
     setEditor(null);
+  };
+
+  // PUBLISH-TEMPLATES: Publish -> preview box -> "Share To Templates"
+  const doPublish = async () => {
+    if (!publishFor || publishing) return;
+    setPublishing(true); setPublishErr('');
+    try {
+      const blob = editedBlobs.current.get(publishFor.url) || (await (await fetch(publishFor.url)).blob());
+      await publishToTemplates(blob, user as any, publishFor.kind);
+      setPublishFor(null);
+      flashPhotoNote('Published to Templates ✓', 3000);
+    } catch (e) {
+      console.error('[Stooorna Ai] publish error:', e);
+      setPublishErr(/signed in/.test(String((e as any)?.message)) ? 'Please sign in first.' : 'Could not publish. Check your connection and try again.');
+    } finally { setPublishing(false); }
   };
 
   const removeAttachment = (id: string) => {
@@ -1314,15 +1371,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                           />
                         ) : (
                           <>
-                            <video
-                              src={a.previewUrl + '#t=0.1'}
-                              muted
-                              playsInline
-                              preload="metadata"
+                            <VideoPoster
+                              src={a.previewUrl}
                               onClick={() => setMediaView({ url: a.previewUrl, kind: 'video' })}
-                              style={{ maxWidth: 180, maxHeight: 200, borderRadius: 10, display: 'block', background: '#000', cursor: 'pointer' }}
+                              style={{ width: 150, height: 200, objectFit: 'cover', borderRadius: 10, display: 'block', cursor: 'pointer' }}
                             />
-                            <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, pointerEvents: 'none' }}>▶</div>
                           </>
                         )}
                         {m.role === 'user' && (
@@ -1378,11 +1431,18 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                       </button>
                       <button
                         type="button"
-                        onClick={() => downloadImage(m.data.url)}
+                        onClick={() => { void savePhoto(m.data.url); }}
                         style={{ border: '1px solid rgba(0,0,0,0.15)', background: '#fff', color: '#111', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
                       >
                         Save
                       </button>
+                      <button
+                        type="button"
+                      onClick={() => { setPublishErr(''); setPublishFor({ url: m.data.url, kind: 'image' }); }}
+                      style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Publish
+                    </button>
                     </div>
                   )}
                 </>
@@ -1416,15 +1476,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               {m.type === 'video' && m.data?.url && (
                 <>
                   <div style={{ position: 'relative', marginTop: 8 }}>
-                    <video
-                      src={m.data.url + '#t=0.1'}
-                      muted
-                      playsInline
-                      preload="metadata"
+                    <VideoPoster
+                      src={m.data.url}
                       onClick={() => setMediaView({ url: m.data.url, kind: 'video' })}
-                      style={{ width: '100%', borderRadius: 10, display: 'block', background: '#000', cursor: 'pointer' }}
+                      style={{ width: '100%', aspectRatio: '3 / 4', objectFit: 'cover', borderRadius: 10, display: 'block', cursor: 'pointer' }}
                     />
-                    <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, pointerEvents: 'none' }}>▶</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button
@@ -1440,6 +1496,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                       style={{ border: '1px solid rgba(0,0,0,0.15)', background: '#fff', color: '#111', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
                     >
                       Save
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setPublishErr(''); setPublishFor({ url: m.data.url, kind: 'video' }); }}
+                      style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Publish
                     </button>
                   </div>
                 </>
@@ -1556,7 +1619,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                   {a.kind === 'image' ? (
                     <img src={a.previewUrl} alt={a.name} style={{ width: 120, height: 80, objectFit: 'cover', display: 'block' }} />
                   ) : a.kind === 'video' ? (
-                    <video src={a.previewUrl} muted playsInline preload="metadata" style={{ width: 120, height: 80, objectFit: 'cover', display: 'block', background: '#000' }} />
+                    <VideoPoster src={a.previewUrl} style={{ width: 120, height: 80, objectFit: 'cover', display: 'block' }} />
                   ) : (
                     <div style={{ padding: '10px 12px', fontSize: 12, color: '#333' }}>
                       📎 {a.name.length > 18 ? a.name.slice(0, 16) + '…' : a.name}
@@ -1699,6 +1762,49 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           </>
         )}
       </div>
+
+      {publishFor && createPortal(
+        <div
+          onClick={e => { e.stopPropagation(); if (!publishing) setPublishFor(null); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 31500, background: 'rgba(0,0,0,0.78)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 380, maxHeight: '92dvh', background: '#111', borderRadius: 22, padding: 14, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+          >
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', borderRadius: 14, overflow: 'hidden' }}>
+              {publishFor.kind === 'video' ? (
+                <video src={publishFor.url} controls autoPlay loop playsInline style={{ width: '100%', maxHeight: '62dvh', objectFit: 'contain', background: '#000' }} />
+              ) : (
+                <img src={publishFor.url} alt="" style={{ width: '100%', maxHeight: '62dvh', objectFit: 'contain' }} />
+              )}
+            </div>
+            {publishErr && <div style={{ color: '#fca5a5', fontSize: 13, textAlign: 'center' }}>{publishErr}</div>}
+            <button
+              type="button"
+              disabled={publishing}
+              onClick={() => { void doPublish(); }}
+              style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '13px 18px', fontSize: 16, fontWeight: 800, cursor: 'pointer', opacity: publishing ? 0.7 : 1 }}
+            >
+              {publishing ? 'Publishing…' : 'Share To Templates'}
+            </button>
+            <button
+              type="button"
+              disabled={publishing}
+              onClick={() => setPublishFor(null)}
+              style={{ border: 'none', background: 'transparent', color: '#9ca3af', fontSize: 14, fontWeight: 700, cursor: 'pointer', padding: 4 }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {photoNote && !photoViewer && createPortal(
+        <div style={{ position: 'fixed', left: '50%', top: 'calc(env(safe-area-inset-top, 0px) + 70px)', transform: 'translateX(-50%)', zIndex: 32000, background: 'rgba(0,0,0,0.85)', color: '#fff', fontSize: 14, fontWeight: 700, padding: '10px 18px', borderRadius: 999, pointerEvents: 'none' }}>{photoNote}</div>,
+        document.body,
+      )}
 
       {mediaView && createPortal(
         <div
