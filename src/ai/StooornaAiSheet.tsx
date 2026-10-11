@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square } from 'lucide-react';
 import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
+import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
 
 interface Attachment {
   id: string;
@@ -9,14 +10,14 @@ interface Attachment {
   mime: string;
   size: number;
   previewUrl: string;
-  kind: 'image' | 'file';
+  kind: 'image' | 'video' | 'file';
 }
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  type?: 'text' | 'image' | 'table' | 'file' | 'gallery';
+  type?: 'text' | 'image' | 'table' | 'file' | 'gallery' | 'video' | 'offer';
   data?: any;
   attachments?: Attachment[];
   timestamp: number;
@@ -61,10 +62,10 @@ function saveChats(chats: ChatSession[]) {
       ...c,
       messages: (c.messages || []).map(m => ({
         ...m,
-        data: m.data && typeof m.data.url === 'string' && m.data.url.startsWith('data:') ? { ...m.data, url: '' } : m.data,
+        data: m.data && typeof m.data.url === 'string' && (m.data.url.startsWith('data:') || m.data.url.startsWith('blob:')) ? { ...m.data, url: '' } : m.data,
         attachments: m.attachments?.map(a => ({
           ...a,
-          previewUrl: a.kind === 'image' ? '' : a.previewUrl,
+          previewUrl: a.kind === 'file' ? a.previewUrl : '',
         })),
       })),
     }));
@@ -97,6 +98,19 @@ function pickReply(data: any): string {
   if (!data) return '';
   const v = data.reply ?? data.response ?? data.answer ?? data.message ?? data.text ?? data.content ?? '';
   return (typeof v === 'string' ? v : JSON.stringify(v)).trim();
+}
+
+// MEDIA-EDITOR: intent helpers
+const YES_RE = /^(نعم|ايوه|أيوه|ايوا|أيوا|اي|ايه|إي|اجل|أجل|yes|y|yep|yeah|ok|okay|اوكي|تمام|sure)[\s!.،]*$/i;
+const NO_RE = /^(لا|لأ|لا شكرا|لا شكراً|no|nope|n)[\s!.،]*$/i;
+const EDIT_WORD_RE = /(تعديل|اعدل|أعدل|عدل|عدّل|ابي اعدل|edit)/i;
+// specific AI edit instructions (still go to the Ai server) – everything else with "edit" opens the editor
+const AI_SPECIFIC_RE = /(لبس|البس|ألبس|غير|غيّر|احذف|امسح|شيل|ازل|أزل|ضيف|أضف|اضف|حول|حوّل|بدل|استبدل|لون|ارسم|كبر|صغر|حسن|نظار|remove|delete|add|change|replace|background|filter|enhance|colorize|retouch|cartoon|anime|wear|put|turn|convert|erase)/i;
+function wantsEditor(text: string): boolean {
+  const t = (text || '').trim();
+  if (!t || !EDIT_WORD_RE.test(t)) return false;
+  if (AI_SPECIFIC_RE.test(t.replace(EDIT_WORD_RE, ''))) return false;
+  return t.split(/\s+/).length <= 7;
 }
 
 export function buildLocalReply(userText: string, hasFiles: boolean): string {
@@ -452,6 +466,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachMenu, setAttachMenu] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
+  // MEDIA-EDITOR: full-screen photo / video editor + the pending "do you want to edit?" offer
+  const [editor, setEditor] = useState<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
+  const offerRef = useRef<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
+  // MEDIA-VIEW: tap a photo / video in the chat -> opens full screen (no Save); tap again -> closes
+  const [mediaView, setMediaView] = useState<{ url: string; kind: 'image' | 'video' } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -467,7 +486,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   useEffect(() => {
     // Keyboard no longer opens automatically; it opens only when the user taps the input.
-    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); }
+    if (!open) { setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); }
   }, [open]);
 
   useEffect(() => {
@@ -527,7 +546,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     if (!files || !files.length) return;
     const next: Attachment[] = [];
     Array.from(files).forEach(file => {
-      if (file.size > 12 * 1024 * 1024) return;
+      const isVideo = file.type.startsWith('video/'); // MEDIA-EDITOR
+      if (file.size > (isVideo ? 200 : 12) * 1024 * 1024) return;
       const isImage = file.type.startsWith('image/');
       next.push({
         id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -535,7 +555,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         mime: file.type || 'application/octet-stream',
         size: file.size,
         previewUrl: URL.createObjectURL(file),
-        kind: isImage ? 'image' : 'file',
+        kind: isImage ? 'image' : isVideo ? 'video' : 'file',
       });
     });
     if (next.length) setAttachments(prev => [...prev, ...next].slice(0, 8));
@@ -598,6 +618,28 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     } catch { /* */ }
   };
 
+  // MEDIA-EDITOR: the edited photo / video lands in the chat (with Save + Editor buttons)
+  const handleEditorDone = (blob: Blob, kind: 'image' | 'video', _name: string) => {
+    const url = URL.createObjectURL(blob);
+    const arE = messages.some(x => /[\u0600-\u06FF]/.test(x.content)) || /^ar/i.test(navigator.language || '');
+    const aiMsg: Message = {
+      id: `e-${Date.now()}`,
+      role: 'assistant',
+      content: arE ? 'تم ✓ هذي النسخة بعد التعديل:' : 'Done ✓ here is the edited version:',
+      type: kind === 'video' ? 'video' : 'image',
+      data: { url },
+      timestamp: Date.now(),
+    };
+    const chatId = currentChatId || `chat-${Date.now()}`;
+    if (!currentChatId) setCurrentChatId(chatId);
+    setMessages(prev => {
+      const withAi = [...prev, aiMsg];
+      syncChat(chatId, withAi);
+      return withAi;
+    });
+    setEditor(null);
+  };
+
   const removeAttachment = (id: string) => {
     setAttachments(prev => {
       const gone = prev.find(a => a.id === id);
@@ -615,16 +657,19 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     if (isTyping) return;
 
     closePopups();
+    const offer = offerRef.current; // MEDIA-EDITOR
+    offerRef.current = null;
 
+    // Photos / videos sent without text show NOTHING above them (no "[Image: 277.jpg]"); only files keep their name.
     const content =
       trimmed ||
-      pending.map(a => (a.kind === 'image' ? `[Image: ${a.name}]` : `[File: ${a.name}]`)).join(' ');
+      pending.filter(a => a.kind === 'file').map(a => `[File: ${a.name}]`).join(' ');
 
     const userMsg: Message = {
       id: `u-${Date.now()}`,
       role: 'user',
       content,
-      type: pending.some(a => a.kind === 'image') ? 'image' : pending.length ? 'file' : 'text',
+      type: pending.some(a => a.kind === 'image' || a.kind === 'video') ? 'image' : pending.length ? 'file' : 'text',
       attachments: pending.length ? [...pending] : undefined,
       timestamp: Date.now(),
     };
@@ -646,7 +691,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     const myId = ++reqIdRef.current; // STOP-BUTTON
     abortRef.current = controller;
     const stale = () => myId !== reqIdRef.current;
-    const ar = /[\u0600-\u06FF]/.test(content);
+    const ar = /[\u0600-\u06FF]/.test(content) || (!content && /^ar/i.test(navigator.language || ''));
 
     const pushAi = (text: string, imageUrl?: string) => {
       if (stale()) return; // stopped by the user
@@ -664,6 +709,50 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         return withAi;
       });
     };
+
+    // MEDIA-EDITOR: ask "do you want to edit?" with choices (also answerable by typing "نعم")
+    const pushOffer = (m: { url: string; kind: 'image' | 'video'; name: string }) => {
+      if (stale()) return;
+      offerRef.current = m;
+      const aiMsg: Message = {
+        id: `o-${Date.now()}`,
+        role: 'assistant',
+        content: m.kind === 'video'
+          ? (ar ? 'تبي تعدّل على الفيديو؟' : 'Do you want to edit the video?')
+          : (ar ? 'تبي تعدّل على الصورة؟' : 'Do you want to edit the photo?'),
+        type: 'offer',
+        data: m,
+        timestamp: Date.now(),
+      };
+      setMessages(prev => {
+        const withAi = [...prev, aiMsg];
+        syncChat(chatId, withAi);
+        return withAi;
+      });
+    };
+    const endTurn = () => { if (timer) window.clearTimeout(timer); if (!stale()) setIsTyping(false); };
+
+    // typed "نعم / yes" right after the offer -> open the editor directly
+    if (pending.length === 0 && offer && YES_RE.test(trimmed)) {
+      setEditor(offer);
+      endTurn();
+      return;
+    }
+    if (pending.length === 0 && offer && NO_RE.test(trimmed)) {
+      pushAi(ar ? 'تمام 👍' : 'Okay 👍');
+      endTurn();
+      return;
+    }
+
+    // photo / video sent: no text -> offer ; "ابي تعديل" -> editor opens automatically ; video + any text -> offer
+    const mediaAtts = pending.filter(a => (a.kind === 'image' || a.kind === 'video') && a.previewUrl);
+    if (mediaAtts.length) {
+      const f = mediaAtts[0];
+      const media = { url: f.previewUrl, kind: f.kind as 'image' | 'video', name: f.name };
+      if (!trimmed) { pushOffer(media); endTurn(); return; }
+      if (wantsEditor(trimmed)) { setEditor(media); endTurn(); return; }
+      if (f.kind === 'video') { pushOffer(media); endTurn(); return; }
+    }
 
     // PHOTO-SEARCH: "ابي صور سيارات" -> photos from Pixabay shown inside the chat
     const photoIntent = pending.length === 0 ? detectWallpaperIntent(trimmed) : null;
@@ -722,12 +811,14 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           pushAi(text, url || undefined);
         } catch (err) {
           console.error('[Stooorna Ai] image error:', err);
-          const why = String((err && (err as any).message) || err).slice(0, 120);
+          // no technical details (HTTP 404 ...) shown to the user; offer the built-in editor instead
           pushAi(
-            (ar
-              ? '⚠️ تعذر تعديل الصورة حالياً. حاول مرة ثانية بعد شوي.'
-              : '⚠️ Could not process the image right now. Please try again shortly.') + ` [${why}]`
+            ar
+              ? '⚠️ التعديل بالذكاء الاصطناعي غير متاح حالياً، لكن تقدر تعدّل الصورة بالمحرر.'
+              : '⚠️ AI editing is not available right now, but you can edit the photo with the editor.'
           );
+          const f0 = imgAtts[0];
+          if (f0 && !stale()) pushOffer({ url: f0.previewUrl, kind: 'image', name: f0.name });
         } finally {
           if (timer) window.clearTimeout(timer);
           if (!stale()) setIsTyping(false);
@@ -741,7 +832,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message: content,
-        history: nextMessages.slice(-12, -1).map(m => ({ role: m.role, content: m.content })),
+        history: nextMessages.slice(-12, -1).filter(m => m.content && m.type !== 'offer').map(m => ({ role: m.role, content: m.content })),
       }),
       signal: controller?.signal,
     })
@@ -1210,15 +1301,41 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             >
               {m.content}
               {m.attachments && m.attachments.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: m.content ? 8 : 0 }}>
                   {m.attachments.map(a =>
-                    a.kind === 'image' && a.previewUrl ? (
-                      <img
-                        key={a.id}
-                        src={a.previewUrl}
-                        alt={a.name}
-                        style={{ maxWidth: 180, maxHeight: 160, borderRadius: 10, objectFit: 'cover' }}
-                      />
+                    (a.kind === 'image' || a.kind === 'video') && a.previewUrl ? (
+                      <div key={a.id} style={{ position: 'relative' }}>
+                        {a.kind === 'image' ? (
+                          <img
+                            src={a.previewUrl}
+                            alt={a.name}
+                            onClick={() => setMediaView({ url: a.previewUrl, kind: 'image' })}
+                            style={{ maxWidth: 180, maxHeight: 160, borderRadius: 10, objectFit: 'cover', display: 'block', cursor: 'pointer' }}
+                          />
+                        ) : (
+                          <>
+                            <video
+                              src={a.previewUrl + '#t=0.1'}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              onClick={() => setMediaView({ url: a.previewUrl, kind: 'video' })}
+                              style={{ maxWidth: 180, maxHeight: 200, borderRadius: 10, display: 'block', background: '#000', cursor: 'pointer' }}
+                            />
+                            <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 44, height: 44, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, pointerEvents: 'none' }}>▶</div>
+                          </>
+                        )}
+                        {m.role === 'user' && (
+                          <button
+                            type="button"
+                            aria-label="Edit"
+                            onClick={() => setEditor({ url: a.previewUrl, kind: a.kind as 'image' | 'video', name: a.name })}
+                            style={{ position: 'absolute', top: 6, right: 6, width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                          >
+                            <PenLine size={15} />
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       <span
                         key={a.id}
@@ -1240,7 +1357,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                   <img
                     src={m.data.url}
                     alt="generated"
-                    style={{ width: '100%', borderRadius: 10, marginTop: 8, display: 'block' }}
+                    onClick={() => setMediaView({ url: m.data.url, kind: 'image' })}
+                    style={{ width: '100%', borderRadius: 10, marginTop: 8, display: 'block', cursor: 'pointer' }}
                   />
                   {m.role === 'assistant' && (
                     <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -1253,6 +1371,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                       </button>
                       <button
                         type="button"
+                        onClick={() => setEditor({ url: m.data.url, kind: 'image', name: 'image' })}
+                        style={{ border: 'none', background: '#0a1f1a', color: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        Editor
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => downloadImage(m.data.url)}
                         style={{ border: '1px solid rgba(0,0,0,0.15)', background: '#fff', color: '#111', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
                       >
@@ -1260,6 +1385,63 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                       </button>
                     </div>
                   )}
+                </>
+              )}
+              {m.type === 'offer' && m.data?.url && !m.data.answered && (
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  {(() => {
+                    const arM = /[\u0600-\u06FF]/.test(m.content);
+                    const mark = () => setMessages(prev => prev.map(x => (x.id === m.id ? { ...x, data: { ...x.data, answered: true } } : x)));
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => { offerRef.current = null; mark(); setEditor({ url: m.data.url, kind: m.data.kind, name: m.data.name }); }}
+                          style={{ border: 'none', background: '#0a1f1a', color: '#fff', borderRadius: 999, padding: '8px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {arM ? 'نعم' : 'Yes'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { offerRef.current = null; mark(); }}
+                          style={{ border: '1px solid rgba(0,0,0,0.15)', background: '#fff', color: '#111', borderRadius: 999, padding: '8px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {arM ? 'لا' : 'No'}
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+              {m.type === 'video' && m.data?.url && (
+                <>
+                  <div style={{ position: 'relative', marginTop: 8 }}>
+                    <video
+                      src={m.data.url + '#t=0.1'}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      onClick={() => setMediaView({ url: m.data.url, kind: 'video' })}
+                      style={{ width: '100%', borderRadius: 10, display: 'block', background: '#000', cursor: 'pointer' }}
+                    />
+                    <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 48, height: 48, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, pointerEvents: 'none' }}>▶</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setEditor({ url: m.data.url, kind: 'video', name: 'video' })}
+                      style={{ border: 'none', background: '#0a1f1a', color: '#fff', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Editor
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { void savePhoto(m.data.url); }}
+                      style={{ border: '1px solid rgba(0,0,0,0.15)', background: '#fff', color: '#111', borderRadius: 999, padding: '6px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      Save
+                    </button>
+                  </div>
                 </>
               )}
               {m.type === 'gallery' && Array.isArray(m.data?.photos) && (
@@ -1353,7 +1535,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             ref={imageInputRef}
             type="file"
             multiple
-            accept="image/*"
+            accept="image/*,video/*"
             style={{ display: 'none' }}
             onChange={e => {
               addFiles(e.target.files);
@@ -1373,6 +1555,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 >
                   {a.kind === 'image' ? (
                     <img src={a.previewUrl} alt={a.name} style={{ width: 120, height: 80, objectFit: 'cover', display: 'block' }} />
+                  ) : a.kind === 'video' ? (
+                    <video src={a.previewUrl} muted playsInline preload="metadata" style={{ width: 120, height: 80, objectFit: 'cover', display: 'block', background: '#000' }} />
                   ) : (
                     <div style={{ padding: '10px 12px', fontSize: 12, color: '#333' }}>
                       📎 {a.name.length > 18 ? a.name.slice(0, 16) + '…' : a.name}
@@ -1515,6 +1699,41 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           </>
         )}
       </div>
+
+      {mediaView && createPortal(
+        <div
+          onClick={() => setMediaView(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 30500, background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          {mediaView.kind === 'image' ? (
+            <img src={mediaView.url} alt="" draggable={false} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', userSelect: 'none' }} />
+          ) : (
+            <video
+              src={mediaView.url}
+              autoPlay
+              loop
+              playsInline
+              onLoadedData={e => {
+                const v = e.currentTarget;
+                void v.play().catch(() => { v.muted = true; void v.play().catch(() => { /* */ }); });
+              }}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
+            />
+          )}
+        </div>,
+        document.body,
+      )}
+
+      {editor && (
+        <MediaEditor
+          url={editor.url}
+          kind={editor.kind}
+          name={editor.name}
+          ar={messages.some(x => /[\u0600-\u06FF]/.test(x.content)) || /^ar/i.test(navigator.language || '')}
+          onClose={() => setEditor(null)}
+          onDone={handleEditorDone}
+        />
+      )}
 
       {cameraOpen && (
         <CameraCapture
