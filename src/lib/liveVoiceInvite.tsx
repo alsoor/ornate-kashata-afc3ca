@@ -590,7 +590,12 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
         name: myName || undefined,
       });
       if (status === 'accepted') {
-        navigate(voiceRoomUrl({ userId: inv.hostId, name: inv.hostName, username: inv.hostUsername, avatarUrl: inv.hostAvatar }, inv.kind));
+        const url = voiceRoomUrl({ userId: inv.hostId, name: inv.hostName, username: inv.hostUsername, avatarUrl: inv.hostAvatar }, inv.kind);
+        // Already on a live page (maybe another room): a soft navigate only changes ?hostId and the page keeps its old
+        // connection → looks like "Accept does nothing". Hard-load the target so the room really joins.
+        const here = window.location.pathname;
+        if (here.startsWith('/live')) window.location.assign(url);
+        else navigate(url);
       }
     },
     [navigate, myName],
@@ -691,6 +696,7 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
             alignItems: 'center',
             justifyContent: 'center',
             padding: 24,
+            pointerEvents: 'auto',
           }}
         >
           <motion.div
@@ -743,8 +749,9 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
               <button
                 type="button"
                 onClick={() => answer('declined')}
+                onPointerUp={(e) => { e.stopPropagation(); answer('declined'); }}
                 style={{
-                  flex: 1, padding: '11px 8px', borderRadius: 14, cursor: 'pointer', fontWeight: 800, fontSize: '0.85rem',
+                  flex: 1, padding: '11px 8px', borderRadius: 14, cursor: 'pointer', touchAction: 'manipulation', pointerEvents: 'auto', fontWeight: 800, fontSize: '0.85rem',
                   border: '1px solid rgba(239,68,68,0.5)', background: 'rgba(239,68,68,0.12)', color: '#ef4444',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}
@@ -754,8 +761,9 @@ export function VoiceInviteGlobalWatcher({ myId, myName }: { myId: string | null
               <button
                 type="button"
                 onClick={() => answer('accepted')}
+                onPointerUp={(e) => { e.stopPropagation(); answer('accepted'); }}
                 style={{
-                  flex: 1, padding: '11px 8px', borderRadius: 14, cursor: 'pointer', fontWeight: 800, fontSize: '0.85rem',
+                  flex: 1, padding: '11px 8px', borderRadius: 14, cursor: 'pointer', touchAction: 'manipulation', pointerEvents: 'auto', fontWeight: 800, fontSize: '0.85rem',
                   border: 'none', background: '#22c55e', color: '#04140a',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}
