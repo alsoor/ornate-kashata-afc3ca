@@ -126,6 +126,7 @@ export default function LivePage() {
 
   const [joined, setJoined] = useState(false);
   const [livePageClosing, setLivePageClosing] = useState(false);
+  const [leaving, setLeaving] = useState(false); // TREASURE-BOX: true from the moment we leave the room (hides the chest at once)
   const [minimized, setMinimized] = useState(false);
   const [enterGateDone, setEnterGateDone] = useState(false);
   const [hostProfileOpen, setHostProfileOpen] = useState(false);
@@ -516,6 +517,7 @@ export default function LivePage() {
   const leaveRoom = useCallback(async (opts?: { forced?: boolean; skipNavigate?: boolean }) => {
     const forced = !!opts?.forced;
     leftRef.current = true;
+    setLeaving(true);
     forceEndRef.current = forced || forceEndRef.current;
 
     // Host ends private room: notify listeners BEFORE leaving Agora channel
@@ -636,6 +638,7 @@ export default function LivePage() {
   }, [livePageClosing, leaveRoom]);
 
   const minimizeLive = useCallback(() => setMinimized(true), []);
+  useEffect(() => { if (joined) setLeaving(false); }, [joined]); // re-joined (e.g. duet move) -> chest is allowed again
 
   // Host ended broadcast elsewhere — eject listeners still on this page
   useEffect(() => {
@@ -2591,7 +2594,7 @@ export default function LivePage() {
           onClose={() => setHostProfileOpen(false)}
         />
       ) : null}
-      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} onInvite={isHostRoom ? () => setVoiceInvOpen(true) : undefined} />
+      <LiveCoinsDock closing={livePageClosing || leaving} hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} onInvite={isHostRoom ? () => setVoiceInvOpen(true) : undefined} />
     </div>
     </>
   );

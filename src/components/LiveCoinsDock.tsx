@@ -653,7 +653,7 @@ export function grantAppCoins(targetUserId: string, coins: number): { ok: boolea
   return { ok: true, id };
 }
 
-export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentUserAvatar, yellowRight = YELLOW_DOT_RIGHT, onInvite }: { hostId?: string; currentUserId?: string; currentUserName?: string; currentUserAvatar?: string | null; yellowRight?: number; onInvite?: () => void }) {
+export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentUserAvatar, yellowRight = YELLOW_DOT_RIGHT, onInvite, closing }: { closing?: boolean; hostId?: string; currentUserId?: string; currentUserName?: string; currentUserAvatar?: string | null; yellowRight?: number; onInvite?: () => void }) {
   const uid = String(currentUserId || '');
   // Warm Play Billing so the first coin tap can open the native 1-tap sheet inside the user gesture.
   useEffect(() => { void getGooglePlayService(); }, []);
@@ -1154,6 +1154,7 @@ export function LiveCoinsDock({ hostId, currentUserId, currentUserName, currentU
           avatar={currentUserAvatar ?? null}
           balance={balance}
           hideIcon
+          hidden={!!closing}
           openKey={boxOpenKey}
           centerRight={showCoinsIcon && showGiftsIcon ? ((yellowRight - 1) + (BLUE_DOT_RIGHT + 5)) / 2 : (showCoinsIcon ? yellowRight - 1 : BLUE_DOT_RIGHT + 5)}
           getBalance={() => readBalance(uid)}

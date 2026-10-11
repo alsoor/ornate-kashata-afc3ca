@@ -113,8 +113,10 @@ function ChestImg({ size, style }: { size: number; style?: React.CSSProperties }
 
 export function LiveTreasureBox({
   room, uid, name, avatar, balance, centerRight,
-  getBalance, spend, credit, onNeedCoins, hideIcon, openKey,
+  getBalance, spend, credit, onNeedCoins, hideIcon, openKey, hidden,
 }: {
+  /** true while the live page is closing / has been left: the chest + timer vanish immediately */
+  hidden?: boolean;
   /** hide the floating chest icon (the chest is opened from the bottom menu instead) */
   hideIcon?: boolean;
   /** change this number to open the buy sheet from outside */
@@ -166,7 +168,7 @@ export function LiveTreasureBox({
 
   // ── poll the shared box state (also tells the server I'm present in this room) ──
   useEffect(() => {
-    if (!uid || !room) return;
+    if (!uid || !room || hidden) return;
     let stop = false;
     let timer = 0;
     const apply = (b: BoxState | null) => {
@@ -205,7 +207,7 @@ export function LiveTreasureBox({
     };
     void tick();
     return () => { stop = true; window.clearTimeout(timer); };
-  }, [uid, room]);
+  }, [uid, room, hidden]);
 
   // local ticker for the visible countdown (only while a box exists)
   useEffect(() => {
@@ -290,7 +292,7 @@ export function LiveTreasureBox({
     }
   };
 
-  if (typeof document === 'undefined' || !uid) return null;
+  if (typeof document === 'undefined' || !uid || hidden) return null;
 
   const iHaveClaimed = !!box && (box.mine != null || claimedId === box.id);
   const counting = !!box && box.phase === 'counting';

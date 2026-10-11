@@ -188,6 +188,7 @@ export default function LiveCameraPage() {
 
   const [joined, setJoined] = useState(false);
   const [livePageClosing, setLivePageClosing] = useState(false);
+  const [leaving, setLeaving] = useState(false); // TREASURE-BOX: true from the moment we leave the room (hides the chest at once)
   const [minimized, setMinimized] = useState(false);
   const [enterGateDone, setEnterGateDone] = useState(false);
   const [hostProfileOpen, setHostProfileOpen] = useState(false);
@@ -719,6 +720,7 @@ export default function LiveCameraPage() {
   const leaveRoom = useCallback(async (opts?: { forced?: boolean; skipNavigate?: boolean; duetMove?: Record<string, unknown> }) => {
     const forced = !!opts?.forced;
     leftRef.current = true;
+    setLeaving(true);
     forceEndRef.current = forced || forceEndRef.current;
     try { cancelAllVoiceInvites(); } catch { /* ignore */ } // VOICE-INVITE-PATCH (video)
     try { void splitRef.current?.leave(true); } catch { /* ignore */ } // SPLIT-PATCH
@@ -862,6 +864,7 @@ export default function LiveCameraPage() {
   }, [livePageClosing, leaveRoom]);
 
   const minimizeLive = useCallback(() => setMinimized(true), []);
+  useEffect(() => { if (joined) setLeaving(false); }, [joined]); // re-joined (e.g. duet move) -> chest is allowed again
 
   // Host ended broadcast elsewhere — eject listeners still on this page
   useEffect(() => {
@@ -3629,7 +3632,7 @@ export default function LiveCameraPage() {
           </div>
         </div>
       )}
-      <LiveCoinsDock hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} onInvite={isHostRoom ? () => setVoiceInvOpen(true) : undefined} />
+      <LiveCoinsDock closing={livePageClosing || leaving} hostId={hostId} currentUserId={myId} currentUserName={myName} currentUserAvatar={myAvatar} onInvite={isHostRoom ? () => setVoiceInvOpen(true) : undefined} />
     </div>
     </>
   );
