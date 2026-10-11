@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, Film, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square, Volume2, VolumeX } from 'lucide-react';
+import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square, Volume2, VolumeX } from 'lucide-react';
 import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
 import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
+import MergeMedia, { type MergeItem } from './MergeMedia'; // MERGE-MEDIA
 import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
 import { publishToTemplates, startTemplateUpload } from './mediaPublish'; // PUBLISH-TEMPLATES
 import { getCredits, spendCredits, canAfford, onCreditsChange, AI_POST_COST, hasFreePass } from './aiCredits'; // AI-CREDITS
 import { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
-import CapCutTemplates from './CapCutTemplates'; // CAPCUT-TEMPLATES
 import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
 import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
 import { detectAppIntent, answerAppIntent, intentToPanel, type PanelKind } from './appAssistant'; // APP-ASSISTANT
@@ -571,7 +571,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
   const [infoPanel, setInfoPanel] = useState<PanelKind | null>(null); // APP-ASSISTANT: white list page (friends / online / posts ...)
   const [planOpen, setPlanOpen] = useState(false); // AI-CREDITS: centered "Stooorna Ai" plan box
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [capcutOpen, setCapcutOpen] = useState(false); // CAPCUT-TEMPLATES
+  const [mergeFor, setMergeFor] = useState<{ items: MergeItem[]; fromAtt: boolean } | null>(null); // MERGE-MEDIA
   // MEDIA-EDITOR: full-screen photo / video editor + the pending "do you want to edit?" offer
   const [editor, setEditor] = useState<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
   const offerRef = useRef<{ url: string; kind: 'image' | 'video'; name: string } | null>(null);
@@ -600,7 +600,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
 
   useEffect(() => {
     // Keyboard no longer opens automatically; it opens only when the user taps the input.
-    if (!open) { setCapcutOpen(false); setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); setPublishFull(false); setPlanOpen(false); }
+    if (!open) { setMergeFor(null); setShowHistory(false); setAttachMenu(false); setCameraOpen(false); setEditor(null); setMediaView(null); setPublishFor(null); setPublishFull(false); setPlanOpen(false); }
   }, [open]);
 
   useEffect(() => {
@@ -1666,6 +1666,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                         >
                           {arM ? 'لا' : 'No'}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => { offerRef.current = null; mark(); setMergeFor({ items: [{ url: m.data.url, kind: m.data.kind, name: m.data.name }], fromAtt: false }); }}
+                          style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '8px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {arM ? 'دمج' : 'Merge'}
+                        </button>
                       </>
                     );
                   })()}
@@ -1804,6 +1811,18 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             }}
           />
 
+          {attachments.some(a => (a.kind === 'image' || a.kind === 'video') && a.previewUrl) && ( /* MERGE-MEDIA: merge the picked photos / videos + music */
+            <button
+              type="button"
+              onClick={() => setMergeFor({
+                items: attachments.filter(a => (a.kind === 'image' || a.kind === 'video') && a.previewUrl).map(a => ({ url: a.previewUrl, kind: a.kind as 'image' | 'video', name: a.name })),
+                fromAtt: true,
+              })}
+              style={{ border: 'none', background: '#ef4444', color: '#fff', borderRadius: 999, padding: '8px 18px', fontSize: 14, fontWeight: 800, cursor: 'pointer', marginBottom: 8 }}
+            >
+              {/[\u0600-\u06FF]/.test(navigator.language || '') || /^ar/i.test(navigator.language || '') ? '🎬 دمج + موسيقى' : '🎬 Merge + music'}
+            </button>
+          )}
           {attachments.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
               {attachments.map(a => (
@@ -1936,12 +1955,11 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 </button>
                 <span style={{ fontWeight: 800, fontSize: 20, color: '#111' }}>Add to chat</span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
                 {[
                   { key: 'camera', label: 'Camera', icon: <CameraIcon size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); setCameraOpen(true); } },
                   { key: 'photos', label: 'Photos', icon: <ImageIcon size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); imageInputRef.current?.click(); } },
                   { key: 'files', label: 'Files', icon: <FileUp size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); fileInputRef.current?.click(); } }, // AI-CREDITS: no points -> plan box instead of the file picker
-                  { key: 'templates', label: 'Templates', icon: <Film size={28} strokeWidth={1.8} />, run: () => { if (needPoints()) return; setAttachMenu(false); setCapcutOpen(true); } }, // CAPCUT-TEMPLATES
                 ].map(t => (
                   <button
                     key={t.key}
@@ -2065,12 +2083,13 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         />
       )}
 
-      <CapCutTemplates
-        open={capcutOpen}
-        onClose={() => setCapcutOpen(false)}
-        onDone={handleEditorDone}
+      <MergeMedia
+        open={!!mergeFor}
+        items={mergeFor?.items}
+        onClose={() => setMergeFor(null)}
+        onDone={(b, k, n) => { handleEditorDone(b, k, n); if (mergeFor?.fromAtt) setAttachments([]); }}
         ar={messages.some(x => /[\u0600-\u06FF]/.test(x.content)) || /^ar/i.test(navigator.language || '')}
-      /> {/* CAPCUT-TEMPLATES */}
+      /> {/* MERGE-MEDIA */}
 
       {cameraOpen && (
         <CameraCapture

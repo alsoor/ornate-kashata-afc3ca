@@ -10,4 +10,4 @@ export { default as AiQuickActions } from './AiQuickActions'; // APP-ASSISTANT
 export { default as AiInfoPanel } from './AiInfoPanel'; // APP-ASSISTANT
 export { detectAppIntent, answerAppIntent, openGeneralChat, loadDashboard, clearAssistantCache } from './appAssistant'; // APP-ASSISTANT
 export { listChats, loadChat, openChat, newChat, deleteChat, exportChatText, readFileForAi, clearPendingFiles, startListening, voiceInputSupported, speak, stopSpeaking, voiceOutputSupported, generateImage, installStooornaAiCapabilities, STOOORNA_AI_CAPS_VERSION } from './aiCapabilities'; // AI-CAPABILITIES
-export { default as CapCutTemplates } from './CapCutTemplates'; // CAPCUT-TEMPLATES
+export { default as MergeMedia } from './MergeMedia'; // MERGE-MEDIA
