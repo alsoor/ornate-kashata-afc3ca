@@ -1,6 +1,7 @@
 """LLM providers: OpenAI · Gemini · Ollama (LangChain wrappers)."""
 from __future__ import annotations
 
+import asyncio  # NON-BLOCKING
 from typing import Any
 
 from app.core.config import Settings
@@ -88,9 +89,12 @@ async def _gemini(messages, model, temperature, settings: Settings) -> dict[str,
     prompt = (system + "\n\n" if system else "") + "\n".join(parts) + "\nAssistant:"
 
     gmodel = genai.GenerativeModel(model)
-    resp = gmodel.generate_content(
+    # NON-BLOCKING: the SDK call is synchronous; running it in a thread keeps the whole server responsive
+    resp = await asyncio.to_thread(
+        gmodel.generate_content,
         prompt,
         generation_config={"temperature": temperature},
+        request_options={"timeout": 30},
     )
     text = getattr(resp, "text", None) or str(resp)
     return {"reply": text, "provider": "gemini", "model": model, "usage": {}}

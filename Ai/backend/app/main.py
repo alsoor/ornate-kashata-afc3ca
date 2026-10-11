@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
-from app.routers import chat, health, image, rag  # IMAGE-PATCH: added `image`
+from app.routers import chat, extras, health, image, rag  # IMAGE-PATCH: added `image` ; EXTRAS: search / image-generate / transcribe / file-read
 
 settings = get_settings()
 
@@ -23,18 +23,22 @@ app = FastAPI(
     openapi_url=f"{settings.api_prefix}/openapi.json",
 )
 
+# CORS-FIX: the Ai API is public and cookie-free, so any Stooorna origin may call it:
+# https://www.stooorna.com (with www), the Capacitor / WebView app (https://localhost, capacitor://localhost) and any other host.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list or ["*"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 app.include_router(health.router, prefix=settings.api_prefix)
 app.include_router(chat.router, prefix=settings.api_prefix)
 app.include_router(rag.router, prefix=settings.api_prefix)
 app.include_router(image.router, prefix=settings.api_prefix)  # IMAGE-PATCH: POST /ai/image-edit
+app.include_router(extras.router, prefix=settings.api_prefix)  # EXTRAS: /ai/search, /ai/image-generate, /ai/transcribe, /ai/file-read
 
 
 @app.get("/")

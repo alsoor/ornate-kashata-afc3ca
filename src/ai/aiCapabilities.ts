@@ -1,5 +1,5 @@
 /**
- * Stooorna Ai — Capabilities (v1.1.0)
+ * Stooorna Ai — Capabilities (v1.2.0)
  * Place at: src/ai/aiCapabilities.ts
  *
  * ChatGPT-style abilities, as ONE separate file. Nothing in the existing files is removed or changed.
@@ -23,10 +23,16 @@
  *   window.__STOOORNA_AI_LANG__ = 'ar' | 'en'
  */
 
-export const STOOORNA_AI_CAPS_VERSION = '1.1.0';
+export const STOOORNA_AI_CAPS_VERSION = '1.2.0';
 
 const FLAG = '__stooornaAiCaps__';
-const FALLBACK_BASES = ['https://www.stooorna.com/ai'];
+const RAILWAY_BASE = 'https://welcoming-heart-production.up.railway.app/ai';
+function fallbackBases(): string[] {
+  const list: string[] = [];
+  try { const b = (window as any).__STOOORNA_AI_API__; if (b) list.push(String(b).replace(/\/+$/, '')); } catch { /* */ }
+  list.push(RAILWAY_BASE, 'https://www.stooorna.com/ai');
+  return Array.from(new Set(list));
+}
 const HISTORY_TURNS = 12;
 const MAX_CHATS = 60;
 const MAX_FILE_CHARS = 8000; // 3 files x 8000 + search + question stays under the server's 32000-char limit
@@ -65,7 +71,7 @@ async function fetchJsonFirst(urls: string[], init: RequestInit, ms = 15000): Pr
 function siblings(chatUrl: string, name: string): string[] {
   const list: string[] = [];
   try { list.push(chatUrl.replace(/\/chat(\?.*)?$/, `/${name}`)); } catch { /* */ }
-  FALLBACK_BASES.forEach(b => list.push(`${b}/${name}`));
+  fallbackBases().forEach(b => list.push(`${b}/${name}`));
   return Array.from(new Set(list));
 }
 
@@ -138,7 +144,25 @@ export async function readFileForAi(file: File): Promise<{ ok: boolean; note: st
   const isText = /^text\//.test(file.type) || /\.(txt|md|csv|json|xml|html?|css|js|jsx|ts|tsx|py|java|kt|php|sql|ya?ml|log|ini|c|cpp|cs|go|rb|swift)$/i.test(name);
   if (!isText) {
     const ar = /^ar/i.test(String((window as any).__STOOORNA_AI_LANG__ || navigator.language || ''));
-    return { ok: false, note: ar ? 'هذا النوع (PDF / Word) يحتاج السيرفر لقراءته' : 'PDF / Word files need the server to be read' };
+    if (/\.(pdf|docx)$/i.test(name) || file.type === 'application/pdf') { // read by the server (/ai/file-read)
+      for (const b of fallbackBases()) {
+        try {
+          const fd = new FormData();
+          fd.append('file', file, name);
+          const ctrl = new AbortController();
+          const timer = window.setTimeout(() => ctrl.abort(), 60000);
+          const r = await fetch(`${b}/file-read`, { method: 'POST', body: fd, signal: ctrl.signal });
+          window.clearTimeout(timer);
+          if (!r.ok) continue;
+          const d = await r.json();
+          const text = String(d?.text || '').slice(0, MAX_FILE_CHARS);
+          if (!text) continue;
+          pendingFiles = [...pendingFiles.filter(f => f.name !== name), { name, text }].slice(-3);
+          return { ok: true, note: name };
+        } catch { /* next base */ }
+      }
+    }
+    return { ok: false, note: ar ? 'ما قدرت أقرأ هذا الملف الحين' : 'Could not read this file right now' };
   }
   try {
     const text = (await file.text()).slice(0, MAX_FILE_CHARS);
@@ -205,6 +229,10 @@ async function webSearch(query: string, chatUrl: string): Promise<string> {
   const server = await fetchJsonFirst(siblings(chatUrl, 'search'), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, lang: isArabic(q) ? 'ar' : 'en' }),
   }, 12000);
+  if (server?.answer) { // Google-grounded answer from the server
+    const src = (server.results || []).slice(0, 4).map((r: any) => `- ${r.title || ''} ${r.url || r.link || ''}`).join('\n');
+    return `${String(server.answer).slice(0, 3000)}${src ? `\nSources:\n${src}` : ''}`;
+  }
   const items: any[] = server?.results || server?.items || [];
   if (items.length) {
     return items.slice(0, 5).map((r, i) => `${i + 1}. ${r.title || ''} — ${String(r.snippet || r.content || r.description || '').slice(0, 300)} (${r.url || r.link || ''})`).join('\n');
@@ -233,7 +261,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
 export async function generateImage(prompt: string, chatUrl = ''): Promise<{ data: string; mime: string } | null> {
   const p = prompt.trim().slice(0, 600);
   if (!p) return null;
-  const server = await fetchJsonFirst(chatUrl ? siblings(chatUrl, 'image-generate') : FALLBACK_BASES.map(b => `${b}/image-generate`), {
+  const server = await fetchJsonFirst(chatUrl ? siblings(chatUrl, 'image-generate') : fallbackBases().map(b => `${b}/image-generate`), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: p }),
   }, 60000);
   if (server) {
