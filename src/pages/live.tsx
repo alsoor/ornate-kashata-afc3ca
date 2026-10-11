@@ -1405,6 +1405,9 @@ export default function LivePage() {
     void joinRoom();
   }, [enterGateDone, myId, joined, joining, joinRoom]);
 
+  // REQ-COUNT-PATCH: number of people waiting for the mic (one per person, current speakers excluded)
+  const reqCount = amHost ? new Set(micRequests.filter(r => !speakerUids.has(r.uid)).map(micPersonKey)).size : 0;
+  const hasReq = reqCount > 0;
   const speakingMember = members.find(m => speakingUids.has(m.uid) && !(m.isMe && (micFrozenByHost || !micOn)));
   const miniName = speakingMember?.name || (micOn && !micFrozenByHost ? myName : hostName);
   const miniLiveDock = minimized && typeof document !== 'undefined' ? createPortal(
@@ -1713,16 +1716,14 @@ export default function LivePage() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      color: '#00BCD4',
-      background: toolsOpen ? 'rgba(0,188,212,0.28)' : 'rgba(0,188,212,0.12)',
-      border: '1.5px solid rgba(0,188,212,0.6)',
+      color: hasReq ? '#facc15' : '#00BCD4',
+      background: hasReq ? (toolsOpen ? 'rgba(250,204,21,0.34)' : 'rgba(250,204,21,0.18)') : (toolsOpen ? 'rgba(0,188,212,0.28)' : 'rgba(0,188,212,0.12)'),
+      border: hasReq ? '1.5px solid rgba(250,204,21,0.9)' : '1.5px solid rgba(0,188,212,0.6)',
+      boxShadow: hasReq ? '0 0 10px rgba(250,204,21,0.55)' : 'none',
       flexShrink: 0,
     }}
   >
     <ChevronDown size={18} strokeWidth={2.6} style={{ transform: toolsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }} />
-    {amHost && !toolsOpen && micRequests.length > 0 && (
-      <span style={{ position: 'absolute', top: -2, right: -2, width: 10, height: 10, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0a1f22' }} />
-    )}
   </button>
 )}
 <button
@@ -1783,13 +1784,18 @@ export default function LivePage() {
       >
         <span style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(circle at 30% 30%, #ffe08a, #eab308)', border: '1.5px solid rgba(234,179,8,0.85)' }}>
           <Hand size={17} color="#111" />
-          {amHost && micRequests.length > 0 && (
+          {hasReq && (
             <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, background: '#ef4444', color: '#fff', fontSize: '0.62rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px', border: '1.5px solid #0a1f22', lineHeight: 1 }}>
-              {micRequests.length > 9 ? '9+' : micRequests.length}
+              {reqCount > 9 ? '9+' : reqCount}
             </span>
           )}
         </span>
-        <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem' }}>Mic Requests</span>
+        <span style={{ color: '#e8f6f6', fontWeight: 800, fontSize: '0.88rem', flex: 1 }}>Mic Requests</span>
+        {hasReq && (
+          <span style={{ minWidth: 24, height: 24, borderRadius: 12, padding: '0 8px', boxSizing: 'border-box', background: '#ef4444', color: '#fff', fontWeight: 900, fontSize: '0.8rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {reqCount > 9 ? '9+' : reqCount}
+          </span>
+        )}
       </div>
 
     </motion.div>
