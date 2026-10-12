@@ -3,7 +3,6 @@ import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, use
 import { createPortal } from 'react-dom';
 import React from 'react';
 import { StooornaAiIcon, StooornaAiSheet } from '@/ai';
-import { GlobeVoiceLongPress } from '@/lib/voiceAssistantPatch'; // VOICE-ASSISTANT-PATCH
 import { useAiIconVisible } from '@/lib/aiIconPatch';
 
 if (typeof document !== 'undefined' && !document.getElementById('stooorna-media-fix')) {
@@ -29522,13 +29521,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {/* Stooorna Ai — between LIVE and Templates */}
                   {user?.id && aiIconVisible && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
-                      <GlobeVoiceLongPress>
-                        <StooornaAiIcon
-                          active={aiOpen}
-                          onClick={() => setAiOpen(v => !v)}
-                          size={44}
-                        />
-                      </GlobeVoiceLongPress>
+                      <StooornaAiIcon
+                        active={aiOpen}
+                        onClick={() => setAiOpen(v => !v)}
+                        size={44}
+                      />
                     </div>
                   )}
                   {/* Templates — صور وفيديو Templates (كانت خلف الشيت) صارت هنا بين LIVE و Settings */}
