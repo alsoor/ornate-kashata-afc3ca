@@ -391,9 +391,9 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
   };
 
   const MIMES = ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
-  const makeRecorder = (stream: MediaStream) => {
+  const makeRecorder = (stream: MediaStream, videoBps = 2_500_000) => { // MAX-LENGTH: bitrate can be lowered for photo + music clips
     const mime = MIMES.find(m => (window as any).MediaRecorder?.isTypeSupported?.(m));
-    const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 2_500_000 } : undefined);
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: videoBps } : undefined);
     const chunks: Blob[] = [];
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
     const finished = new Promise<Blob>(res => {
@@ -445,7 +445,7 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
     let actx: AudioContext | null = null;
     let mAudio: HTMLAudioElement | null = null;
     try { const r = await attachAudio(stream, null); actx = r.actx; mAudio = r.audio; } catch { /* no sound is better than no video */ }
-    const { rec, finished } = makeRecorder(stream);
+    const { rec, finished } = makeRecorder(stream, clipLen > 60 ? 900_000 : 1_500_000); // MAX-LENGTH: still image -> small file even for 5 minutes
     try {
       rec.start(250);
       void mAudio?.play().catch(() => { /* */ });
@@ -779,10 +779,10 @@ export default function MediaEditor({ url, kind, name, ar = true, onClose, onDon
                   </label>
                 )}
                 {kind === 'image' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#bbb' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#bbb', flexWrap: 'wrap' }}>
                     <span>{M.len}</span>
-                    {[5, 10, 15, 30].map(n => (
-                      <button key={n} type="button" onClick={() => setClipLen(n)} style={{ ...chip, padding: '5px 12px', background: clipLen === n ? RED : chip.background }}>{n}{M.sec}</button>
+                    {[5, 10, 15, 30, 45, 60, 90, 120, 180, 240, 300].map(n => ( // MAX-LENGTH: was 5/10/15/30 only; now up to 5 minutes
+                      <button key={n} type="button" onClick={() => setClipLen(n)} style={{ ...chip, padding: '5px 12px', background: clipLen === n ? RED : chip.background }}>{n >= 60 && n % 60 === 0 ? `${n / 60} ${M.sec === 'ث' ? 'د' : 'min'}` : `${n}${M.sec}`}</button>
                     ))}
                   </div>
                 )}

@@ -4,7 +4,7 @@ import { X as XIcon, Plus, Check, Search, ChevronLeft, ChevronRight, Music, Play
 
 /**
  * MERGE-MEDIA (ملف مستقل): دمج عدة صور وفيديوهات في فيديو واحد مع موسيقى.
- * - المستخدم يضيف صور / فيديوهات (حتى 12) ويرتبها.
+ * - المستخدم يضيف صور / فيديوهات (حتى 30) ويرتبها.
  * - يختار الموسيقى: بدون / من مكتبة مدمجة (مع بحث) / ملف صوت من جهازه.
  * - الدمج يتم داخل الجهاز (Canvas + WebAudio + MediaRecorder) بدون سيرفر.
  * - الناتج يرجع عبر onDone(blob, 'video', name) فيدخل الشات بأزرار Editor / Save / Publish.
@@ -104,7 +104,7 @@ interface Opts { per: number; trans: Trans; music: Music; keepAudio: boolean }
 async function renderMerge(items: Item[], opts: Opts, onPct: (p: number) => void, dead: () => boolean): Promise<Blob> {
   const els = await Promise.all(items.map(loadEl));
   const n = els.length;
-  const dur = els.map(e => (e instanceof HTMLVideoElement ? Math.max(1, Math.min(isFinite(e.duration) ? e.duration : 5, 20)) : opts.per));
+  const dur = els.map(e => (e instanceof HTMLVideoElement ? Math.max(1, Math.min(isFinite(e.duration) ? e.duration : 5, 120)) : opts.per));
   const tr = opts.trans === 'none' ? 0 : Math.min(0.45, Math.min(...dur) * 0.4);
   const start: number[] = [];
   dur.forEach((d, i) => { start.push(i === 0 ? 0 : start[i - 1] + dur[i - 1] - tr); });
@@ -351,7 +351,7 @@ export default function MergeMedia({ open, items: initial = [], onClose, onDone,
       if (f.size > (isV ? 150 : 12) * 1024 * 1024) return;
       next.push({ id: `m-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, kind: isV ? 'video' : 'image', url: URL.createObjectURL(f), name: f.name, own: true });
     });
-    if (next.length) setItems(p => [...p, ...next].slice(0, 12));
+    if (next.length) setItems(p => [...p, ...next].slice(0, 30)); // MAX-ITEMS: was 12
     setResult(null);
   };
 
@@ -462,7 +462,7 @@ export default function MergeMedia({ open, items: initial = [], onClose, onDone,
                     )}
                   </div>
                 ))}
-                {items.length < 12 && (
+                {items.length < 30 && (
                   <button type="button" disabled={busy} onClick={() => mediaInput.current?.click()} style={{ width: 84, height: 112, borderRadius: 12, border: '2px dashed rgba(255,255,255,0.35)', background: 'transparent', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Plus size={26} />
                   </button>
@@ -473,8 +473,8 @@ export default function MergeMedia({ open, items: initial = [], onClose, onDone,
             {/* 2) الإعدادات */}
             <div>
               <p style={label}>{t('2) مدة كل صورة', '2) Seconds per photo')}</p>
-              <div style={{ display: 'flex', gap: 8 }}>
-                {[2, 3, 4, 5].map(s => <button key={s} type="button" onClick={() => setPer(s)} style={chip(per === s)}>{s} {t('ث', 's')}</button>)}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[2, 3, 4, 5, 7, 10, 15, 20].map(s => <button key={s} type="button" onClick={() => setPer(s)} style={chip(per === s)}>{s} {t('ث', 's')}</button>)}
               </div>
               <p style={{ ...label, marginTop: 14 }}>{t('الانتقال بين المقاطع', 'Transition')}</p>
               <div style={{ display: 'flex', gap: 8, overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingBottom: 4 }}>
