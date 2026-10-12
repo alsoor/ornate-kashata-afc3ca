@@ -1,8 +1,8 @@
 /**
  * VOICE-CHAT  (src/lib/voiceChat.ts)
  *
- * Client engine used by voiceAssistantPatch.tsx:
- *   - chatTurn():   free conversation with the assistant (Gulf Arabic / American English), keeps short history
+ * Client engine used by voiceAssistantPatch.tsx (English US only):
+ *   - chatTurn():   free conversation with the assistant (American English), keeps short history
  *   - ttsOnly():    natural female voice for any short text (used for the "Yes <username>" greeting)
  *   - playAudio():  plays the returned mp3 through WebAudio (works after the first touch, no extra tap)
  *   - readable diagnostics (getChatIssue / getVoiceIssue) so you can see why chat or the natural voice is not working
@@ -19,7 +19,7 @@ export interface ChatReply {
   text: string;
   spoken: string;
   heard?: string; // what the user really said (English speech the phone wrote in Arabic letters is fixed here)
-  lang: 'ar' | 'en';
+  lang: 'en';
   audio?: string; // base64 mp3
 }
 
@@ -38,8 +38,6 @@ function explainTts(code: unknown): string {
   if (c === 'timeout') return 'Natural voice timed out.';
   return 'Natural voice is unavailable.';
 }
-
-const hasArabic = (s: string) => /[\u0600-\u06FF]/.test(s);
 
 // ───────────── conversation memory (in the page only) ─────────────
 type Msg = { role: 'user' | 'assistant'; content: string };
@@ -79,16 +77,15 @@ export async function chatTurn(q: string, name: string, signal?: AbortSignal): P
   const heard = typeof d.heard === 'string' && d.heard.trim() ? d.heard.trim() : undefined;
   history = [...history, { role: 'user' as const, content: heard || q }, { role: 'assistant' as const, content: text }].slice(-HISTORY_MAX);
   lastTurnAt = Date.now();
-  const outLang: 'ar' | 'en' = d.lang === 'en' ? 'en' : d.lang === 'ar' ? 'ar' : hasArabic(text) ? 'ar' : 'en';
   const audio = typeof d.audio === 'string' && d.audio ? d.audio : undefined;
   voiceIssue = audio ? '' : explainTts(d.ttsError);
-  return { text, spoken: String(d.spoken || text), heard, lang: outLang, audio };
+  return { text, spoken: String(d.spoken || text), heard, lang: 'en', audio };
 }
 
 // ───────────── text-to-speech only (cached) ─────────────
 const ttsCache = new Map<string, string>();
 
-export async function ttsOnly(text: string, lang: 'ar' | 'en', signal?: AbortSignal): Promise<string | null> {
+export async function ttsOnly(text: string, lang: 'en' = 'en', signal?: AbortSignal): Promise<string | null> {
   const key = `${lang}|${text}`;
   const hit = ttsCache.get(key);
   if (hit) return hit;
@@ -103,7 +100,6 @@ export async function ttsOnly(text: string, lang: 'ar' | 'en', signal?: AbortSig
 export function prefetchGreeting(name: string) {
   const who = name.replace(/[_.\-]+/g, ' ').trim();
   void ttsOnly(who ? `Yes, ${who}` : 'Yes', 'en').catch(() => {});
-  void ttsOnly(who ? `\u0646\u0639\u0645, ${who}` : '\u0646\u0639\u0645', 'ar').catch(() => {});
 }
 
 // ───────────── playback ─────────────

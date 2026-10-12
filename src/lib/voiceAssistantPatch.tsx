@@ -1,13 +1,15 @@
 /**
- * VOICE-ASSISTANT-PATCH  (src/lib/voiceAssistantPatch.tsx)  — v2
+ * VOICE-ASSISTANT-PATCH  (src/lib/voiceAssistantPatch.tsx)  — v4, English (US) only
  *
- * ضغطة مطوّلة على زر الكرة الأرضية (StooornaAiIcon):
- *   1) نغمة "جاهز" + اهتزاز، وتطلع صفحة بيضاء كاملة من تحت لفوق تغطي كل الأقسام
- *   2) الأيقونة تبقى فوق الصفحة في مكانها وتتحول هي نفسها إلى ذبذبات صوت
- *   3) تسأل (عربي أو إنجليزي) -> يكتب الجواب في الصفحة ويرد عليك بصوت أنثوي
- *   4) نقرة وحدة على الأيقونة = يوقف كل شي وتختفي الصفحة. ضغطة مطوّلة عليها = سؤال جديد
+ * Long press on the globe button (StooornaAiIcon):
+ *   1) "ready" tone + vibration, a full white page rises from the bottom and covers every section
+ *   2) the icon stays on top of the page in its place and turns into sound bars
+ *   3) you speak English -> the answer is written on the page and a female American voice answers you
+ *   4) one tap on the icon = stop everything and hide the page. Long press on it = new question
+ *   5) say "Stooorna" (voice wake) -> she answers "Yes <username>" and listens
+ *   6) hold the globe icon for 6 seconds = assistant OFF (icon turns orange); hold again for 6 seconds = back ON
  *
- * الواجهة العامة (ما تغيّرت): <GlobeVoiceLongPress> و <VoiceAssistantHost />
+ * Public API (unchanged): <GlobeVoiceLongPress> and <VoiceAssistantHost />
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSession } from '@/lib/auth/auth-client';
@@ -17,22 +19,21 @@ export const VOICE_ASSISTANT_START = 'stooorna:voice-assistant-start';
 export const VOICE_ASSISTANT_STOP = 'stooorna:voice-assistant-stop';
 
 const LONG_PRESS_MS = 450;
+const SPEECH_LANG = 'en-US'; // English (United States) only
 const ENDPOINT = '/api/voice-assistant';
 const Z_PAGE = 300000;
 const Z_ORB = 300001;
-const LANG_KEY = 'stooorna_voice_lang';        // لو حطيته (مثال en-US) يثبّت لغة التعرّف ويوقف التبديل التلقائي
-const LAST_LANG_KEY = 'stooorna_voice_lang_last';
 // Voice wake ("Stooorna" / Arabic spelling): now ON by default for every account, no tap needed.
 // A user can still switch it off from the toggle inside the assistant page (saved per account).
 const WAKE_DEFAULT_ON = true;
-const WAKE_KEY = 'stooorna_wake_on'; // يُحفظ لكل حساب: stooorna_wake_on_<userId>
+const WAKE_KEY = 'stooorna_wake_on_v2'; // saved per account: stooorna_wake_on_v2_<userId> (new key: old saved 'off' values are ignored)
 const OFF_KEY = 'stooorna_va_off'; // saved per account: stooorna_va_off_<userId> = '1' when the assistant is switched off
 const HOLD_TOGGLE_MS = 6000;      // hold the globe icon this long to switch the assistant off / on
 const OFF_COLOR = '#ff8a00';
-let globeEl: HTMLElement | null = null; // أيقونة الكرة الحالية (يسجّلها GlobeVoiceLongPress)
+let globeEl: HTMLElement | null = null; // the current globe icon (registered by GlobeVoiceLongPress)
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
-type UiLang = 'ar' | 'en' | null;
+type UiLang = 'en' | null;
 interface Rect { left: number; top: number; width: number; height: number }
 interface AssistantAnswer {
   text: string;
@@ -42,10 +43,9 @@ interface AssistantAnswer {
   provider?: string;
   audio?: string; // base64 mp3 from the server voice (optional)
   heard?: string; // what the user really said (fixed transcript)
-  lang?: 'ar' | 'en';
+  lang?: 'en';
 }
 
-const hasArabic = (s: string) => /[\u0600-\u06FF]/.test(s);
 const vibrate = (p: number | number[]) => { try { navigator.vibrate?.(p); } catch { /* ignore */ } };
 
 // ───────────────────────── assistant on / off (6-second hold on the globe) ─────────────────────────
@@ -98,7 +98,7 @@ function unpaintOff(el: HTMLElement) {
   offSaved.delete(el);
 }
 
-// ───────────────────────── صوت (نغمات بالكود) ─────────────────────────
+// ───────────────────────── sounds (tones made in code) ─────────────────────────
 let audioCtx: AudioContext | null = null;
 function getCtx(): AudioContext | null {
   try {
@@ -113,7 +113,7 @@ function getCtx(): AudioContext | null {
 function beep(kind: 'ready' | 'got' | 'error') {
   const ctx = getCtx();
   if (!ctx) return;
-  // ready: ثلاث نغمات صاعدة واضحة = "اشتغلت وجاهزة"
+  // ready: three rising tones = "I am listening"
   const seq: [number, number, number][] =
     kind === 'ready' ? [[523, 0.11, 0.2], [659, 0.11, 0.2], [988, 0.2, 0.22]] :
     kind === 'got' ? [[880, 0.07, 0.14], [1175, 0.1, 0.14]] :
@@ -137,7 +137,7 @@ function beep(kind: 'ready' | 'got' | 'error') {
   }
 }
 
-// ───────────────────────── نطق (صوت أنثوي قدر الإمكان) ─────────────────────────
+// ───────────────────────── speech (female voice when available) ─────────────────────────
 let voicesCache: SpeechSynthesisVoice[] = [];
 function loadVoices() {
   try { voicesCache = window.speechSynthesis.getVoices() || []; } catch { /* ignore */ }
@@ -145,10 +145,11 @@ function loadVoices() {
 const FEMALE_RE = /female|woman|girl|zira|samantha|karen|moira|tessa|victoria|susan|hazel|fiona|serena|allison|ava|joanna|salli|kendra|kimberly|ivy|emma|amy|laila|lana|mariam|salma|amira|hoda|zariyah|google (us|uk) english|aria|jenny|libby|sonia|natasha/i;
 const MALE_RE = /\bmale\b|maged|tarik|naayf|hamed|majed|david|mark|daniel|alex|fred|george|james|guy|rishi|oliver|thomas|ryan|christopher|eric|hamza/i;
 
-function pickVoice(text: string): { voice: SpeechSynthesisVoice | null; female: boolean } {
+function pickVoice(): { voice: SpeechSynthesisVoice | null; female: boolean } {
   if (!voicesCache.length) loadVoices();
-  const want = hasArabic(text) ? 'ar' : 'en';
-  const pool = voicesCache.filter(v => v.lang.toLowerCase().startsWith(want));
+  const norm = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-');
+  let pool = voicesCache.filter(v => norm(v).startsWith('en-us'));
+  if (!pool.length) pool = voicesCache.filter(v => norm(v).startsWith('en'));
   if (!pool.length) return { voice: null, female: false };
   const fem = pool.find(v => FEMALE_RE.test(v.name) && !MALE_RE.test(v.name));
   if (fem) return { voice: fem, female: true };
@@ -166,10 +167,10 @@ function speak(text: string, onStart: () => void, onEnd: () => void) {
   if (!clean || !('speechSynthesis' in window)) { onEnd(); return; }
   try {
     const u = new SpeechSynthesisUtterance(clean);
-    const { voice, female } = pickVoice(clean);
-    if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = hasArabic(clean) ? 'ar-SA' : 'en-US';
+    const { voice, female } = pickVoice();
+    if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = SPEECH_LANG;
     u.rate = 1;
-    u.pitch = female ? 1.05 : 1.25; // لو ما لقينا صوت أنثوي صريح نرفع النبرة شوي
+    u.pitch = female ? 1.05 : 1.25; // no clearly female voice found: raise the pitch a little
     u.onstart = onStart;
     u.onend = onEnd;
     u.onerror = onEnd;
@@ -178,53 +179,36 @@ function speak(text: string, onStart: () => void, onEnd: () => void) {
   } catch { onEnd(); }
 }
 
-// ───────────────────────── ردود محلية فورية ─────────────────────────
+// ───────────────────────── instant local answers ─────────────────────────
 function localIntent(q: string): AssistantAnswer | null {
-  const s = q.toLowerCase().replace(/[؟?!.,،]/g, ' ').replace(/\s+/g, ' ').trim();
+  const s = q.toLowerCase().replace(/[?!.,]/g, ' ').replace(/\s+/g, ' ').trim();
   const now = new Date();
-  const ar = hasArabic(q);
-  const mk = (t: string): AssistantAnswer => ({ text: t, spoken: t, images: [], sources: [], provider: 'local' });
+  const mk = (t: string): AssistantAnswer => ({ text: t, spoken: t, images: [], sources: [], provider: 'local', lang: 'en' });
 
-  if (/(كم الساع|ما هي الساع|ما الساع|الساعه كم|الساعة كم|كم الوقت|ما هو الوقت|الساعه الحين|الساعة الحين|what time|current time|time is it|what's the time)/.test(s)) {
-    if (ar) {
-      const h24 = now.getHours();
-      const h12 = h24 % 12 || 12;
-      return mk(`الساعة الآن ${h12}:${String(now.getMinutes()).padStart(2, '0')} ${h24 < 12 ? 'صباحاً' : 'مساءً'}`);
-    }
+  if (/(what time|current time|time is it|what's the time|tell me the time)/.test(s)) {
     return mk(`It's ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} right now.`);
   }
-
-  const askDate = /(ما هو التاريخ|ما التاريخ|كم التاريخ|تاريخ اليوم|التاريخ اليوم|what('s| is) the date|today's date|what date)/.test(s);
-  const askDay = /(ما هو اليوم|ما اليوم|اي يوم|أي يوم|شنو اليوم|what day)/.test(s);
-  if (askDate || askDay) {
-    if (ar) {
-      const o = { day: 'numeric', month: 'long', year: 'numeric' } as const;
-      const full = new Intl.DateTimeFormat('ar-KW-u-ca-gregory-nu-latn', { weekday: 'long', ...o }).format(now);
-      const day = new Intl.DateTimeFormat('ar-KW-u-ca-gregory-nu-latn', { weekday: 'long' }).format(now);
-      return mk(askDay && !askDate ? `اليوم ${day}` : `اليوم ${full}`);
-    }
+  if (/(what('s| is) the date|today's date|what date|what day)/.test(s)) {
     return mk(`Today is ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`);
   }
   return null;
 }
 
-const wantsImages = (q: string) =>
-  /(صورة|صور|صوره|اعرض|عرض لي|وريني|ورني|image|images|picture|pictures|photo|photos|show me)/i.test(q);
+const wantsImages = (q: string) => /(image|images|picture|pictures|photo|photos|show me)/i.test(q);
 
-// ───────────────────────── احتياط: ويكيبيديا من الجهاز ─────────────────────────
+// ───────────────────────── fallback: Wikipedia from the device ─────────────────────────
 function stripQuestionWords(q: string): string {
   return q
-    .replace(/[؟?!]/g, ' ')
-    .replace(/^(ما هو|ما هي|ما هى|من هو|من هي|من هى|ما|من|ماذا|متى|اين|أين|كم|كيف|لماذا|اعرض لي صور[ةه]?|اعرض لي|وريني|ورني|صور[ةه]?|what is|what are|who is|who was|who are|where is|when is|when was|tell me about|show me|picture of|image of)\s+/i, '')
+    .replace(/[?!]/g, ' ')
+    .replace(/^(what is|what are|who is|who was|who are|where is|when is|when was|tell me about|show me|picture of|image of)\s+/i, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 async function wikipediaFallback(q: string, signal: AbortSignal): Promise<AssistantAnswer | null> {
-  const lang = hasArabic(q) ? 'ar' : 'en';
   const term = stripQuestionWords(q) || q;
   const url =
-    `https://${lang}.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}` +
+    `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}` +
     `&gsrlimit=4&prop=extracts%7Cpageimages&exintro=1&explaintext=1&exsentences=3&piprop=thumbnail&pithumbsize=700&format=json&origin=*`;
   const r = await fetch(url, { signal });
   if (!r.ok) return null;
@@ -237,26 +221,26 @@ async function wikipediaFallback(q: string, signal: AbortSignal): Promise<Assist
   const images = wantsImages(q) ? pages.map(p => p?.thumbnail?.source).filter((u: any) => typeof u === 'string').slice(0, 4) : [];
   return {
     text,
-    spoken: text.split(/(?<=[.!؟?۔])\s+/).slice(0, 2).join(' ').slice(0, 320),
+    spoken: text.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').slice(0, 320),
     images,
-    sources: [{ title: `${top.title} — Wikipedia`, url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(String(top.title).replace(/ /g, '_'))}` }],
+    sources: [{ title: `${top.title} — Wikipedia`, url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(top.title).replace(/ /g, '_'))}` }],
     provider: 'wikipedia-client',
+    lang: 'en',
   };
 }
 
 async function askAssistant(q: string, signal: AbortSignal, name = ''): Promise<AssistantAnswer> {
   const local = localIntent(q);
   if (local) return local;
-  const lang = hasArabic(q) ? 'ar' : 'en';
-  // Free conversation first (Gulf Arabic / American English). Image requests and failures fall through to the search flow below.
+  // Free conversation first (American English). Image requests and failures fall through to the search flow below.
   if (!wantsImages(q)) {
     const c = await chatTurn(q, name, signal);
-    if (c) return { text: c.text, spoken: c.spoken, images: [], sources: [], provider: 'chat', audio: c.audio, heard: c.heard, lang: c.lang };
+    if (c) return { text: c.text, spoken: c.spoken, images: [], sources: [], provider: 'chat', audio: c.audio, heard: c.heard, lang: 'en' };
   }
   try {
     const r = await fetch(ENDPOINT, {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q, lang, images: wantsImages(q) }), signal,
+      body: JSON.stringify({ q, lang: 'en', images: wantsImages(q) }), signal,
     });
     if (r.ok) {
       const d = await r.json();
@@ -264,7 +248,7 @@ async function askAssistant(q: string, signal: AbortSignal, name = ''): Promise<
         return {
           text: String(d.answer), spoken: String(d.spoken || d.answer),
           images: Array.isArray(d.images) ? d.images.filter((u: any) => typeof u === 'string') : [],
-          sources: Array.isArray(d.sources) ? d.sources : [], provider: d.provider,
+          sources: Array.isArray(d.sources) ? d.sources : [], provider: d.provider, lang: 'en',
         };
       }
     }
@@ -273,11 +257,11 @@ async function askAssistant(q: string, signal: AbortSignal, name = ''): Promise<
     const w = await wikipediaFallback(q, signal);
     if (w) return w;
   } catch (e: any) { if (e?.name === 'AbortError') throw e; }
-  const none = lang === 'ar' ? 'ما لقيت جواب واضح لهذا السؤال. جرّب تعيد صياغته.' : "I couldn't find a clear answer. Try rephrasing the question.";
-  return { text: none, spoken: none, images: [], sources: [], provider: 'none' };
+  const none = "I couldn't find a clear answer. Try rephrasing the question.";
+  return { text: none, spoken: none, images: [], sources: [], provider: 'none', lang: 'en' };
 }
 
-// ───────────────────────── كتابة تدريجية ─────────────────────────
+// ───────────────────────── typewriter effect ─────────────────────────
 function useTypewriter(full: string, run: boolean): string {
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -297,31 +281,19 @@ function useTypewriter(full: string, run: boolean): string {
   return full.slice(0, n);
 }
 
-// ───────────────────────── الزر: ضغطة مطوّلة تلفّ أيقونة الكرة ─────────────────────────
-// ───────────────────────── كشف كلمة النداء (عربي/إنجليزي) ─────────────────────────
+// ───────────────────────── wake word detection ("Stooorna") ─────────────────────────
 function normWake(s: string): string {
-  return s.toLowerCase()
-    .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
-    .replace(/[أإآٱ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي')
-    .replace(/[^a-z0-9\u0600-\u06FF\s]/g, ' ')
-    .replace(/\s+/g, ' ').trim();
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
-// Stooorna / Storna / Sturna …  و  ستورنا / ستورنه / استورنا …
+// Stooorna / Storna / Sturna ...
 const WAKE_LATIN = /(?:^|\s)[ei]?s?t[ou]{1,3}a?r+n[aeh]{1,2}(?=\s|$)/;
-const WAKE_ARABIC = /(?:^|\s)ا?[سص]ت[وؤ]{1,3}ر+ن[اهي]{0,2}(?=\s|$)/;
 
-function matchWake(raw: string): { lang: 'ar' | 'en'; rest: string } | null {
+function matchWake(raw: string): { lang: 'en'; rest: string } | null {
   const t = normWake(raw);
   if (!t) return null;
-  let lang: 'ar' | 'en' = 'ar';
-  let m = WAKE_ARABIC.exec(t);
-  if (!m) { m = WAKE_LATIN.exec(t); lang = 'en'; }
+  const m = WAKE_LATIN.exec(t);
   if (!m) return null;
-  const before = t.slice(0, m.index).trim();
-  const rest = t.slice(m.index + m[0].length).trim();
-  if (lang === 'en' && /(?:^|\s)(ya|yaa|yah)$/.test(before)) lang = 'ar';
-  else if (lang === 'ar' && /(?:^|\s)(هاي|هلو|اوكي)$/.test(before)) lang = 'en';
-  return { lang, rest };
+  return { lang: 'en', rest: t.slice(m.index + m[0].length).trim() };
 }
 
 function iconRectOf(target: EventTarget | null): Rect | null {
@@ -329,7 +301,7 @@ function iconRectOf(target: EventTarget | null): Rect | null {
     const first = target as HTMLElement | null;
     if (!first || !first.getBoundingClientRect) return null;
     let el: HTMLElement = (first.closest('button,[role="button"]') as HTMLElement | null) || first;
-    // نطلع للأب طالما لسه بحجم الأيقونة (حتى ما ناخذ svg صغير من داخلها)
+    // climb to the parent while it is still icon-sized (so we do not take a small inner svg)
     for (let i = 0; i < 3; i++) {
       const parent: HTMLElement | null = el.parentElement;
       if (!parent || parent === document.body) break;
@@ -401,7 +373,7 @@ export function GlobeVoiceLongPress({ children, delay = LONG_PRESS_MS }: { child
   );
 }
 
-// ───────────────────────── المضيف: يُركَّب مرة وحدة في RootLayout ─────────────────────────
+// ───────────────────────── host: mounted once in RootLayout ─────────────────────────
 export function VoiceAssistantHost() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [heard, setHeard] = useState('');
@@ -414,7 +386,7 @@ export function VoiceAssistantHost() {
   const [uiLang, setUiLang] = useState<UiLang>(null);
   const [rect, setRect] = useState<Rect | null>(null);
 
-  // المستخدم الحالي (نفس هوك RootLayout) — اسمه يُنطق بعد "نعم / Yes"
+  // current user (same hook as RootLayout) — the username is spoken after "Yes"
   const sess: any = useSession();
   const user: any = sess?.user ?? sess?.data?.user ?? null;
   const userId = String(user?.id || '');
@@ -438,11 +410,9 @@ export function VoiceAssistantHost() {
   const startTimer = useRef(0);
   const orbHold = useRef<{ timer: number; fired: boolean }>({ timer: 0, fired: false });
 
-  const msg = useCallback((ar: string, en: string) => (uiLang === 'ar' ? ar : uiLang === 'en' ? en : `${ar}  ·  ${en}`), [uiLang]);
 
-  // تحميل الأصوات + فك قفل الصوت عند أول لمسة
+  // load voices + unlock audio on the first touch
   useEffect(() => {
-    try { localStorage.removeItem(LANG_KEY); } catch { /* ignore */ } // language is automatic: drop any pinned language
     loadVoices();
     try { window.speechSynthesis?.addEventListener?.('voiceschanged', loadVoices); } catch { /* ignore */ }
     const unlock = () => { getCtx(); };
@@ -494,7 +464,7 @@ export function VoiceAssistantHost() {
 
   /** Natural female voice (server) with automatic fallback to the phone's own voice. */
   const speakNatural = useCallback(async (
-    text: string, lang: 'ar' | 'en', audio: string | undefined,
+    text: string, lang: 'en', audio: string | undefined,
     alive: () => boolean, onStart: () => void, onEnd: () => void,
   ) => {
     let b64: string | null = audio || null;
@@ -516,20 +486,20 @@ export function VoiceAssistantHost() {
   }, []);
 
   /** After she finishes talking: keep the conversation going by listening again (chat answers only). */
-  const afterSpeech = useCallback((session: number, lang: 'ar' | 'en', convo: boolean) => {
+  const afterSpeech = useCallback((session: number, _lang: 'en', convo: boolean) => {
     if (session !== sessionRef.current) return;
     if (convo) {
       followUpRef.current = true;
       setHeard('');
       setNotice('');
       setPhase('listening');
-      listenRef.current?.(session, lang === 'ar' ? 'ar-SA' : 'en-US', 0);
+      listenRef.current?.(session, SPEECH_LANG, 0);
     } else setPhase('idle');
   }, []);
 
   const ask = useCallback(async (q: string, session: number) => {
     setQuestion(q);
-    setUiLang(hasArabic(q) ? 'ar' : 'en');
+    setUiLang('en');
     setAnswer(null);
     setError('');
     setNotice('');
@@ -549,11 +519,8 @@ export function VoiceAssistantHost() {
       setChatHint(res.provider === 'chat' || res.provider === 'local' ? '' : getChatIssue());
       if (res.heard) setQuestion(res.heard); // show what she really understood (English stays English)
       const said = res.spoken || res.text;
-      const sayLang: 'ar' | 'en' = res.lang || (hasArabic(said) ? 'ar' : 'en');
-      if (res.lang) {
-        setUiLang(res.lang);
-        try { localStorage.setItem(LAST_LANG_KEY, res.lang === 'ar' ? 'ar-SA' : 'en-US'); } catch { /* ignore */ }
-      }
+      const sayLang = 'en' as const;
+      setUiLang('en');
       void speakNatural(
         said, sayLang, res.audio,
         () => session === sessionRef.current,
@@ -563,11 +530,10 @@ export function VoiceAssistantHost() {
     } catch (e: any) {
       if (session !== sessionRef.current) return;
       beep('error');
-      const ar = hasArabic(q);
       setError(
         e?.name === 'AbortError'
-          ? (ar ? 'انتهى الوقت قبل ما يجي الجواب، حاول مرة ثانية.' : 'Timed out before an answer arrived. Please try again.')
-          : (ar ? 'تعذّر جلب الجواب، تأكد من الإنترنت وحاول مرة ثانية.' : "Couldn't get an answer. Check your connection and try again."),
+          ? 'Timed out before an answer arrived. Please try again.'
+          : "Couldn't get an answer. Check your connection and try again.",
       );
       setPhase('idle');
     } finally {
@@ -575,16 +541,14 @@ export function VoiceAssistantHost() {
     }
   }, [speakNatural, afterSpeech]);
 
-  /** يسمع بلغة معيّنة. لو الثقة ضعيفة يبدّل العربي/الإنجليزي مرة وحدة تلقائياً */
-  const listen = useCallback((session: number, lang: string, attempt: number) => {
+  /** Listens in American English (en-US). */
+  const listen = useCallback((session: number, _lang: string, _attempt: number) => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const rec = new SR();
     recRef.current = rec;
     let finalText = '';
-    let conf = 0;
     let failed = false;
-    const forced = (() => { try { return localStorage.getItem(LANG_KEY); } catch { return null; } })();
-    rec.lang = forced || lang;
+    rec.lang = SPEECH_LANG;
     rec.interimResults = true;
     rec.continuous = false;
     rec.maxAlternatives = 1;
@@ -592,13 +556,10 @@ export function VoiceAssistantHost() {
     rec.onresult = (ev: any) => {
       let interim = '';
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
-        const alt = ev.results[i][0];
-        const t = alt?.transcript || '';
-        if (ev.results[i].isFinal) { finalText += t; conf = Math.max(conf, Number(alt?.confidence) || 0); } else interim += t;
+        const t = ev.results[i][0]?.transcript || '';
+        if (ev.results[i].isFinal) finalText += t; else interim += t;
       }
-      const shown = (finalText + ' ' + interim).trim();
-      setHeard(shown);
-      if (shown) setUiLang(hasArabic(shown) ? 'ar' : 'en');
+      setHeard((finalText + ' ' + interim).trim());
     };
     rec.onerror = (ev: any) => {
       const code = String(ev?.error || '');
@@ -609,10 +570,10 @@ export function VoiceAssistantHost() {
       setAnswer(null);
       setError(
         code === 'not-allowed' || code === 'service-not-allowed'
-          ? 'اسمح للتطبيق باستخدام المايك.  ·  Please allow microphone access.'
+          ? 'Please allow microphone access.'
           : code === 'audio-capture'
-            ? 'المايك مشغول — لو أنت داخل مكالمة أو بث سكّره وجرّب.  ·  Microphone is busy.'
-            : 'صار خطأ في التعرّف على الصوت، حاول مرة ثانية.  ·  Speech recognition error, try again.',
+            ? 'The microphone is busy. If you are in a call or a broadcast, close it and try again.'
+            : 'Speech recognition error, try again.',
       );
       setPhase('idle');
     };
@@ -624,28 +585,16 @@ export function VoiceAssistantHost() {
       if (!q) {
         beep('error'); setHeard('');
         if (followUpRef.current) { followUpRef.current = false; setPhase('idle'); return; } // silence after her reply: keep the page, just stop listening
-        if (autoCloseRef.current) { cancelAll(true); return; } // نداء بالصوت وما تكلمت => نقفل الصفحة
+        if (autoCloseRef.current) { cancelAll(true); return; } // woke by voice and said nothing: close the page
         setPhase('idle');
         return;
       }
-      // ثقة ضعيفة + ما في لغة مثبّتة + لسه ما جرّبنا اللغة الثانية => نبدّل اللغة ونسمع مرة ثانية
-      if (!forced && attempt === 0 && conf > 0 && conf < 0.55) {
-        const other = rec.lang.toLowerCase().startsWith('ar') ? 'en-US' : 'ar-SA';
-        setNotice('ما فهمت، قلها مرة ثانية  ·  Say it again');
-        setHeard('');
-        beep('got');
-        startTimer.current = window.setTimeout(() => {
-          if (session === sessionRef.current) listen(session, other, 1);
-        }, 350);
-        return;
-      }
-      try { localStorage.setItem(LAST_LANG_KEY, hasArabic(q) ? 'ar-SA' : 'en-US'); } catch { /* ignore */ }
       followUpRef.current = false;
       void ask(q, session);
     };
     try { rec.start(); } catch {
       beep('error');
-      setError('تعذّر تشغيل المايك.  ·  Could not start the microphone.');
+      setError('Could not start the microphone.');
       setPhase('idle');
     }
   }, [ask, cancelAll]);
@@ -676,7 +625,7 @@ export function VoiceAssistantHost() {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) {
       beep('error');
-      setError('هذا المتصفح لا يدعم التعرّف على الصوت. افتح التطبيق من كروم أندرويد.  ·  Speech recognition is not supported here. Open the app in Chrome on Android.');
+      setError('Speech recognition is not supported here. Open the app in Chrome on Android.');
       setPhase('idle');
       return;
     }
@@ -688,15 +637,14 @@ export function VoiceAssistantHost() {
     vibrate([18, 45, 18]);
     setPhase('listening');
 
-    const last = (() => { try { return localStorage.getItem(LAST_LANG_KEY) || 'ar-SA'; } catch { return 'ar-SA'; } })();
-    // نبدأ التسجيل بعد نغمة الجاهزية حتى ما تنلقط كسؤال
+    // start recording after the ready tone so it is not captured as a question
     startTimer.current = window.setTimeout(() => {
-      if (session === sessionRef.current) listen(session, last, 0);
+      if (session === sessionRef.current) listen(session, SPEECH_LANG, 0);
     }, 520);
   }, [killRecognition, listen, stopWake]);
 
-  // ───────── النداء الصوتي: قل "Stooorna" / "ستورنا" => يرد "Yes <username>" / "نعم <username>" ─────────
-  const handleWake = useCallback((lang: 'ar' | 'en', rest: string, isFinal: boolean) => {
+  // ───────── voice wake: say "Stooorna" => she answers "Yes <username>" ─────────
+  const handleWake = useCallback((lang: 'en', rest: string, isFinal: boolean) => {
     if (vaOff) return;
     stopWake();
     sessionRef.current += 1;
@@ -713,11 +661,10 @@ export function VoiceAssistantHost() {
     setPageOpen(true);
     setError(''); setHeard(''); setQuestion(''); setAnswer(null); setTyping(false);
     setUiLang(lang);
-    try { localStorage.setItem(LAST_LANG_KEY, lang === 'ar' ? 'ar-SA' : 'en-US'); } catch { /* ignore */ }
 
     const raw = nameRef.current;
     const say = raw.replace(/[_.\-]+/g, ' ').trim();
-    const word = lang === 'ar' ? 'نعم' : 'Yes';
+    const word = 'Yes';
     setNotice(raw ? `${word} ${raw}` : word);
     vibrate([25, 40, 25]);
     setPhase('speaking');
@@ -729,10 +676,10 @@ export function VoiceAssistantHost() {
       proceeded = true;
       if (trailing) { void ask(trailing, session); return; }
       setPhase('listening');
-      listen(session, lang === 'ar' ? 'ar-SA' : 'en-US', 0);
+      listen(session, SPEECH_LANG, 0);
     };
     void speakNatural(say ? `${word}, ${say}` : word, lang, undefined, () => session === sessionRef.current && !proceeded, () => {}, proceed);
-    window.setTimeout(proceed, 4500); // لو النطق ما اشتغل لأي سبب ما نعلّق
+    window.setTimeout(proceed, 4500); // if speech fails for any reason, do not hang
   }, [ask, listen, killRecognition, stopWake, speakNatural]);
 
   const startWake = useCallback(() => {
@@ -743,9 +690,7 @@ export function VoiceAssistantHost() {
     const rec = new SR();
     wakeRecRef.current = rec;
     let handled = false;
-    const forced = (() => { try { return localStorage.getItem(LANG_KEY); } catch { return null; } })();
-    const last = (() => { try { return localStorage.getItem(LAST_LANG_KEY); } catch { return null; } })();
-    rec.lang = forced || last || 'ar-SA';
+    rec.lang = SPEECH_LANG;
     rec.continuous = true;
     rec.interimResults = true;
     rec.maxAlternatives = 3;
@@ -769,7 +714,7 @@ export function VoiceAssistantHost() {
       if (code === 'not-allowed' || code === 'service-not-allowed') {
         wakeDelay.current = 0; // stop for this session only; it retries on the next app launch
         setWakeMsg('Allow the microphone so voice wake can work');
-      } else if (code === 'audio-capture') wakeDelay.current = 20000; // المايك مشغول (مكالمة/بث)
+      } else if (code === 'audio-capture') wakeDelay.current = 20000; // microphone busy (call/broadcast)
       else if (code === 'network') wakeDelay.current = 6000;
     };
     rec.onend = () => {
@@ -814,7 +759,7 @@ export function VoiceAssistantHost() {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
 
-  // النداء يشتغل بس لما المساعد فاضي (مو يسمع/يبحث/يتكلم) والتطبيق مفتوح على الشاشة
+  // wake works only when the assistant is idle (not listening/searching/speaking) and the app is on screen
   useEffect(() => {
     if (wakeOn && userId && phase === 'idle' && !hidden && !assistantOff) { wakeDelay.current = 350; startWake(); }
     else stopWake();
@@ -863,7 +808,7 @@ export function VoiceAssistantHost() {
 
   const shownText = useTypewriter(answer?.text || '', typing);
 
-  // ── الأيقونة الحيّة: نقرة = إيقاف وإغلاق، ضغطة مطوّلة = سؤال جديد ──
+  // ── the live icon: tap = stop and close, long press = new question ──
   const clearOrbTimer = () => { if (orbHold.current.timer) { window.clearTimeout(orbHold.current.timer); orbHold.current.timer = 0; } };
   const orbHandlers = {
     onPointerDown: () => {
@@ -897,9 +842,9 @@ export function VoiceAssistantHost() {
     return 'none';
   };
   const statusLabel =
-    phase === 'listening' ? msg('يسمعك…', 'Listening…') :
-    phase === 'thinking' ? msg('يبحث…', 'Searching…') :
-    phase === 'speaking' ? msg('يتكلم…', 'Speaking…') : 'Stooorna';
+    phase === 'listening' ? 'Listening…' :
+    phase === 'thinking' ? 'Searching…' :
+    phase === 'speaking' ? 'Speaking…' : 'Stooorna';
 
   return (
     <>
@@ -909,7 +854,7 @@ export function VoiceAssistantHost() {
         @keyframes stooornaVaDots { 0%,80%,100% { opacity: 0.25; } 40% { opacity: 1; } }
       `}</style>
 
-      {/* ── الصفحة البيضاء الكاملة: تطلع من تحت لفوق وتغطي كل الأقسام ── */}
+      {/* ── full white page: rises from the bottom and covers every section ── */}
       <div
         aria-hidden={!pageOpen}
         style={{
@@ -926,13 +871,13 @@ export function VoiceAssistantHost() {
         <div style={{ maxWidth: 640, margin: '0 auto' }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 14, fontWeight: 300 }}>
             <span style={{ fontSize: 13, color: '#444' }}>{statusLabel}</span>
-            <span style={{ fontSize: 11, color: '#999' }}>{msg('اضغط الأيقونة للإيقاف', 'Tap the icon to stop')}</span>
+            <span style={{ fontSize: 11, color: '#999' }}>{'Tap the icon to stop'}</span>
           </div>
 
           {userId ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
               <div dir="auto" style={{ fontSize: 12, fontWeight: 300, color: '#444', lineHeight: 1.6 }}>
-                {msg('النداء بالصوت: قل «ستورنا»', 'Voice wake: say "Stooorna"')}
+                {'Voice wake: say "Stooorna"'}
                 {wakeMsg ? <div style={{ fontSize: 11, color: '#b00020' }}>{wakeMsg}</div> : null}
               </div>
               <button
@@ -985,7 +930,7 @@ export function VoiceAssistantHost() {
               </div>
             ) : (
               <div dir="auto" style={{ fontSize: 16, fontWeight: 300, color: notice ? '#000' : '#888', lineHeight: 1.9, textAlign: 'center', paddingTop: 6 }}>
-                {notice || msg('تفضّل اسأل…', 'Go ahead, ask…')}
+                {notice || 'Go ahead, ask…'}
               </div>
             )}
           </div>
@@ -1013,10 +958,10 @@ export function VoiceAssistantHost() {
         </div>
       </div>
 
-      {/* ── الأيقونة نفسها فوق الصفحة وفي نفس مكانها: تصير ذبذبات صوت ── */}
+      {/* ── the icon itself on top of the page, same place: turns into sound bars ── */}
       <button
         type="button"
-        aria-label="إيقاف المساعد الصوتي"
+        aria-label="Stop the voice assistant"
         {...orbHandlers}
         style={{
           position: 'fixed', left: orb.left, top: orb.top, width: orb.width, height: orb.height, zIndex: Z_ORB,
