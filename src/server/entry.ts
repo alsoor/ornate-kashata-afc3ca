@@ -249,9 +249,18 @@ export interface SsrRenderResult {
 	redirect?: string;
 }
 
-export function registerAdSenseTextRoutes(app: Express, config: AdSenseRuntimeConfig): void {
-	app.get("/ads.txt", (_req, res) => {
-		const content = resolveAdSenseTextFile(config, "adsTxt");
+export function registerAdSenseTextRoutes(app: Express, config: AdSenseRuntimeConfig, fallbackDir?: string): void {
+	// ADS-TXT-FALLBACK: the AdSense manifest has no ads.txt content, and this route is registered BEFORE express.static, so the
+	// 404 below used to hide public/ads.txt. Now, when the manifest has nothing, the file shipped in the client build (public/ads.txt) is served.
+	const send = (file: "ads.txt" | "app-ads.txt", key: "adsTxt" | "appAdsTxt") => (_req: any, res: any) => {
+		let content: string | null = resolveAdSenseTextFile(config, key);
+		if (content === null && fallbackDir) {
+			try {
+				content = readFileSync(join(fallbackDir, file), "utf-8");
+			} catch {
+				content = null;
+			}
+		}
 		if (content === null) {
 			res
 				.status(404)
@@ -261,20 +270,10 @@ export function registerAdSenseTextRoutes(app: Express, config: AdSenseRuntimeCo
 			return;
 		}
 		res.type("text/plain").set("Cache-Control", "no-cache").send(content);
-	});
+	};
 
-	app.get("/app-ads.txt", (_req, res) => {
-		const content = resolveAdSenseTextFile(config, "appAdsTxt");
-		if (content === null) {
-			res
-				.status(404)
-				.type("text/plain")
-				.set("Cache-Control", "no-cache")
-				.send("Not found\n");
-			return;
-		}
-		res.type("text/plain").set("Cache-Control", "no-cache").send(content);
-	});
+	app.get("/ads.txt", send("ads.txt", "adsTxt"));
+	app.get("/app-ads.txt", send("app-ads.txt", "appAdsTxt"));
 }
 
 export function renderSsrDocument(
@@ -2549,7 +2548,7 @@ if (import.meta.env.PROD) {
 	const adSenseRuntimeConfig = loadAdSenseRuntimeConfig(__dirname);
 	const indexNowKey = loadIndexNowKey(__dirname);
 
-	registerAdSenseTextRoutes(app, adSenseRuntimeConfig);
+	registerAdSenseTextRoutes(app, adSenseRuntimeConfig, clientDir);
 
 	if (indexNowKey !== null) {
 		app.get(`/${indexNowKey}.txt`, (_req, res) => {
