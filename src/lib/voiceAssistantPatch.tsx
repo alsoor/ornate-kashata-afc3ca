@@ -13,7 +13,13 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSession } from '@/lib/auth/auth-client';
-import { chatTurn, ttsOnly, playAudio, stopAudio, resetChat, prefetchGreeting, getChatIssue, getVoiceIssue } from '@/lib/voiceChat';
+// FREE MODE: no paid API, no server route, no subscription. Everything runs on the phone:
+//   speech recognition + voice = the phone's own (like Siri / Bixby), answers = local skills + free Wikipedia.
+const stopAudio = () => { /* nothing to stop: only the phone voice is used */ };
+const resetChat = () => { /* no server conversation to reset */ };
+const prefetchGreeting = (_name: string) => { /* phone voice needs no preloading */ };
+const getChatIssue = () => '';
+const getVoiceIssue = () => '';
 
 export const VOICE_ASSISTANT_START = 'stooorna:voice-assistant-start';
 export const VOICE_ASSISTANT_STOP = 'stooorna:voice-assistant-stop';
@@ -187,6 +193,56 @@ function localIntent(q: string): AssistantAnswer | null {
   return null;
 }
 
+// ───────────────────────── free local skills (no internet, no API) ─────────────────────────
+const JOKES = [
+  "Why don't scientists trust atoms? Because they make up everything.",
+  "I told my phone I needed space, so it opened the calendar app.",
+  "Why did the scarecrow win an award? He was outstanding in his field.",
+  "What do you call a fake noodle? An impasta.",
+  "Why did the math book look sad? It had too many problems.",
+  "I would tell you a construction joke, but I'm still working on it.",
+];
+const pick = <T,>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
+const NUMW: Record<string, number> = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, twenty: 20, thirty: 30, forty: 40, fifty: 50, hundred: 100, thousand: 1000 };
+
+function mathAnswer(s: string): string | null {
+  let t = s.replace(/\b(what is|what's|calculate|how much is|equals?)\b/g, ' ').replace(/,/g, '');
+  t = t.replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|thousand)\b/g, m => String(NUMW[m]));
+  const sq = /square root of (\d+(?:\.\d+)?)/.exec(t);
+  if (sq) return `The square root of ${sq[1]} is ${+Math.sqrt(parseFloat(sq[1])).toFixed(4)}.`;
+  const m = /(-?\d+(?:\.\d+)?)\s*(plus|\+|minus|-|times|multiplied by|x|\*|divided by|over|\/)\s*(-?\d+(?:\.\d+)?)/.exec(t);
+  if (!m) return null;
+  const x = parseFloat(m[1]); const y = parseFloat(m[3]); const op = m[2];
+  let r: number;
+  if (op === 'plus' || op === '+') r = x + y;
+  else if (op === 'minus' || op === '-') r = x - y;
+  else if (op === 'times' || op === 'multiplied by' || op === 'x' || op === '*') r = x * y;
+  else { if (y === 0) return "I can't divide by zero."; r = x / y; }
+  return `${m[1]} ${op} ${m[3]} equals ${+r.toFixed(6)}.`;
+}
+
+function smallTalk(q: string): AssistantAnswer | null {
+  const s = q.toLowerCase().replace(/[?!.,]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  const mk = (t: string): AssistantAnswer => ({ text: t, spoken: t, images: [], sources: [], provider: 'local', lang: 'en' });
+  if (/^(hi|hello|hey|hi there|hello there|good morning|good evening|good afternoon)( stooorna)?$/.test(s)) return mk(pick(["Hi! How can I help you?", "Hello! What can I do for you?", "Hey there! I'm listening."]));
+  if (/how are you|how's it going|how do you do/.test(s)) return mk("I'm doing great, thanks for asking! How about you?");
+  if (/(your name|who are you|what are you)/.test(s)) return mk("I'm Stooorna, the voice assistant inside the Stooorna app.");
+  if (/(who (made|created|built) you)/.test(s)) return mk("I was built by the Stooorna team.");
+  if (/(what can you do|help me|what do you do)/.test(s)) return mk("I can tell you the time and date, do quick math, tell jokes, flip a coin, roll a dice, and look things up for you.");
+  if (/(thank you|thanks)/.test(s)) return mk(pick(["You're welcome!", "Anytime!", "Happy to help!"]));
+  if (/(^bye|goodbye|see you|good night)/.test(s)) return mk("Goodbye! Talk to you later.");
+  if (/(i love you|love you)/.test(s)) return mk("Aw, that's sweet! I'm happy to help you anytime.");
+  if (/(tell me a joke|joke|make me laugh)/.test(s)) return mk(pick(JOKES));
+  if (/(flip a coin|toss a coin|heads or tails)/.test(s)) return mk(`It's ${Math.random() < 0.5 ? 'heads' : 'tails'}.`);
+  if (/(roll a dice|roll a die|roll the dice)/.test(s)) return mk(`You rolled a ${1 + Math.floor(Math.random() * 6)}.`);
+  const rnd = /random number between (\d+) and (\d+)/.exec(s);
+  if (rnd) { const lo = Math.min(+rnd[1], +rnd[2]); const hi = Math.max(+rnd[1], +rnd[2]); return mk(`Your number is ${lo + Math.floor(Math.random() * (hi - lo + 1))}.`); }
+  const mt = mathAnswer(s);
+  if (mt) return mk(mt);
+  return null;
+}
+
 const wantsImages = (q: string) => /(image|images|picture|pictures|photo|photos|show me)/i.test(q);
 
 // ───────────────────────── fallback: Wikipedia from the device ─────────────────────────
@@ -222,35 +278,14 @@ async function wikipediaFallback(q: string, signal: AbortSignal): Promise<Assist
   };
 }
 
-async function askAssistant(q: string, signal: AbortSignal, name = ''): Promise<AssistantAnswer> {
-  const local = localIntent(q);
+async function askAssistant(q: string, signal: AbortSignal, _name = ''): Promise<AssistantAnswer> {
+  const local = localIntent(q) || smallTalk(q);
   if (local) return local;
-  // Free conversation first (American English). Image requests and failures fall through to the search flow below.
-  if (!wantsImages(q)) {
-    const c = await chatTurn(q, name, signal);
-    if (c) return { text: c.text, spoken: c.spoken, images: [], sources: [], provider: 'chat', audio: c.audio, heard: c.heard, lang: 'en' };
-  }
   try {
-    const r = await fetch(ENDPOINT, {
-      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q, lang: 'en', images: wantsImages(q) }), signal,
-    });
-    if (r.ok) {
-      const d = await r.json();
-      if (d?.ok && d.answer) {
-        return {
-          text: String(d.answer), spoken: String(d.spoken || d.answer),
-          images: Array.isArray(d.images) ? d.images.filter((u: any) => typeof u === 'string') : [],
-          sources: Array.isArray(d.sources) ? d.sources : [], provider: d.provider, lang: 'en',
-        };
-      }
-    }
-  } catch (e: any) { if (e?.name === 'AbortError') throw e; }
-  try {
-    const w = await wikipediaFallback(q, signal);
+    const w = await wikipediaFallback(q, signal); // free, no key
     if (w) return w;
   } catch (e: any) { if (e?.name === 'AbortError') throw e; }
-  const none = "I couldn't find a clear answer. Try rephrasing the question.";
+  const none = "Sorry, I couldn't find a clear answer. Try asking in a different way.";
   return { text: none, spoken: none, images: [], sources: [], provider: 'none', lang: 'en' };
 }
 
@@ -451,30 +486,16 @@ export function VoiceAssistantHost() {
     if (closePage) { setPageOpen(false); setTyping(false); resetChat(); }
   }, [killRecognition]);
 
-  const ttsFails = useRef(0);
   const followUpRef = useRef(false);
   const listenRef = useRef<((session: number, lang: string, attempt: number) => void) | null>(null);
 
-  /** Natural female voice (server) with automatic fallback to the phone's own voice. */
+  /** The phone's own voice (like Siri / Bixby). Free, no server. */
   const speakNatural = useCallback(async (
-    text: string, lang: 'en', audio: string | undefined,
+    text: string, _lang: 'en', _audio: string | undefined,
     alive: () => boolean, onStart: () => void, onEnd: () => void,
   ) => {
-    let b64: string | null = audio || null;
-    if (!b64 && ttsFails.current < 2) {
-      b64 = await ttsOnly(cleanForSpeech(text), lang).catch(() => null);
-      if (!b64) ttsFails.current += 1;
-    }
     if (!alive()) return;
-    if (b64) {
-      const ok = await playAudio(getCtx(), b64, onStart, onEnd, alive);
-      if (ok) { setVoiceHint(''); return; }
-      if (!alive()) return;
-    }
-    const why = getVoiceIssue();
-    setVoiceHint('speechSynthesis' in window
-      ? `Using the phone voice. ${why || 'The natural voice could not be played.'}`
-      : `No voice output on this device. ${why}`.trim());
+    setVoiceHint('speechSynthesis' in window ? '' : 'No voice output on this device.');
     speak(text, onStart, onEnd);
   }, []);
 
@@ -755,12 +776,12 @@ export function VoiceAssistantHost() {
   // wake works only when the assistant is idle (not listening/searching/speaking) and the app is on screen
   useEffect(() => {
     let wt = 0;
-    if (wakeOn && userId && phase === 'idle' && !hidden && !assistantOff) {
+    if (wakeOn && userId && phase === 'idle' && !pageOpen && !hidden && !assistantOff) {
       wakeDelay.current = 1000;
       wt = window.setTimeout(() => startWake(), 1200); // short pause after closing so no burst of system tones
     } else stopWake();
     return () => { window.clearTimeout(wt); stopWake(); };
-  }, [wakeOn, userId, phase, hidden, assistantOff, startWake, stopWake]);
+  }, [wakeOn, userId, phase, pageOpen, hidden, assistantOff, startWake, stopWake]);
 
   // Pre-load the "Yes <username>" / Arabic greeting voice so it plays instantly after the wake word
   useEffect(() => {
