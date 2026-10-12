@@ -121,13 +121,14 @@ function b64ToBuffer(b64: string): ArrayBuffer {
 }
 
 /** Plays base64 mp3. Resolves true if playback started (onEnd will fire), false if the caller should fall back. */
-export async function playAudio(ctx: AudioContext | null, b64: string, onStart: () => void, onEnd: () => void): Promise<boolean> {
+export async function playAudio(ctx: AudioContext | null, b64: string, onStart: () => void, onEnd: () => void, alive?: () => boolean): Promise<boolean> {
   stopAudio();
   if (ctx) {
     try {
       if (ctx.state === 'suspended') await ctx.resume();
       if (ctx.state === 'running') {
         const buf = await ctx.decodeAudioData(b64ToBuffer(b64));
+        if (alive && !alive()) return true; // closed while decoding: do not play
         const src = ctx.createBufferSource();
         src.buffer = buf;
         src.connect(ctx.destination);
@@ -144,7 +145,9 @@ export async function playAudio(ctx: AudioContext | null, b64: string, onStart: 
     currentEl = a;
     a.onended = () => { if (currentEl === a) currentEl = null; onEnd(); };
     a.onerror = () => { if (currentEl === a) currentEl = null; onEnd(); };
+    if (alive && !alive()) { currentEl = null; return true; }
     await a.play();
+    if (alive && !alive()) { try { a.pause(); } catch { /* ignore */ } currentEl = null; return true; }
     onStart();
     return true;
   } catch {

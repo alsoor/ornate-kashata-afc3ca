@@ -111,30 +111,23 @@ function getCtx(): AudioContext | null {
 }
 
 function beep(kind: 'ready' | 'got' | 'error') {
+  // ONE short soft tone, only when she starts listening. 'got' / 'error' are silent on purpose
+  // (no double tones, no tones when closing or when nothing was said).
+  if (kind !== 'ready') return;
   const ctx = getCtx();
   if (!ctx) return;
-  // ready: three rising tones = "I am listening"
-  const seq: [number, number, number][] =
-    kind === 'ready' ? [[523, 0.11, 0.2], [659, 0.11, 0.2], [988, 0.2, 0.22]] :
-    kind === 'got' ? [[880, 0.07, 0.14], [1175, 0.1, 0.14]] :
-    [[330, 0.14, 0.18], [247, 0.2, 0.18]];
-  let t = ctx.currentTime + 0.01;
-  for (const [f, d, vol] of seq) {
-    for (const type of ['sine', 'triangle'] as OscillatorType[]) {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = type;
-      o.frequency.value = f;
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(type === 'sine' ? vol : vol * 0.35, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + d);
-      o.connect(g);
-      g.connect(ctx.destination);
-      o.start(t);
-      o.stop(t + d + 0.03);
-    }
-    t += d * 0.85;
-  }
+  const t = ctx.currentTime + 0.01;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'sine';
+  o.frequency.value = 880;
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.18, t + 0.015);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+  o.connect(g);
+  g.connect(ctx.destination);
+  o.start(t);
+  o.stop(t + 0.15);
 }
 
 // ───────────────────────── speech (female voice when available) ─────────────────────────
@@ -474,7 +467,7 @@ export function VoiceAssistantHost() {
     }
     if (!alive()) return;
     if (b64) {
-      const ok = await playAudio(getCtx(), b64, onStart, onEnd);
+      const ok = await playAudio(getCtx(), b64, onStart, onEnd, alive);
       if (ok) { setVoiceHint(''); return; }
       if (!alive()) return;
     }
@@ -700,7 +693,7 @@ export function VoiceAssistantHost() {
     };
     rec.onresult = (ev: any) => {
       if (handled) return;
-      wakeDelay.current = 350;
+      wakeDelay.current = 1000;
       for (let i = ev.resultIndex; i < ev.results.length; i++) {
         const res = ev.results[i];
         for (let j = 0; j < res.length; j++) {
@@ -745,7 +738,7 @@ export function VoiceAssistantHost() {
         if (!md?.getUserMedia) return;
         const st = await md.getUserMedia({ audio: true });
         st.getTracks().forEach(t => t.stop());
-        wakeDelay.current = 350;
+        wakeDelay.current = 1000;
         setWakeMsg('');
       } catch { /* permission denied or mic busy: wake retries by itself */ }
     };
@@ -761,9 +754,12 @@ export function VoiceAssistantHost() {
 
   // wake works only when the assistant is idle (not listening/searching/speaking) and the app is on screen
   useEffect(() => {
-    if (wakeOn && userId && phase === 'idle' && !hidden && !assistantOff) { wakeDelay.current = 350; startWake(); }
-    else stopWake();
-    return () => stopWake();
+    let wt = 0;
+    if (wakeOn && userId && phase === 'idle' && !hidden && !assistantOff) {
+      wakeDelay.current = 1000;
+      wt = window.setTimeout(() => startWake(), 1200); // short pause after closing so no burst of system tones
+    } else stopWake();
+    return () => { window.clearTimeout(wt); stopWake(); };
   }, [wakeOn, userId, phase, hidden, assistantOff, startWake, stopWake]);
 
   // Pre-load the "Yes <username>" / Arabic greeting voice so it plays instantly after the wake word
