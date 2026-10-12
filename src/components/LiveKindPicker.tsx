@@ -56,7 +56,7 @@ export default function LiveKindPicker({
           background: 'rgba(6,16,18,0.98)',
           borderRadius: '18px 18px 0 0',
           border: '1px solid rgba(0,188,212,0.25)',
-          padding: '16px 16px max(env(safe-area-inset-bottom,0px),20px)',
+          padding: '16px 16px max(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)),20px)',
         }}
       >
         <div style={{ width: 40, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.25)', margin: '0 auto 14px' }} />

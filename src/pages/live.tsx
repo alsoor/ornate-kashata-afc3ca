@@ -1417,7 +1417,7 @@ export default function LivePage() {
     <>
       <iframe title="Stooorna" src="/" style={{ position: 'fixed', inset: 0, zIndex: 20000, width: '100%', height: '100%', border: 'none', background: '#04120f' }} />
       <button type="button" onClick={() => setMinimized(false)} aria-label="فتح البث"
-        style={{ position: 'fixed', top: 'max(10px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 20020, width: 'min(92vw, 340px)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 16, background: 'rgba(6,16,18,0.96)', border: '1px solid rgba(239,68,68,0.45)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', textAlign: 'left' }}>
+        style={{ position: 'fixed', top: 'max(10px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))', left: '50%', transform: 'translateX(-50%)', zIndex: 20020, width: 'min(92vw, 340px)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 16, background: 'rgba(6,16,18,0.96)', border: '1px solid rgba(239,68,68,0.45)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)', color: '#fff', cursor: 'pointer', textAlign: 'left' }}>
         <span role="button" onClick={(e) => { e.stopPropagation(); dismissLivePage(); }} aria-label="خروج من البث"
           style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.5)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <LogOut size={17} strokeWidth={2.4} />
@@ -1479,13 +1479,13 @@ export default function LivePage() {
           }
         `}</style>
         <div style={{
-          padding: 'max(env(safe-area-inset-top,0px),14px) 14px 8px',
+          padding: 'max(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)),14px) 14px 8px',
           display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
         }}>
           <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
           style={{
             position: 'absolute',
-            top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+            top: 'calc(max(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)), 14px) + 48px)',
             right: 14,
             zIndex: 30,
             width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
@@ -1567,7 +1567,7 @@ export default function LivePage() {
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          padding: 'max(env(safe-area-inset-top,0px),14px) 14px 8px',
+          padding: 'max(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)),14px) 14px 8px',
           flexShrink: 0,
         }}
       >
@@ -1808,7 +1808,7 @@ export default function LivePage() {
         <button type="button" onClick={minimizeLive} aria-label="تصغير البث للتصفح" title="تصغير — الصوت يبقى"
           style={{
             position: 'absolute',
-            top: 'calc(max(env(safe-area-inset-top, 0px), 14px) + 48px)',
+            top: 'calc(max(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)), 14px) + 48px)',
             right: 14,
             zIndex: 30,
             width: 36, height: 36, borderRadius: '50%', cursor: 'pointer',
@@ -1998,7 +1998,7 @@ export default function LivePage() {
       <div
         style={{
           flexShrink: 0,
-          padding: '8px 12px max(env(safe-area-inset-bottom,0px),12px)',
+          padding: '8px 12px max(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)),12px)',
           borderTop: '1px solid rgba(0,188,212,0.12)',
           background: 'rgba(4,16,18,0.92)',
           display: 'flex',
@@ -2096,7 +2096,7 @@ export default function LivePage() {
             left: 10,
             right: 10,
             top: chatFull ? '36%' : 'auto',
-            bottom: 'calc(118px + env(safe-area-inset-bottom, 0px))',
+            bottom: 'calc(118px + max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
             zIndex: 25,
             pointerEvents: 'none',
             display: 'flex',
@@ -2246,7 +2246,7 @@ export default function LivePage() {
             style={{
               width: '100%',
               maxHeight: '70vh',
-              marginTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+              marginTop: 'max(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)), 8px)',
               background: 'rgba(6,16,18,0.98)',
               borderRadius: '0 0 18px 18px',
               border: '1px solid rgba(0,188,212,0.25)',
@@ -2405,7 +2405,7 @@ export default function LivePage() {
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
-              paddingTop: 'max(8px, env(safe-area-inset-top, 0px))',
+              paddingTop: 'max(8px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 10px', borderBottom: '1px solid rgba(250,204,21,0.15)' }}>
@@ -2538,7 +2538,7 @@ export default function LivePage() {
         >
           <div
             onClick={e => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 420, background: '#101818', borderRadius: '18px 18px 0 0', padding: '16px 16px max(env(safe-area-inset-bottom,0px),16px)', border: '1px solid rgba(0,188,212,0.25)', display: 'flex', flexDirection: 'column', gap: 10 }}
+            style={{ width: '100%', maxWidth: 420, background: '#101818', borderRadius: '18px 18px 0 0', padding: '16px 16px max(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)),16px)', border: '1px solid rgba(0,188,212,0.25)', display: 'flex', flexDirection: 'column', gap: 10 }}
           >
             <p style={{ margin: 0, textAlign: 'center', color: '#dff6f6', fontWeight: 800, fontSize: '0.9rem' }}>
               {speakerMenu.username ? `@${speakerMenu.username}` : speakerMenu.name}
