@@ -161,23 +161,31 @@ export function installLocalAssistant(): void {
   const wrapped: any = async (input: any, init?: any): Promise<Response> => {
     if (!passing) {
       try {
-        const url = typeof input === 'string' ? input : input && input.href ? String(input.href) : '';
-        const method = String((init && init.method) || 'GET').toUpperCase();
-        if (method === 'POST' && /\/chat(\?|$)/.test(url) && init && typeof init.body === 'string') {
-          const body: any = JSON.parse(init.body);
-          const msg = body && typeof body.message === 'string' ? body.message.trim() : '';
-          if (msg && Array.isArray(body.history) && msg.indexOf('[File:') !== 0) {
-            const ans = await localAnswer(msg, init.signal || undefined);
-            if (ans) {
-              return new Response(JSON.stringify({ reply: ans }), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-              });
+        const isReq = typeof Request !== 'undefined' && input instanceof Request;
+        const url = typeof input === 'string' ? input : isReq ? input.url : input && input.href ? String(input.href) : '';
+        const method = String((init && init.method) || (isReq ? input.method : 'GET')).toUpperCase();
+
+        if (method === 'POST' && /\/chat(\?|$)/.test(url)) {
+          let raw: string | null = init && typeof init.body === 'string' ? init.body : null;
+          if (raw === null && isReq) raw = await input.clone().text();
+          console.log('[LOCAL-ASSISTANT] /chat', url, raw ? raw.slice(0, 300) : '(no string body)');
+
+          if (raw) {
+            const body: any = JSON.parse(raw);
+            const msg = body && typeof body.message === 'string' ? body.message.trim() : '';
+            if (msg && msg.indexOf('[File:') !== 0) {
+              const ans = await localAnswer(msg, (init && init.signal) || (isReq ? input.signal : undefined) || undefined);
+              if (ans) {
+                return new Response(JSON.stringify({ reply: ans }), {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' },
+                });
+              }
             }
           }
         }
-      } catch {
-        /* any problem here: just send the normal request */
+      } catch (e) {
+        console.log('[LOCAL-ASSISTANT] error', e);
       }
     }
     passing = true;
