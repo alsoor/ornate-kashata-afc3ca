@@ -11,7 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSession } from '@/lib/auth/auth-client';
-import { chatTurn, ttsOnly, playAudio, stopAudio, resetChat, prefetchGreeting, getLangPref, setLangPref, type LangPref } from '@/lib/voiceChat';
+import { chatTurn, ttsOnly, playAudio, stopAudio, resetChat, prefetchGreeting, getChatIssue, getVoiceIssue } from '@/lib/voiceChat';
 
 export const VOICE_ASSISTANT_START = 'stooorna:voice-assistant-start';
 export const VOICE_ASSISTANT_STOP = 'stooorna:voice-assistant-stop';
@@ -26,6 +26,9 @@ const LAST_LANG_KEY = 'stooorna_voice_lang_last';
 // A user can still switch it off from the toggle inside the assistant page (saved per account).
 const WAKE_DEFAULT_ON = true;
 const WAKE_KEY = 'stooorna_wake_on'; // يُحفظ لكل حساب: stooorna_wake_on_<userId>
+const OFF_KEY = 'stooorna_va_off'; // saved per account: stooorna_va_off_<userId> = '1' when the assistant is switched off
+const HOLD_TOGGLE_MS = 6000;      // hold the globe icon this long to switch the assistant off / on
+const OFF_COLOR = '#ff8a00';
 let globeEl: HTMLElement | null = null; // أيقونة الكرة الحالية (يسجّلها GlobeVoiceLongPress)
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -38,10 +41,62 @@ interface AssistantAnswer {
   sources: { title: string; url: string }[];
   provider?: string;
   audio?: string; // base64 mp3 from the server voice (optional)
+  heard?: string; // what the user really said (fixed transcript)
+  lang?: 'ar' | 'en';
 }
 
 const hasArabic = (s: string) => /[\u0600-\u06FF]/.test(s);
 const vibrate = (p: number | number[]) => { try { navigator.vibrate?.(p); } catch { /* ignore */ } };
+
+// ───────────────────────── assistant on / off (6-second hold on the globe) ─────────────────────────
+let vaOff = false;
+const offListeners = new Set<() => void>();
+const readOff = (userId: string): boolean => { try { return localStorage.getItem(`${OFF_KEY}_${userId}`) === '1'; } catch { return false; } };
+function applyOff(userId: string, v: boolean) {
+  vaOff = v;
+  try { if (v) localStorage.setItem(`${OFF_KEY}_${userId}`, '1'); else localStorage.removeItem(`${OFF_KEY}_${userId}`); } catch { /* ignore */ }
+  offListeners.forEach(f => f());
+}
+function useAssistantOff(): { off: boolean; userId: string } {
+  const sess: any = useSession();
+  const user: any = sess?.user ?? sess?.data?.user ?? null;
+  const userId = String(user?.id || '');
+  const [off, setOff] = useState<boolean>(() => (userId ? readOff(userId) : false));
+  useEffect(() => {
+    vaOff = userId ? readOff(userId) : false;
+    setOff(vaOff);
+    const f = () => setOff(vaOff);
+    offListeners.add(f);
+    return () => { offListeners.delete(f); };
+  }, [userId]);
+  return { off, userId };
+}
+
+// orange look on the globe icon while the assistant is off (original inline styles are restored when it is back on)
+const offSaved = new WeakMap<HTMLElement, Record<string, [string, string]>>();
+const OFF_PROPS: [string, string][] = [
+  ['box-shadow', `0 0 0 2px ${OFF_COLOR}`],
+  ['background-color', 'rgba(255,138,0,0.30)'],
+  ['color', OFF_COLOR],
+  ['border-radius', '50%'],
+];
+function paintOff(el: HTMLElement) {
+  if (offSaved.has(el)) return;
+  const saved: Record<string, [string, string]> = {};
+  for (const [k, v] of OFF_PROPS) {
+    saved[k] = [el.style.getPropertyValue(k), el.style.getPropertyPriority(k)];
+    el.style.setProperty(k, v, 'important');
+  }
+  offSaved.set(el, saved);
+}
+function unpaintOff(el: HTMLElement) {
+  const saved = offSaved.get(el);
+  if (!saved) return;
+  for (const [k, [v, pr]] of Object.entries(saved)) {
+    if (v) el.style.setProperty(k, v, pr); else el.style.removeProperty(k);
+  }
+  offSaved.delete(el);
+}
 
 // ───────────────────────── صوت (نغمات بالكود) ─────────────────────────
 let audioCtx: AudioContext | null = null;
@@ -195,8 +250,8 @@ async function askAssistant(q: string, signal: AbortSignal, name = ''): Promise<
   const lang = hasArabic(q) ? 'ar' : 'en';
   // Free conversation first (Gulf Arabic / American English). Image requests and failures fall through to the search flow below.
   if (!wantsImages(q)) {
-    const c = await chatTurn(q, lang, name, signal);
-    if (c) return { text: c.text, spoken: c.spoken, images: [], sources: [], provider: 'chat', audio: c.audio };
+    const c = await chatTurn(q, name, signal);
+    if (c) return { text: c.text, spoken: c.spoken, images: [], sources: [], provider: 'chat', audio: c.audio, heard: c.heard, lang: c.lang };
   }
   try {
     const r = await fetch(ENDPOINT, {
@@ -289,8 +344,12 @@ function iconRectOf(target: EventTarget | null): Rect | null {
 }
 
 export function GlobeVoiceLongPress({ children, delay = LONG_PRESS_MS }: { children: ReactNode; delay?: number }) {
-  const st = useRef<{ timer: number; fired: boolean; x: number; y: number }>({ timer: 0, fired: false, x: 0, y: 0 });
-  const clear = () => { if (st.current.timer) { window.clearTimeout(st.current.timer); st.current.timer = 0; } };
+  const { userId: holdUser } = useAssistantOff();
+  const st = useRef<{ timer: number; toggle: number; fired: boolean; x: number; y: number }>({ timer: 0, toggle: 0, fired: false, x: 0, y: 0 });
+  const clear = () => {
+    if (st.current.timer) { window.clearTimeout(st.current.timer); st.current.timer = 0; }
+    if (st.current.toggle) { window.clearTimeout(st.current.toggle); st.current.toggle = 0; }
+  };
   const sentinel = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
     const el = (sentinel.current?.nextElementSibling as HTMLElement | null) || null;
@@ -308,15 +367,26 @@ export function GlobeVoiceLongPress({ children, delay = LONG_PRESS_MS }: { child
         clear();
         st.current.timer = window.setTimeout(() => {
           st.current.timer = 0;
+          if (vaOff) return; // switched off: a normal hold does nothing
           st.current.fired = true;
           vibrate(35);
           try {
             window.dispatchEvent(new CustomEvent(VOICE_ASSISTANT_START, { detail: { rect: iconRectOf(target) } }));
           } catch { /* ignore */ }
         }, delay);
+        // keep holding for 6 seconds: switch the assistant off (icon turns orange) or back on
+        st.current.toggle = window.setTimeout(() => {
+          st.current.toggle = 0;
+          if (!holdUser) return;
+          st.current.fired = true;
+          const next = !vaOff;
+          vibrate(next ? [60, 40, 60, 40, 60] : [30, 40, 30]);
+          applyOff(holdUser, next);
+          beep(next ? 'error' : 'ready');
+        }, HOLD_TOGGLE_MS);
       }}
       onPointerMoveCapture={e => {
-        if (st.current.timer && Math.hypot(e.clientX - st.current.x, e.clientY - st.current.y) > 14) clear();
+        if ((st.current.timer || st.current.toggle) && Math.hypot(e.clientX - st.current.x, e.clientY - st.current.y) > 14) clear();
       }}
       onPointerUpCapture={clear}
       onPointerCancelCapture={clear}
@@ -350,8 +420,10 @@ export function VoiceAssistantHost() {
   const userId = String(user?.id || '');
   const nameRef = useRef('');
   nameRef.current = String(user?.username || user?.name || '').trim();
+  const { off: assistantOff } = useAssistantOff();
+  const [chatHint, setChatHint] = useState('');
+  const [voiceHint, setVoiceHint] = useState('');
   const [wakeOn, setWakeOn] = useState(false);
-  const [langPref, setLangPrefState] = useState<LangPref>(() => getLangPref());
   const [wakeMsg, setWakeMsg] = useState('');
   const [hidden, setHidden] = useState(() => typeof document !== 'undefined' && document.hidden);
   const wakeRecRef = useRef<any>(null);
@@ -370,6 +442,7 @@ export function VoiceAssistantHost() {
 
   // تحميل الأصوات + فك قفل الصوت عند أول لمسة
   useEffect(() => {
+    try { localStorage.removeItem(LANG_KEY); } catch { /* ignore */ } // language is automatic: drop any pinned language
     loadVoices();
     try { window.speechSynthesis?.addEventListener?.('voiceschanged', loadVoices); } catch { /* ignore */ }
     const unlock = () => { getCtx(); };
@@ -432,8 +505,13 @@ export function VoiceAssistantHost() {
     if (!alive()) return;
     if (b64) {
       const ok = await playAudio(getCtx(), b64, onStart, onEnd);
-      if (ok || !alive()) return;
+      if (ok) { setVoiceHint(''); return; }
+      if (!alive()) return;
     }
+    const why = getVoiceIssue();
+    setVoiceHint('speechSynthesis' in window
+      ? `Using the phone voice. ${why || 'The natural voice could not be played.'}`
+      : `No voice output on this device. ${why}`.trim());
     speak(text, onStart, onEnd);
   }, []);
 
@@ -455,6 +533,8 @@ export function VoiceAssistantHost() {
     setAnswer(null);
     setError('');
     setNotice('');
+    setChatHint('');
+    setVoiceHint('');
     setPhase('thinking');
     beep('got');
     vibrate(20);
@@ -466,8 +546,14 @@ export function VoiceAssistantHost() {
       if (session !== sessionRef.current) return;
       setAnswer(res);
       setTyping(true);
+      setChatHint(res.provider === 'chat' || res.provider === 'local' ? '' : getChatIssue());
+      if (res.heard) setQuestion(res.heard); // show what she really understood (English stays English)
       const said = res.spoken || res.text;
-      const sayLang: 'ar' | 'en' = hasArabic(said) ? 'ar' : 'en';
+      const sayLang: 'ar' | 'en' = res.lang || (hasArabic(said) ? 'ar' : 'en');
+      if (res.lang) {
+        setUiLang(res.lang);
+        try { localStorage.setItem(LAST_LANG_KEY, res.lang === 'ar' ? 'ar-SA' : 'en-US'); } catch { /* ignore */ }
+      }
       void speakNatural(
         said, sayLang, res.audio,
         () => session === sessionRef.current,
@@ -566,6 +652,7 @@ export function VoiceAssistantHost() {
   listenRef.current = listen;
 
   const begin = useCallback((newRect?: Rect | null) => {
+    if (vaOff) return; // assistant is switched off
     sessionRef.current += 1;
     const session = sessionRef.current;
     window.clearTimeout(startTimer.current);
@@ -610,6 +697,7 @@ export function VoiceAssistantHost() {
 
   // ───────── النداء الصوتي: قل "Stooorna" / "ستورنا" => يرد "Yes <username>" / "نعم <username>" ─────────
   const handleWake = useCallback((lang: 'ar' | 'en', rest: string, isFinal: boolean) => {
+    if (vaOff) return;
     stopWake();
     sessionRef.current += 1;
     const session = sessionRef.current;
@@ -728,17 +816,30 @@ export function VoiceAssistantHost() {
 
   // النداء يشتغل بس لما المساعد فاضي (مو يسمع/يبحث/يتكلم) والتطبيق مفتوح على الشاشة
   useEffect(() => {
-    if (wakeOn && userId && phase === 'idle' && !hidden) { wakeDelay.current = 350; startWake(); }
+    if (wakeOn && userId && phase === 'idle' && !hidden && !assistantOff) { wakeDelay.current = 350; startWake(); }
     else stopWake();
     return () => stopWake();
-  }, [wakeOn, userId, phase, hidden, langPref, startWake, stopWake]);
-
-  const chooseLang = (p: LangPref) => { setLangPref(p); setLangPrefState(p); setWakeMsg(''); };
+  }, [wakeOn, userId, phase, hidden, assistantOff, startWake, stopWake]);
 
   // Pre-load the "Yes <username>" / Arabic greeting voice so it plays instantly after the wake word
   useEffect(() => {
     if (wakeOn && userId && nameRef.current) prefetchGreeting(nameRef.current);
   }, [wakeOn, userId]);
+
+  // switched off (6-second hold): stop everything, paint the globe orange; switched on: restore it
+  useEffect(() => {
+    if (assistantOff) { cancelAll(true); stopWake(); }
+    let prev: HTMLElement | null = null;
+    const paint = () => {
+      const el = globeEl;
+      if (prev && prev !== el) unpaintOff(prev);
+      if (el) { if (assistantOff) paintOff(el); else unpaintOff(el); }
+      prev = el;
+    };
+    paint();
+    const id = assistantOff ? window.setInterval(paint, 400) : 0;
+    return () => { if (id) window.clearInterval(id); if (prev) unpaintOff(prev); };
+  }, [assistantOff, cancelAll, stopWake]);
 
   const toggleWake = () => {
     const next = !wakeOn;
@@ -850,26 +951,6 @@ export function VoiceAssistantHost() {
             </div>
           ) : null}
 
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
-            <span style={{ fontSize: 12, fontWeight: 300, color: '#444' }}>Language</span>
-            <div role="group" aria-label="Language" style={{ display: 'flex', gap: 6, direction: 'ltr' }}>
-              {([['auto', 'Auto'], ['ar', 'AR'], ['en', 'EN']] as [LangPref, string][]).map(([k, label]) => (
-                <button
-                  key={k}
-                  type="button"
-                  aria-pressed={langPref === k}
-                  onClick={() => chooseLang(k)}
-                  style={{
-                    minWidth: 44, height: 28, padding: '0 10px', borderRadius: 14, border: '1px solid #0b0b0b', cursor: 'pointer',
-                    fontSize: 12, fontWeight: 300, background: langPref === k ? '#0b0b0b' : '#fff', color: langPref === k ? '#fff' : '#0b0b0b',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {(question || heard) ? (
             <div dir="auto" style={{ fontSize: 14, fontWeight: 300, color: '#666', marginBottom: 10, textAlign: 'start', wordBreak: 'break-word' }}>
               {question || heard}
@@ -908,6 +989,13 @@ export function VoiceAssistantHost() {
               </div>
             )}
           </div>
+
+          {(chatHint || voiceHint) ? (
+            <div dir="ltr" style={{ marginTop: 10, fontSize: 11, fontWeight: 300, color: '#888', lineHeight: 1.6 }}>
+              {chatHint ? <div>{chatHint}</div> : null}
+              {voiceHint ? <div>{voiceHint}</div> : null}
+            </div>
+          ) : null}
 
           {answer?.sources?.length ? (
             <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>

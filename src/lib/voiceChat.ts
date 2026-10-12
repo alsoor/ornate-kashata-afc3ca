@@ -5,43 +5,41 @@
  *   - chatTurn():   free conversation with the assistant (Gulf Arabic / American English), keeps short history
  *   - ttsOnly():    natural female voice for any short text (used for the "Yes <username>" greeting)
  *   - playAudio():  plays the returned mp3 through WebAudio (works after the first touch, no extra tap)
- *   - language preference helpers (Auto / AR / EN) stored under the same key the patch already uses
+ *   - readable diagnostics (getChatIssue / getVoiceIssue) so you can see why chat or the natural voice is not working
  *
  * Needs the backend route api/voice-chat/POST.ts. If the route is missing or not configured,
  * every function returns null/false and the patch falls back to the old search + browser voice.
  */
 
 export const CHAT_ENDPOINT = '/api/voice-chat';
-const LANG_KEY = 'stooorna_voice_lang'; // same key as voiceAssistantPatch.tsx ('ar-SA' | 'en-US' | absent = auto)
 const HISTORY_MAX = 12; // messages kept (6 turns)
 const HISTORY_TTL_MS = 5 * 60_000;
 
-export type LangPref = 'auto' | 'ar' | 'en';
 export interface ChatReply {
   text: string;
   spoken: string;
+  heard?: string; // what the user really said (English speech the phone wrote in Arabic letters is fixed here)
   lang: 'ar' | 'en';
   audio?: string; // base64 mp3
 }
 
+// ───────────── diagnostics (shown in small gray text under the answer) ─────────────
+let chatIssue = '';
+let voiceIssue = '';
+let netIssue = '';
+export const getChatIssue = () => chatIssue;
+export const getVoiceIssue = () => voiceIssue;
+
+function explainTts(code: unknown): string {
+  const c = String(code || '');
+  if (c === 'no_key') return 'Natural voice is off: set AZURE_TTS_KEY and AZURE_TTS_REGION on the server.';
+  const m = /^http_(\d+)/.exec(c);
+  if (m) return `Natural voice error from Azure (HTTP ${m[1]}): check the key, the region and the voice name.`;
+  if (c === 'timeout') return 'Natural voice timed out.';
+  return 'Natural voice is unavailable.';
+}
+
 const hasArabic = (s: string) => /[\u0600-\u06FF]/.test(s);
-
-// ───────────── language preference ─────────────
-export function getLangPref(): LangPref {
-  try {
-    const v = (localStorage.getItem(LANG_KEY) || '').toLowerCase();
-    if (v.startsWith('ar')) return 'ar';
-    if (v.startsWith('en')) return 'en';
-  } catch { /* ignore */ }
-  return 'auto';
-}
-
-export function setLangPref(p: LangPref) {
-  try {
-    if (p === 'auto') localStorage.removeItem(LANG_KEY);
-    else localStorage.setItem(LANG_KEY, p === 'ar' ? 'ar-SA' : 'en-US');
-  } catch { /* ignore */ }
-}
 
 // ───────────── conversation memory (in the page only) ─────────────
 type Msg = { role: 'user' | 'assistant'; content: string };
@@ -56,24 +54,35 @@ async function post(body: unknown, signal?: AbortSignal): Promise<any | null> {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body), signal,
     });
-    if (!r.ok) return null;
+    if (!r.ok) { netIssue = `Server route ${CHAT_ENDPOINT} answered HTTP ${r.status}. Is api/voice-chat/POST.ts deployed?`; return null; }
+    netIssue = '';
     return await r.json();
   } catch (e: any) {
     if (e?.name === 'AbortError') throw e;
+    netIssue = `Could not reach ${CHAT_ENDPOINT}.`;
     return null;
   }
 }
 
 /** One conversation turn. Returns null if chat is not available (patch then uses search). */
-export async function chatTurn(q: string, lang: 'ar' | 'en', name: string, signal?: AbortSignal): Promise<ChatReply | null> {
+export async function chatTurn(q: string, name: string, signal?: AbortSignal): Promise<ChatReply | null> {
   if (Date.now() - lastTurnAt > HISTORY_TTL_MS) history = [];
-  const d = await post({ mode: 'chat', q, lang, name, history }, signal);
-  if (!d?.ok || !d.answer) return null;
+  let now = '';
+  try { now = new Date().toString(); } catch { /* ignore */ }
+  const d = await post({ mode: 'chat', q, name, now, history }, signal);
+  if (!d?.ok || !d.answer) {
+    chatIssue = !d ? netIssue : String(d.detail || d.error || 'Chat is unavailable.');
+    return null;
+  }
+  chatIssue = '';
   const text = String(d.answer);
-  history = [...history, { role: 'user' as const, content: q }, { role: 'assistant' as const, content: text }].slice(-HISTORY_MAX);
+  const heard = typeof d.heard === 'string' && d.heard.trim() ? d.heard.trim() : undefined;
+  history = [...history, { role: 'user' as const, content: heard || q }, { role: 'assistant' as const, content: text }].slice(-HISTORY_MAX);
   lastTurnAt = Date.now();
   const outLang: 'ar' | 'en' = d.lang === 'en' ? 'en' : d.lang === 'ar' ? 'ar' : hasArabic(text) ? 'ar' : 'en';
-  return { text, spoken: String(d.spoken || text), lang: outLang, audio: typeof d.audio === 'string' && d.audio ? d.audio : undefined };
+  const audio = typeof d.audio === 'string' && d.audio ? d.audio : undefined;
+  voiceIssue = audio ? '' : explainTts(d.ttsError);
+  return { text, spoken: String(d.spoken || text), heard, lang: outLang, audio };
 }
 
 // ───────────── text-to-speech only (cached) ─────────────
@@ -85,7 +94,8 @@ export async function ttsOnly(text: string, lang: 'ar' | 'en', signal?: AbortSig
   if (hit) return hit;
   const d = await post({ mode: 'tts', say: text, lang }, signal);
   const audio = d?.ok && typeof d.audio === 'string' && d.audio ? d.audio : null;
-  if (audio) { if (ttsCache.size > 40) ttsCache.clear(); ttsCache.set(key, audio); }
+  if (audio) { if (ttsCache.size > 40) ttsCache.clear(); ttsCache.set(key, audio); voiceIssue = ''; }
+  else voiceIssue = d ? explainTts(d.ttsError) : netIssue;
   return audio;
 }
 
