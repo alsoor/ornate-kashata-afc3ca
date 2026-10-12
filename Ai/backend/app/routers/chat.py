@@ -71,6 +71,13 @@ async def chat(req: ChatRequest):
         total_budget = max(30.0, float(os.getenv("AI_TOTAL_TIMEOUT") or 85))
     except ValueError:
         total_budget = 85.0
+    # The first provider gets only a short window when a backup exists, so a stuck provider
+    # never leaves the user waiting: after AI_PRIMARY_TIMEOUT seconds (default 30) the backup takes over
+    # and gets all the remaining time (long reports / tables).
+    try:
+        primary_cap = max(10.0, float(os.getenv("AI_PRIMARY_TIMEOUT") or 30))
+    except ValueError:
+        primary_cap = 30.0
     started = time.monotonic()
 
     def _left() -> float:
@@ -95,7 +102,7 @@ async def chat(req: ChatRequest):
                 model=None if (req.model or "").lower().startswith("claude") else req.model,
                 temperature=req.temperature,
             ),
-            timeout=_left() if not claude_llm.available() else min(_left(), total_budget * 0.65),
+            timeout=_left() if not claude_llm.available() else min(_left(), primary_cap),
         )  # was a fixed 25s: long reports timed out
 
     order = [("Claude", _claude), ("LLM", _gemini)] if want_claude else [("LLM", _gemini), ("Claude", _claude)]

@@ -4,6 +4,7 @@ Standalone: uses httpx (already installed with openai) and the ANTHROPIC_API_KEY
 Optional env vars:
   CLAUDE_MODEL         (default: claude-haiku-5-5)
   AI_PRIMARY_PROVIDER  (set to "claude" to try Claude before Gemini)
+  CLAUDE_MAX_TOKENS    (default: 4096 — long reports / big tables need room)
 """
 from __future__ import annotations
 
@@ -17,13 +18,29 @@ API_VERSION = "2023-06-01"
 DEFAULT_MODEL = "claude-haiku-5-5"
 
 SYSTEM_PROMPT = (
-    "You are a friendly, helpful AI assistant inside a social app. "
-    "Always answer in the same language and dialect the user writes in "
-    "(Arabic users usually write Gulf Arabic: answer in simple, natural Arabic). "
-    "Be clear and concise. Never repeat your own name unless the user asks who you are. "
-    "If the message contains web search results or file contents, use them and mention the source link when there is one. "
+    "You are Stooorna Ai, the friendly assistant inside the Stooorna social app. "
+    "LANGUAGE: always answer in the same language and dialect the user writes in "
+    "(Arabic users usually write Gulf Arabic: answer in simple, natural Arabic, not stiff formal Arabic). "
+    "STYLE: be clear, direct and useful. Short questions get short answers; reports, plans and comparisons get a complete, well-organised answer. "
+    "Do not repeat your own name unless the user asks who you are, and do not open with filler like 'Of course!'. "
+    "FORMAT: write plain text that reads well on a phone. Use short paragraphs. Use simple numbered lines or '-' bullets for steps. "
+    "Do not use HTML, and avoid heavy Markdown (no headings with #, no code fences) unless the user asks for code. "
+    "TABLES: when the user asks for a table, a comparison, a schedule, a report with figures, or when the data is naturally rows and columns, "
+    "answer with ONE Markdown table: a header row, then a separator row like | --- | --- |, then one row per item, same number of cells in every row. "
+    "Keep each cell short (a few words), put units in the header, never put line breaks inside a cell, and write any intro or conclusion as normal text outside the table. "
+    "For Arabic requests write the table headers in Arabic. "
+    "REPORTS: put the key conclusion first, then the details; finish the whole answer, never stop mid-sentence. "
+    "ACCURACY: if you are not sure, say so instead of guessing; never invent numbers, links or sources. "
+    "If the message contains web search results or file contents, base your answer on them and mention the source link when there is one. "
     "If the message contains a device date and time, use it only when the user asks about time or date."
 )
+
+
+def _max_tokens() -> int:
+    try:
+        return max(256, min(8192, int(os.getenv("CLAUDE_MAX_TOKENS") or 4096)))
+    except ValueError:
+        return 4096
 
 
 def api_key() -> str:
@@ -64,7 +81,7 @@ async def chat_completion(
     history: list[dict[str, str]] | None = None,
     model: str | None = None,
     temperature: float | None = None,
-    timeout: float = 40.0,
+    timeout: float = 85.0,  # was 40: long reports / tables need more time
 ) -> dict[str, Any]:
     key = api_key()
     if not key:
@@ -73,7 +90,7 @@ async def chat_completion(
     use_model = (model if model and model.lower().startswith("claude") else None) or os.getenv("CLAUDE_MODEL") or DEFAULT_MODEL
     body: dict[str, Any] = {
         "model": use_model,
-        "max_tokens": 1500,
+        "max_tokens": _max_tokens(),
         "system": SYSTEM_PROMPT,
         "messages": _clean_history(history or [], message),
     }
@@ -81,7 +98,7 @@ async def chat_completion(
         body["temperature"] = max(0.0, min(1.0, float(temperature)))
 
     headers = {"x-api-key": key, "anthropic-version": API_VERSION, "content-type": "application/json"}
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0)) as client:
         r = await client.post(API_URL, headers=headers, json=body)
     if r.status_code >= 400:
         raise RuntimeError(f"Claude HTTP {r.status_code}: {r.text[:300]}")
