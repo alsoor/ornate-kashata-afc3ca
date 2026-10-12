@@ -13,6 +13,8 @@ from typing import Any
 
 import httpx
 
+from app.services.persona import EXTRA_PROMPT  # PERSONA: smart assistant brain (added)
+
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
 DEFAULT_MODEL = "claude-haiku-5-5"
@@ -91,7 +93,7 @@ async def chat_completion(
     body: dict[str, Any] = {
         "model": use_model,
         "max_tokens": _max_tokens(),
-        "system": SYSTEM_PROMPT,
+        "system": SYSTEM_PROMPT + EXTRA_PROMPT,  # PERSONA
         "messages": _clean_history(history or [], message),
     }
     if temperature is not None:
@@ -114,3 +116,39 @@ async def chat_completion(
         "model": data.get("model", use_model),
         "usage": {"input_tokens": usage.get("input_tokens", 0), "output_tokens": usage.get("output_tokens", 0)},
     }
+
+
+async def vision_completion(
+    prompt: str,
+    images: list[tuple[str, str]],  # [(mime, base64), ...]
+    system: str | None = None,
+    timeout: float = 80.0,
+) -> str:
+    """VISION (added): Claude looks at photos (lab reports, documents, screenshots...) and answers."""
+    key = api_key()
+    if not key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+    ok_mimes = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+    blocks: list[dict[str, Any]] = []
+    for mime, data in images[:3]:
+        m = (mime or "image/jpeg").lower()
+        if m not in ok_mimes:
+            m = "image/jpeg"
+        blocks.append({"type": "image", "source": {"type": "base64", "media_type": m, "data": data}})
+    blocks.append({"type": "text", "text": prompt or "Describe this image."})
+    body: dict[str, Any] = {
+        "model": os.getenv("CLAUDE_VISION_MODEL") or os.getenv("CLAUDE_MODEL") or DEFAULT_MODEL,
+        "max_tokens": _max_tokens(),
+        "system": system or (SYSTEM_PROMPT + EXTRA_PROMPT),
+        "messages": [{"role": "user", "content": blocks}],
+    }
+    headers = {"x-api-key": key, "anthropic-version": API_VERSION, "content-type": "application/json"}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10.0)) as client:
+        r = await client.post(API_URL, headers=headers, json=body)
+    if r.status_code >= 400:
+        raise RuntimeError(f"Claude HTTP {r.status_code}: {r.text[:300]}")
+    data = r.json()
+    text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text").strip()
+    if not text:
+        raise RuntimeError("Claude returned an empty reply")
+    return text

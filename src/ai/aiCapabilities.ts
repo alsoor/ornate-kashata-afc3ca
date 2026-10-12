@@ -394,7 +394,7 @@ async function handleChat(nativeFetch: typeof fetch, input: RequestInfo | URL, i
   let res: Response | null = null;
   let why = ''; // DEBUG: the real reason shown in the chat when the server does not answer
   try {
-    res = await fetchWithTimeout(nativeFetch, input, { ...init, body: JSON.stringify(obj) }, 30000);
+    res = await fetchWithTimeout(nativeFetch, input, { ...init, body: JSON.stringify(obj) }, 88000); // SMART-WAIT: was 30000, the server needs up to ~85s (Gemini 30s, then Claude takes over)
     if (!res.ok) { why = `HTTP ${res.status} ${(await res.clone().text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160)}`; res = null; }
   } catch (e) { why = String((e as any)?.message || e); res = null; }
 

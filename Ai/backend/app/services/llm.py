@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from app.core.config import Settings
+from app.services.persona import EXTRA_PROMPT  # PERSONA: smart assistant brain (added)
 
 
 def _system_prompt() -> str:
@@ -36,7 +37,7 @@ async def chat_completion(
     provider = (provider or settings.llm_provider).lower()
     model = model or _default_model(settings, provider)
 
-    messages = [{"role": "system", "content": _system_prompt()}]
+    messages = [{"role": "system", "content": _system_prompt() + EXTRA_PROMPT}]  # PERSONA
     for m in history[-20:]:
         messages.append({"role": m["role"], "content": m["content"]})
     messages.append({"role": "user", "content": message})

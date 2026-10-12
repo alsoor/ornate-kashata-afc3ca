@@ -25,6 +25,8 @@ import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 from app.core.config import get_settings
+from app.services import claude_llm  # VISION: Claude reads photos / lab reports (added)
+from app.services.persona import EXTRA_PROMPT  # PERSONA (added)
 
 router = APIRouter(prefix="/image-edit", tags=["image"])
 
@@ -91,12 +93,13 @@ async def image_edit(
     images: list[UploadFile] = File(default=[]),
 ):
     key = _api_key()
-    if not key:
+    if not key and not claude_llm.available():  # VISION: Claude alone is enough for "understand" questions
         raise HTTPException(503, "GEMINI_API_KEY is not set on the Stooorna Ai service")
 
     settings = get_settings()
     limit = settings.max_upload_mb * 1024 * 1024
     parts: list[dict[str, Any]] = []
+    claude_imgs: list[tuple[str, str]] = []  # VISION
     for f in images[:MAX_IMAGES]:
         if not (f.content_type or "").startswith("image/"):
             continue
@@ -106,6 +109,7 @@ async def image_edit(
         if len(raw) > limit:
             raise HTTPException(413, f"Image too large (max {settings.max_upload_mb}MB)")
         parts.append({"inline_data": {"mime_type": f.content_type, "data": base64.b64encode(raw).decode()}})
+        claude_imgs.append((f.content_type or "image/jpeg", base64.b64encode(raw).decode()))  # VISION
     if not parts:
         raise HTTPException(400, "No image uploaded")
 
@@ -115,6 +119,8 @@ async def image_edit(
 
     try:
         if mode == "edit":
+            if not key:
+                raise HTTPException(503, "GEMINI_API_KEY is not set (needed to edit photos)")
             model = os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image")
             instruction = (
                 f'Edit the attached image according to this request: "{prompt}". '
@@ -150,6 +156,18 @@ async def image_edit(
                 else "No edited image came back this time. Try describing the change more clearly."
             }
 
+        # VISION: Claude answers first (best at reading lab reports / documents); if it fails, Gemini below answers exactly as before
+        if claude_llm.available():
+            try:
+                txt = await claude_llm.vision_completion(
+                    prompt or ("صف لي هذه الصورة." if ar else "Describe this image."),
+                    claude_imgs,
+                    timeout=80.0,
+                )
+                return {"reply": txt}
+            except Exception:  # noqa: BLE001
+                if not key:
+                    raise
         model = os.getenv("GEMINI_TEXT_MODEL", "gemini-2.5-flash")
         data = await _gemini(
             model,
@@ -162,6 +180,7 @@ async def image_edit(
                             "Look carefully at the attached image(s) and answer the user. "
                             "Reply in the same language and dialect the user writes in (Arabic users get Arabic). "
                             "Be clear and concise. If text is visible in the image and the user asks, read or translate it."
+                            + EXTRA_PROMPT  # PERSONA
                         }
                     ]
                 },
