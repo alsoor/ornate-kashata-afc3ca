@@ -392,23 +392,25 @@ async function handleChat(nativeFetch: typeof fetch, input: RequestInfo | URL, i
 
   const plainObj = JSON.parse(String(init.body));
   let res: Response | null = null;
+  let why = ''; // DEBUG: the real reason shown in the chat when the server does not answer
   try {
-    res = await fetchWithTimeout(nativeFetch, input, { ...init, body: JSON.stringify(obj) }, 45000);
-    if (!res.ok) res = null;
-  } catch { res = null; }
+    res = await fetchWithTimeout(nativeFetch, input, { ...init, body: JSON.stringify(obj) }, 30000);
+    if (!res.ok) { why = `HTTP ${res.status} ${(await res.clone().text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160)}`; res = null; }
+  } catch (e) { why = String((e as any)?.message || e); res = null; }
 
   // the enriched request failed / timed out -> retry once exactly as the sheet sent it
   if (!res) {
     try {
-      res = await fetchWithTimeout(nativeFetch, input, { ...init, body: JSON.stringify(plainObj) }, 45000);
-      if (!res.ok) res = null;
-    } catch { res = null; }
+      res = await fetchWithTimeout(nativeFetch, input, { ...init, body: JSON.stringify(plainObj) }, 30000);
+      if (!res.ok) { why = `HTTP ${res.status} ${(await res.clone().text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160)}`; res = null; }
+    } catch (e) { why = String((e as any)?.message || e); res = null; }
   }
 
   // still nothing -> answer with a clear message instead of an endless spinner
   if (!res) {
     const msg = ar ? 'السيرفر ما رد الحين، جرب مرة ثانية بعد لحظات.' : 'The server did not answer. Please try again in a moment.';
-    return jsonRes({ reply: msg });
+    try { console.warn('[Stooorna Ai] /chat failed:', chatUrl, why); } catch { /* */ }
+    return jsonRes({ reply: `${msg}${why ? ` [${why}]` : ''}` });
   }
 
   try {
