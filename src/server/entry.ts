@@ -24,6 +24,8 @@ import { registerAdsRoutes } from "./ads-patch.js"; // ADS-PATCH
 import { registerAdsStoreRoutes } from "./ads-store.js"; // ADS-STORE-PATCH (MySQL, visible to everyone, real delete)
 import { registerAiIconRoutes } from "./ai-icon-patch.js"; // AI-ICON-PATCH (owner switch: hide Stooorna Ai icon)
 import { registerImageProxyRoutes } from "./image-proxy-patch.js"; // IMAGE-PROXY-PATCH (save photos from the Ai chat)
+import voice_chat_post_patch from "./api/voice-chat/POST"; // VOICE-CHAT-PATCH
+import voice_assistant_post_patch from "./api/voice-assistant/POST"; // VOICE-CHAT-PATCH
 import { registerAiFreeRoutes } from "./ai-free-routes.js"; // AI-FREE (free chat / search / image / file routes for Stooorna Ai)
 import { createLiveBoxRouter } from "./liveBox.server.js"; // TREASURE-BOX
 
@@ -393,6 +395,8 @@ app.get('/api/status/comment-likes', getStatusCommentLikes);
 // ── IP tracking: lightweight — stored via /api/me/update-ip ─────────────────
 
 // <api-registrations>
+app.post("/api/voice-chat", voice_chat_post_patch); // VOICE-CHAT-PATCH — assistant conversation + natural voice
+app.post("/api/voice-assistant", voice_assistant_post_patch); // VOICE-CHAT-PATCH — search fallback
 registerImageProxyRoutes(app); // IMAGE-PROXY-PATCH — before the auth catch-all
 registerAiFreeRoutes(app); // AI-FREE — before the auth catch-all
 registerForgotPasswordRoutes(app, { db: dbClientModule as unknown as Record<string, any> }); // FORGOT-PASSWORD-PATCH before auth catch-all

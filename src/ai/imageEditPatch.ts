@@ -1,5 +1,5 @@
 /**
- * Stooorna Ai — Image Patch (v1.2.0)
+ * Stooorna Ai — Image Patch (v1.3.0)
  * Place at: src/ai/imageEditPatch.ts
  *
  * Fixes: "تعذر تعديل الصورة حالياً [HTTP 404 {"detail":"Not Found"}]"
@@ -26,7 +26,7 @@
  *   or  VITE_AI_IMAGE_API_URL=https://your-server.com/ai
  */
 
-export const STOOORNA_AI_IMAGE_PATCH_VERSION = '1.2.0';
+export const STOOORNA_AI_IMAGE_PATCH_VERSION = '1.3.0';
 
 const PATCH_FLAG = '__stooornaAiImagePatch__';
 const CACHE_KEY = 'stooorna_ai_image_base_v1';
@@ -182,6 +182,22 @@ async function normalize(res: Response): Promise<Response> {
   }
 }
 
+/** Turn any error body (JSON / HTML / text) into a short { detail } the chat can show. */
+async function readableError(res: Response): Promise<Response> {
+  let detail = '';
+  try {
+    const txt = await res.text();
+    try {
+      const j = JSON.parse(txt);
+      detail = typeof j?.detail === 'string' ? j.detail : JSON.stringify(j?.detail ?? j);
+    } catch {
+      detail = txt.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+  } catch { /* */ }
+  detail = detail.replace(/^Image error:\s*/i, '').slice(0, 160) || res.statusText || 'error';
+  return new Response(JSON.stringify({ detail }), { status: res.status, headers: { 'Content-Type': 'application/json' } });
+}
+
 async function handleImageRequest(
   nativeFetch: typeof fetch,
   input: RequestInfo | URL,
@@ -207,7 +223,9 @@ async function handleImageRequest(
         lastUrl = url;
         if (res.status === 404 || res.status === 405) break;      // route missing here → next endpoint
         if (res.status >= 500 && attempt === 0) { await sleep(900); continue; }
-        break;
+        // The server HAS the route but refused (quota, bad key, bad photo ...): show ITS reason,
+        // don't hide it behind the 404 of the other fallback endpoints.
+        return await readableError(res);
       } catch (e) {
         if (init.signal?.aborted) throw e;
         lastErr = e;
