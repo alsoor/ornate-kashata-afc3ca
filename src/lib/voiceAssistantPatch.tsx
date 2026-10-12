@@ -1,13 +1,14 @@
 /**
- * VOICE-ASSISTANT-PATCH  (src/lib/voiceAssistantPatch.tsx)  — v4, English (US) only
+ * VOICE-ASSISTANT-PATCH  (src/lib/voiceAssistantPatch.tsx)  — v5, English + Arabic, in-app search
  *
  * Long press on the globe button (StooornaAiIcon):
  *   1) "ready" tone + vibration, a full white page rises from the bottom and covers every section
  *   2) the icon stays on top of the page in its place and turns into sound bars
- *   3) you speak English -> the answer is written on the page and a female American voice answers you
+ *   3) you speak English or Arabic -> the answer is written on the page and a matching voice answers you
  *   4) one tap on the icon = stop everything and hide the page. Long press on it = new question
  *   5) say "Stooorna" (voice wake) -> she answers "Yes <username>" and listens
  *   6) hold the globe icon for 6 seconds = assistant OFF (icon turns orange); hold again for 6 seconds = back ON
+ *   7) Search stays inside the app on the same page (Wikipedia + DuckDuckGo Instant Answers)
  *
  * Public API (unchanged): <GlobeVoiceLongPress> and <VoiceAssistantHost />
  */
@@ -25,7 +26,9 @@ export const VOICE_ASSISTANT_START = 'stooorna:voice-assistant-start';
 export const VOICE_ASSISTANT_STOP = 'stooorna:voice-assistant-stop';
 
 const LONG_PRESS_MS = 450;
-const SPEECH_LANG = 'en-US'; // English (United States) only
+const SPEECH_LANG_EN = 'en-US';
+const SPEECH_LANG_AR = 'ar-SA';
+let preferredSpeechLang = SPEECH_LANG_EN; // dynamic: en-US or ar-SA
 const ENDPOINT = '/api/voice-assistant';
 const Z_PAGE = 300000;
 const Z_ORB = 300001;
@@ -39,7 +42,7 @@ const OFF_COLOR = '#ff8a00';
 let globeEl: HTMLElement | null = null; // the current globe icon (registered by GlobeVoiceLongPress)
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
-type UiLang = 'en' | null;
+type UiLang = 'en' | 'ar' | null;
 interface Rect { left: number; top: number; width: number; height: number }
 interface AssistantAnswer {
   text: string;
@@ -49,7 +52,7 @@ interface AssistantAnswer {
   provider?: string;
   audio?: string; // base64 mp3 from the server voice (optional)
   heard?: string; // what the user really said (fixed transcript)
-  lang?: 'en';
+  lang?: 'en' | 'ar';
 }
 
 const vibrate = (p: number | number[]) => { try { navigator.vibrate?.(p); } catch { /* ignore */ } };
@@ -144,11 +147,12 @@ function loadVoices() {
 const FEMALE_RE = /female|woman|girl|zira|samantha|karen|moira|tessa|victoria|susan|hazel|fiona|serena|allison|ava|joanna|salli|kendra|kimberly|ivy|emma|amy|laila|lana|mariam|salma|amira|hoda|zariyah|google (us|uk) english|aria|jenny|libby|sonia|natasha/i;
 const MALE_RE = /\bmale\b|maged|tarik|naayf|hamed|majed|david|mark|daniel|alex|fred|george|james|guy|rishi|oliver|thomas|ryan|christopher|eric|hamza/i;
 
-function pickVoice(): { voice: SpeechSynthesisVoice | null; female: boolean } {
+function pickVoice(lang: 'en' | 'ar' = 'en'): { voice: SpeechSynthesisVoice | null; female: boolean } {
   if (!voicesCache.length) loadVoices();
   const norm = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-');
-  let pool = voicesCache.filter(v => norm(v).startsWith('en-us'));
-  if (!pool.length) pool = voicesCache.filter(v => norm(v).startsWith('en'));
+  const prefix = lang === 'ar' ? 'ar' : 'en-us';
+  let pool = voicesCache.filter(v => norm(v).startsWith(prefix));
+  if (!pool.length && lang === 'en') pool = voicesCache.filter(v => norm(v).startsWith('en'));
   if (!pool.length) return { voice: null, female: false };
   const fem = pool.find(v => FEMALE_RE.test(v.name) && !MALE_RE.test(v.name));
   if (fem) return { voice: fem, female: true };
@@ -161,15 +165,15 @@ function cleanForSpeech(s: string): string {
 }
 function stopSpeaking() { stopAudio(); try { window.speechSynthesis?.cancel(); } catch { /* ignore */ } }
 
-function speak(text: string, onStart: () => void, onEnd: () => void) {
+function speak(text: string, onStart: () => void, onEnd: () => void, lang: 'en' | 'ar' = 'en') {
   const clean = cleanForSpeech(text);
   if (!clean || !('speechSynthesis' in window)) { onEnd(); return; }
   try {
     const u = new SpeechSynthesisUtterance(clean);
-    const { voice, female } = pickVoice();
-    if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = SPEECH_LANG;
-    u.rate = 1;
-    u.pitch = female ? 1.05 : 1.25; // no clearly female voice found: raise the pitch a little
+    const { voice, female } = pickVoice(lang);
+    if (voice) { u.voice = voice; u.lang = voice.lang; } else u.lang = lang === 'ar' ? SPEECH_LANG_AR : SPEECH_LANG_EN;
+    u.rate = lang === 'ar' ? 0.95 : 1;
+    u.pitch = female ? 1.05 : 1.15;
     u.onstart = onStart;
     u.onend = onEnd;
     u.onerror = onEnd;
@@ -182,13 +186,23 @@ function speak(text: string, onStart: () => void, onEnd: () => void) {
 function localIntent(q: string): AssistantAnswer | null {
   const s = q.toLowerCase().replace(/[?!.,]/g, ' ').replace(/\s+/g, ' ').trim();
   const now = new Date();
-  const mk = (t: string): AssistantAnswer => ({ text: t, spoken: t, images: [], sources: [], provider: 'local', lang: 'en' });
+  const isAr = hasArabic(q);
+  const mk = (t: string, spoken?: string): AssistantAnswer => ({ text: t, spoken: spoken || t, images: [], sources: [], provider: 'local', lang: isAr ? 'ar' : 'en' });
 
-  if (/(what time|current time|time is it|what's the time|tell me the time)/.test(s)) {
-    return mk(`It's ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} right now.`);
-  }
-  if (/(what('s| is) the date|today's date|what date|what day)/.test(s)) {
-    return mk(`Today is ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`);
+  if (isAr) {
+    if (/(الوقت|كم الساعة|الساعة كم|ايش الوقت|وش الوقت)/.test(s)) {
+      return mk(`الساعة الآن ${now.toLocaleTimeString('ar-SA', { hour: 'numeric', minute: '2-digit' })}.`);
+    }
+    if (/(التاريخ|اليوم كم|ايش التاريخ|وش التاريخ|أي يوم)/.test(s)) {
+      return mk(`اليوم ${now.toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`);
+    }
+  } else {
+    if (/(what time|current time|time is it|what's the time|tell me the time)/.test(s)) {
+      return mk(`It's ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} right now.`);
+    }
+    if (/(what('s| is) the date|today's date|what date|what day)/.test(s)) {
+      return mk(`Today is ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`);
+    }
   }
   return null;
 }
@@ -221,21 +235,40 @@ function mathAnswer(s: string): string | null {
   return `${m[1]} ${op} ${m[3]} equals ${+r.toFixed(6)}.`;
 }
 
+const JOKES_AR = [
+  "ليش العلماء ما يثقون في الذرات؟ لأنهم يصنعون كل شيء.",
+  "قلت لجوالي أحتاج مساحة، ففتح تطبيق التقويم.",
+  "ليش الفزاعة فازت بجائزة؟ لأنها كانت مميزة في حقله.",
+];
 function smallTalk(q: string): AssistantAnswer | null {
   const s = q.toLowerCase().replace(/[?!.,]/g, ' ').replace(/\s+/g, ' ').trim();
   if (!s) return null;
-  const mk = (t: string): AssistantAnswer => ({ text: t, spoken: t, images: [], sources: [], provider: 'local', lang: 'en' });
-  if (/^(hi|hello|hey|hi there|hello there|good morning|good evening|good afternoon)( stooorna)?$/.test(s)) return mk(pick(["Hi! How can I help you?", "Hello! What can I do for you?", "Hey there! I'm listening."]));
-  if (/how are you|how's it going|how do you do/.test(s)) return mk("I'm doing great, thanks for asking! How about you?");
-  if (/(your name|who are you|what are you)/.test(s)) return mk("I'm Stooorna, the voice assistant inside the Stooorna app.");
-  if (/(who (made|created|built) you)/.test(s)) return mk("I was built by the Stooorna team.");
-  if (/(what can you do|help me|what do you do)/.test(s)) return mk("I can tell you the time and date, do quick math, tell jokes, flip a coin, roll a dice, and look things up for you.");
-  if (/(thank you|thanks)/.test(s)) return mk(pick(["You're welcome!", "Anytime!", "Happy to help!"]));
-  if (/(^bye|goodbye|see you|good night)/.test(s)) return mk("Goodbye! Talk to you later.");
-  if (/(i love you|love you)/.test(s)) return mk("Aw, that's sweet! I'm happy to help you anytime.");
-  if (/(tell me a joke|joke|make me laugh)/.test(s)) return mk(pick(JOKES));
-  if (/(flip a coin|toss a coin|heads or tails)/.test(s)) return mk(`It's ${Math.random() < 0.5 ? 'heads' : 'tails'}.`);
-  if (/(roll a dice|roll a die|roll the dice)/.test(s)) return mk(`You rolled a ${1 + Math.floor(Math.random() * 6)}.`);
+  const isAr = hasArabic(q);
+  const mk = (t: string): AssistantAnswer => ({ text: t, spoken: t, images: [], sources: [], provider: 'local', lang: isAr ? 'ar' : 'en' });
+  if (isAr) {
+    if (/^(مرحبا|اهلا|هلا|سلام|صباح الخير|مساء الخير)( ستورنا)?$/.test(s)) return mk(pick(["أهلاً! كيف أقدر أساعدك؟", "مرحبا! أنا أسمعك.", "هلا، وش تبي؟"]));
+    if (/(كيف حالك|كيفك|شلونك)/.test(s)) return mk("أنا بخير، شكرًا لك! وأنت كيفك؟");
+    if (/(اسمك|من انت|من أنت|ايش اسمك)/.test(s)) return mk("أنا ستورنا، المساعد الصوتي داخل تطبيق ستورنا.");
+    if (/(من صنعك|من برمجك)/.test(s)) return mk("صنعني فريق ستورنا.");
+    if (/(وش تسوي|ايش تقدرين|ساعديني)/.test(s)) return mk("أقدر أقولك الوقت والتاريخ، أحسب حسابات بسيطة، أقول نكت، وأبحث لك في ويكيبيديا.");
+    if (/(شكرا|شكراً|مشكور)/.test(s)) return mk(pick(["العفو!", "أي وقت!", "سعيد بمساعدتك!"]));
+    if (/(مع السلامة|باي|تصبح على خير)/.test(s)) return mk("مع السلامة! إلى اللقاء.");
+    if (/(نكتة|قولي نكتة|ضحكيني)/.test(s)) return mk(pick(JOKES_AR));
+    if (/(اقلب عملة|رأس أو ذيل)/.test(s)) return mk(Math.random() < 0.5 ? "رأس" : "ذيل");
+    if (/(ارمي نرد|نرد)/.test(s)) return mk(`طلعت ${1 + Math.floor(Math.random() * 6)}.`);
+  } else {
+    if (/^(hi|hello|hey|hi there|hello there|good morning|good evening|good afternoon)( stooorna)?$/.test(s)) return mk(pick(["Hi! How can I help you?", "Hello! What can I do for you?", "Hey there! I'm listening."]));
+    if (/how are you|how's it going|how do you do/.test(s)) return mk("I'm doing great, thanks for asking! How about you?");
+    if (/(your name|who are you|what are you)/.test(s)) return mk("I'm Stooorna, the voice assistant inside the Stooorna app.");
+    if (/(who (made|created|built) you)/.test(s)) return mk("I was built by the Stooorna team.");
+    if (/(what can you do|help me|what do you do)/.test(s)) return mk("I can tell you the time and date, do quick math, tell jokes, flip a coin, roll a dice, and look things up for you.");
+    if (/(thank you|thanks)/.test(s)) return mk(pick(["You're welcome!", "Anytime!", "Happy to help!"]));
+    if (/(^bye|goodbye|see you|good night)/.test(s)) return mk("Goodbye! Talk to you later.");
+    if (/(i love you|love you)/.test(s)) return mk("Aw, that's sweet! I'm happy to help you anytime.");
+    if (/(tell me a joke|joke|make me laugh)/.test(s)) return mk(pick(JOKES));
+    if (/(flip a coin|toss a coin|heads or tails)/.test(s)) return mk(`It's ${Math.random() < 0.5 ? 'heads' : 'tails'}.`);
+    if (/(roll a dice|roll a die|roll the dice)/.test(s)) return mk(`You rolled a ${1 + Math.floor(Math.random() * 6)}.`);
+  }
   const rnd = /random number between (\d+) and (\d+)/.exec(s);
   if (rnd) { const lo = Math.min(+rnd[1], +rnd[2]); const hi = Math.max(+rnd[1], +rnd[2]); return mk(`Your number is ${lo + Math.floor(Math.random() * (hi - lo + 1))}.`); }
   const mt = mathAnswer(s);
@@ -275,8 +308,10 @@ function stripQuestionWords(q: string): string {
 
 async function wikipediaFallback(q: string, signal: AbortSignal): Promise<AssistantAnswer | null> {
   const term = stripQuestionWords(q) || q;
+  const isAr = hasArabic(q);
+  const wiki = isAr ? 'ar' : 'en';
   const url =
-    `https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}` +
+    `https://${wiki}.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}` +
     `&gsrlimit=4&prop=extracts%7Cpageimages&exintro=1&explaintext=1&exsentences=3&piprop=thumbnail&pithumbsize=700&format=json&origin=*`;
   const r = await fetch(url, { signal });
   if (!r.ok) return null;
@@ -291,9 +326,9 @@ async function wikipediaFallback(q: string, signal: AbortSignal): Promise<Assist
     text,
     spoken: text.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').slice(0, 320),
     images,
-    sources: [{ title: `${top.title} — Wikipedia`, url: `https://en.wikipedia.org/wiki/${encodeURIComponent(String(top.title).replace(/ /g, '_'))}` }],
+    sources: [{ title: `${top.title} — Wikipedia`, url: `https://${wiki}.wikipedia.org/wiki/${encodeURIComponent(String(top.title).replace(/ /g, '_'))}` }],
     provider: 'wikipedia-client',
-    lang: 'en',
+    lang: isAr ? 'ar' : 'en',
   };
 }
 
@@ -318,22 +353,20 @@ async function duckFallback(q: string, signal: AbortSignal): Promise<AssistantAn
 async function askAssistant(q: string, signal: AbortSignal, _name = ''): Promise<AssistantAnswer> {
   const local = localIntent(q) || smallTalk(q);
   if (local) return local;
-  if (isTimely(q)) {
-    const t = hasArabic(q)
-      ? 'هذا السؤال يحتاج نتائج حديثة، جهّزت لك بحث جوجل تحت.'
-      : 'That needs fresh results, so I prepared the Google search for you below.';
-    return { text: t, spoken: hasArabic(q) ? 'Opening fresh results on Google below.' : t, images: [], sources: [{ title: 'google.com', url: googleUrl(q) }], provider: 'google', lang: 'en' };
-  }
+  const isAr = hasArabic(q);
+  // Always try knowledge sources first for in-app answers (no external redirect)
   try {
-    const d = await duckFallback(q, signal); // free, no key
-    if (d) return d;
+    const d = await duckFallback(q, signal);
+    if (d) { d.lang = isAr ? 'ar' : 'en'; return d; }
   } catch (e: any) { if (e?.name === 'AbortError') throw e; }
   try {
-    const w = await wikipediaFallback(q, signal); // free, no key
+    const w = await wikipediaFallback(q, signal);
     if (w) return w;
   } catch (e: any) { if (e?.name === 'AbortError') throw e; }
-  const none = "Sorry, I couldn't find a clear answer. Try asking in a different way.";
-  return { text: none, spoken: none, images: [], sources: [], provider: 'none', lang: 'en' };
+  const none = isAr
+    ? "عذرًا، ما لقيت جواب واضح. جرب تسأل بطريقة ثانية."
+    : "Sorry, I couldn't find a clear answer. Try asking in a different way.";
+  return { text: none, spoken: none, images: [], sources: [], provider: 'none', lang: isAr ? 'ar' : 'en' };
 }
 
 // ───────────────────────── typewriter effect ─────────────────────────
@@ -458,7 +491,7 @@ export function VoiceAssistantHost() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [typing, setTyping] = useState(false);
-  const [uiLang, setUiLang] = useState<UiLang>(null);
+  const [speechLang, setSpeechLang] = useState(preferredSpeechLang);
   const [rect, setRect] = useState<Rect | null>(null);
 
   // current user (same hook as RootLayout) — the username is spoken after "Yes"
@@ -538,24 +571,23 @@ export function VoiceAssistantHost() {
 
   /** The phone's own voice (like Siri / Bixby). Free, no server. */
   const speakNatural = useCallback(async (
-    text: string, _lang: 'en', _audio: string | undefined,
+    text: string, lang: 'en' | 'ar', _audio: string | undefined,
     alive: () => boolean, onStart: () => void, onEnd: () => void,
   ) => {
     if (!alive()) return;
     setVoiceHint('speechSynthesis' in window ? '' : 'No voice output on this device.');
-    speak(text, onStart, onEnd);
+    speak(text, onStart, onEnd, lang);
   }, []);
 
   /** After she finishes talking: keep the conversation going by listening again (chat answers only). */
-  const afterSpeech = useCallback((session: number, _lang: 'en', convo: boolean) => {
+  const afterSpeech = useCallback((session: number, _lang: 'en' | 'ar', convo: boolean) => {
     if (session !== sessionRef.current) return;
-    if (convo) {
-      followUpRef.current = true;
-      setHeard('');
-      setNotice('');
-      setPhase('listening');
-      listenRef.current?.(session, SPEECH_LANG, 0);
-    } else setPhase('idle');
+    // Always continue listening for follow-up (Bixby-like continuous conversation)
+    followUpRef.current = true;
+    setHeard('');
+    setNotice('');
+    setPhase('listening');
+    listenRef.current?.(session, preferredSpeechLang, 0);
   }, []);
 
   const ask = useCallback(async (q: string, session: number, silent = false) => {
@@ -579,15 +611,14 @@ export function VoiceAssistantHost() {
       setTyping(true);
       setChatHint(res.provider === 'chat' || res.provider === 'local' ? '' : getChatIssue());
       if (res.heard) setQuestion(res.heard); // show what she really understood (English stays English)
-      const said = res.spoken || res.text;
-      const sayLang = 'en' as const;
-      setUiLang('en');
+      const sayLang = (res.lang || 'en') as 'en' | 'ar';
+      setUiLang(sayLang);
       if (silent) setPhase('idle');
       else void speakNatural(
         said, sayLang, res.audio,
         () => session === sessionRef.current,
         () => { if (session === sessionRef.current) setPhase('speaking'); },
-        () => afterSpeech(session, sayLang, res.provider === 'chat'),
+        () => afterSpeech(session, sayLang, true),
       );
     } catch (e: any) {
       if (session !== sessionRef.current) return;
@@ -615,28 +646,18 @@ export function VoiceAssistantHost() {
     stopSpeaking();
     try { abortRef.current?.abort(); } catch { /* ignore */ }
     followUpRef.current = false;
-    if (localIntent(q) || smallTalk(q)) { void ask(q, session, true); return; } // time, math, jokes... answered right here
-    const url = googleUrl(q);
-    setQuestion(q);
-    setError('');
-    setNotice('');
-    setTyping(false);
-    setAnswer({
-      text: hasArabic(q) ? `نتائج جوجل لـ «${q}»` : `Google results for “${q}”`,
-      spoken: '', images: [], sources: [{ title: 'google.com', url }], provider: 'google', lang: 'en',
-    });
-    setPhase('idle');
-    try { window.open(url, '_blank', 'noopener'); } catch { /* the link below still works */ }
+    // In-app search: always use askAssistant so results appear on this page
+    void ask(q, session, true);
   }, [searchText, ask, killRecognition]);
 
   /** Listens in American English (en-US). */
-  const listen = useCallback((session: number, _lang: string, _attempt: number) => {
+  const listen = useCallback((session: number, langOverride: string, _attempt: number) => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     const rec = new SR();
     recRef.current = rec;
     let finalText = '';
     let failed = false;
-    rec.lang = SPEECH_LANG;
+    rec.lang = langOverride || preferredSpeechLang;
     rec.interimResults = true;
     rec.continuous = false;
     rec.maxAlternatives = 1;
@@ -727,7 +748,7 @@ export function VoiceAssistantHost() {
 
     // start recording after the ready tone so it is not captured as a question
     startTimer.current = window.setTimeout(() => {
-      if (session === sessionRef.current) listen(session, SPEECH_LANG, 0);
+      if (session === sessionRef.current) listen(session, preferredSpeechLang, 0);
     }, 520);
   }, [killRecognition, listen, stopWake]);
 
@@ -764,7 +785,7 @@ export function VoiceAssistantHost() {
       proceeded = true;
       if (trailing) { void ask(trailing, session); return; }
       setPhase('listening');
-      listen(session, SPEECH_LANG, 0);
+      listen(session, preferredSpeechLang, 0);
     };
     void speakNatural(say ? `${word}, ${say}` : word, lang, undefined, () => session === sessionRef.current && !proceeded, () => {}, proceed);
     window.setTimeout(proceed, 4500); // if speech fails for any reason, do not hang
@@ -778,7 +799,7 @@ export function VoiceAssistantHost() {
     const rec = new SR();
     wakeRecRef.current = rec;
     let handled = false;
-    rec.lang = SPEECH_LANG;
+    rec.lang = preferredSpeechLang;
     rec.continuous = true;
     rec.interimResults = true;
     rec.maxAlternatives = 3;
@@ -933,9 +954,9 @@ export function VoiceAssistantHost() {
     return 'none';
   };
   const statusLabel =
-    phase === 'listening' ? 'Listening…' :
-    phase === 'thinking' ? 'Searching…' :
-    phase === 'speaking' ? 'Speaking…' : 'Stooorna';
+    phase === 'listening' ? (speechLang === SPEECH_LANG_AR ? 'أستمع…' : 'Listening…') :
+    phase === 'thinking' ? (speechLang === SPEECH_LANG_AR ? 'أبحث…' : 'Searching…') :
+    phase === 'speaking' ? (speechLang === SPEECH_LANG_AR ? 'أتحدث…' : 'Speaking…') : 'Stooorna';
 
   return (
     <>
@@ -971,19 +992,32 @@ export function VoiceAssistantHost() {
                 {'Voice wake: say "Stooorna"'}
                 {wakeMsg ? <div style={{ fontSize: 11, color: '#b00020' }}>{wakeMsg}</div> : null}
               </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={wakeOn}
-                aria-label="Voice wake"
-                onClick={toggleWake}
-                style={{
-                  direction: 'ltr', position: 'relative', flex: '0 0 auto', width: 44, height: 26, borderRadius: 13, border: 'none', padding: 0,
-                  cursor: 'pointer', background: wakeOn ? '#0b0b0b' : '#d1d5db', transition: 'background 0.2s ease',
-                }}
-              >
-                <span style={{ position: 'absolute', top: 3, left: wakeOn ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left 0.2s ease' }} />
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = preferredSpeechLang === SPEECH_LANG_EN ? SPEECH_LANG_AR : SPEECH_LANG_EN;
+                    preferredSpeechLang = next;
+                    setSpeechLang(next);
+                  }}
+                  style={{ fontSize: 11, padding: '4px 8px', borderRadius: 6, border: '1px solid #ccc', background: speechLang === SPEECH_LANG_AR ? '#0b0b0b' : '#fff', color: speechLang === SPEECH_LANG_AR ? '#fff' : '#000' }}
+                >
+                  {speechLang === SPEECH_LANG_AR ? 'عربي' : 'EN'}
+                </button>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={wakeOn}
+                  aria-label="Voice wake"
+                  onClick={toggleWake}
+                  style={{
+                    direction: 'ltr', position: 'relative', flex: '0 0 auto', width: 44, height: 26, borderRadius: 13, border: 'none', padding: 0,
+                    cursor: 'pointer', background: wakeOn ? '#0b0b0b' : '#d1d5db', transition: 'background 0.2s ease',
+                  }}
+                >
+                  <span style={{ position: 'absolute', top: 3, left: wakeOn ? 21 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left 0.2s ease' }} />
+                </button>
+              </div>
             </div>
           ) : null}
 
@@ -994,7 +1028,7 @@ export function VoiceAssistantHost() {
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runTyped(); (e.target as HTMLInputElement).blur(); } }}
-              placeholder="Search Google · ابحث في جوجل"
+              placeholder="ابحث داخل التطبيق · Search inside"
               enterKeyHint="search"
               autoComplete="off"
               style={{ flex: 1, minWidth: 0, height: 44, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 300, color: '#000' }}
@@ -1043,7 +1077,7 @@ export function VoiceAssistantHost() {
               </div>
             ) : (
               <div dir="auto" style={{ fontSize: 16, fontWeight: 300, color: notice ? '#000' : '#888', lineHeight: 1.9, textAlign: 'center', paddingTop: 6 }}>
-                {notice || 'Go ahead, ask…'}
+                {notice || (speechLang === SPEECH_LANG_AR ? 'تفضل، اسأل…' : 'Go ahead, ask…')}
               </div>
             )}
           </div>
@@ -1066,20 +1100,6 @@ export function VoiceAssistantHost() {
                   </a>
                 );
               })}
-            </div>
-          ) : null}
-          {(question || answer) && (question || searchText) ? (
-            <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
-              {([
-                ['Google · بحث', 'web'],
-                ['Images · صور', 'images'],
-                ['Videos · فيديو', 'videos'],
-                ['News · أخبار', 'news'],
-              ] as const).map(([label, kind]) => (
-                <a key={kind} href={googleUrl(question || searchText, kind)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 400, color: '#111', textDecoration: 'underline' }}>
-                  {label}
-                </a>
-              ))}
             </div>
           ) : null}
         </div>
