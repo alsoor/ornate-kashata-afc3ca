@@ -2061,7 +2061,7 @@ export default function LivePage() {
             onClick={toggleSpeakerMute}
             style={{
               height: 40,
-              padding: '0 12px',
+              padding: '0 9px',
               borderRadius: 12,
               border: speakerMuted ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(0,188,212,0.28)',
               background: speakerMuted ? 'rgba(239,68,68,0.12)' : 'rgba(0,188,212,0.08)',
@@ -2071,12 +2071,12 @@ export default function LivePage() {
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 4,
               flexShrink: 0,
             }}
           >
             {speakerMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            {speakerMuted ? 'إلغاء الكتم' : 'كتم البث'}
+            {speakerMuted ? 'إلغاء الكتم' : 'كتم'}
           </motion.button>
 
           
