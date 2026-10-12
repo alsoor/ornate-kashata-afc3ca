@@ -406,7 +406,7 @@ function LiveJoinBanner() {
         left: 0,
         right: 0,
         zIndex: 13050,
-        padding: 'max(env(safe-area-inset-top, 0px), 10px) 12px 0',
+        padding: 'max(max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)), 10px) 12px 0',
         pointerEvents: 'none',
       }}
     >
@@ -3958,14 +3958,14 @@ function GlobalBottomNavigation() {
     <div style={{
       position: 'fixed',
       top: 0, left: 0, right: 0,
-      bottom: (homeCallPhase === 'connecting' || homeCallPhase === 'live' || homeIncoming) ? 0 : 'calc(52px + env(safe-area-inset-bottom))',
+      bottom: (homeCallPhase === 'connecting' || homeCallPhase === 'live' || homeIncoming) ? 0 : 'calc(52px + max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
       zIndex: (homeCallPhase === 'connecting' || homeCallPhase === 'live' || homeIncoming) ? 10990 : 10380,
       background: 'radial-gradient(ellipse 70% 60% at 50% 30%, #0d2a2e 0%, #0a1a1a 50%, #060e0e 100%)',
       display: 'flex', flexDirection: 'column',
     }}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
-        padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+        padding: '10px 14px', paddingTop: 'max(10px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))',
         borderBottom: '1px solid rgba(0,188,212,0.2)',
         background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
       }}>
@@ -4017,7 +4017,7 @@ function GlobalBottomNavigation() {
         ))}
       </div>
       <div style={{
-        padding: '10px 12px max(12px, env(safe-area-inset-bottom))',
+        padding: '10px 12px max(12px, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
         borderTop: '1px solid rgba(0,188,212,0.2)',
         display: 'flex', gap: 8, alignItems: 'center',
         background: 'rgba(6,14,14,0.96)',
@@ -4089,7 +4089,7 @@ function GlobalBottomNavigation() {
           top: 0,
           left: 0,
           right: 0,
-          bottom: 'calc(52px + env(safe-area-inset-bottom))',
+          bottom: 'calc(52px + max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
           zIndex: 10350,
           background: 'rgba(0,0,0,0.96)',
           transform: chatPageClosing ? 'translateY(110%)' : 'translateY(0)',
@@ -4102,7 +4102,7 @@ function GlobalBottomNavigation() {
       >
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+          padding: '10px 14px', paddingTop: 'max(10px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))',
           borderBottom: '1px solid rgba(0,188,212,0.25)',
           background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
           minHeight: 52, flexShrink: 0,
@@ -4249,7 +4249,7 @@ function GlobalBottomNavigation() {
           top: 0,
           left: 0,
           right: 0,
-          bottom: 'calc(52px + env(safe-area-inset-bottom))',
+          bottom: 'calc(52px + max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
           zIndex: 10350,
           background: 'rgba(0,0,0,0.96)',
           backdropFilter: 'blur(10px)',
@@ -4262,7 +4262,7 @@ function GlobalBottomNavigation() {
       >
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 14px', paddingTop: 'max(10px, env(safe-area-inset-top))',
+          padding: '10px 14px', paddingTop: 'max(10px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))',
           borderBottom: '1px solid rgba(0,188,212,0.25)',
           background: 'linear-gradient(180deg, #0a1f2e 0%, #06141c 100%)',
           minHeight: 52, flexShrink: 0,
@@ -4454,6 +4454,16 @@ function GlobalBottomNavigation() {
       </>
   ) : null;
 
+  // دخول/خروج البث (صوتي/مرئي/عام): صفّر حالات الواجهة العالقة اللي كانت تخلي الشريط السفلي يختفي بعد الخروج
+  useEffect(() => {
+    setLiveKindOpen(false);
+    setLiveMapOpen(false);
+    setStoryMediaOpen(false);
+    setFriendChatOpen(false);
+    setSecretChatOpen(false);
+    setStoryPlusMenuOpen(false);
+  }, [isVoiceRoom]);
+
   // كل مكالمة جديدة تبدأ رسمياً بالأعلى
   useEffect(() => {
     if (!(homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live' || (homeIncoming && homeCallPhase === 'idle'))) setHomeCallDock('top');
@@ -4619,7 +4629,7 @@ function GlobalBottomNavigation() {
     }}>
       {homeCallPickerOpen && homeCallPhase === 'idle' && (
         <div
-          style={{ pointerEvents: 'auto', width: '100%', maxHeight: '70vh', background: 'linear-gradient(180deg,#0a1f22 0%,#061014 100%)', borderTopLeftRadius: 18, borderTopRightRadius: 18, border: '1px solid rgba(0,188,212,0.25)', padding: '14px 14px max(16px, env(safe-area-inset-bottom))', boxSizing: 'border-box' }}
+          style={{ pointerEvents: 'auto', width: '100%', maxHeight: '70vh', background: 'linear-gradient(180deg,#0a1f22 0%,#061014 100%)', borderTopLeftRadius: 18, borderTopRightRadius: 18, border: '1px solid rgba(0,188,212,0.25)', padding: '14px 14px max(16px, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))', boxSizing: 'border-box' }}
           onClick={e => e.stopPropagation()}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -4684,8 +4694,8 @@ function GlobalBottomNavigation() {
             position: 'fixed',
             left: 12,
             right: 12,
-            top: homeCallDock === 'top' ? 'max(10px, env(safe-area-inset-top, 0px))' : 'auto',
-            bottom: homeCallDock === 'bottom' ? 'max(10px, env(safe-area-inset-bottom, 0px))' : 'auto',
+            top: homeCallDock === 'top' ? 'max(10px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))' : 'auto',
+            bottom: homeCallDock === 'bottom' ? 'max(10px, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))' : 'auto',
             zIndex: 10960,
             display: 'flex',
             flexDirection: 'column',
@@ -5102,7 +5112,7 @@ function GlobalBottomNavigation() {
 
       {homeCallLogOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 10980, background: '#ffffff', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', paddingTop: 'max(12px, env(safe-area-inset-top))', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', paddingTop: 'max(12px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))', borderBottom: '1px solid rgba(0,0,0,0.08)' }}>
             <p style={{ margin: 0, flex: 1, color: '#111', fontWeight: 800, fontSize: 22 }}>Calls</p>
             <button type="button" aria-label="Search" style={{ width: 36, height: 36, border: 'none', background: 'none', color: '#111', cursor: 'pointer' }}><Clock size={18} /></button>
             <div style={{ position: 'relative' }}>
@@ -5213,8 +5223,8 @@ function GlobalBottomNavigation() {
     right: 0,
     bottom: 0,
     zIndex: 12000,
-    height: 'calc(52px + env(safe-area-inset-bottom))',
-    paddingBottom: 'env(safe-area-inset-bottom)',
+    height: 'calc(52px + max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
+    paddingBottom: 'max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px))',
     background: 'linear-gradient(180deg, rgba(6,14,14,0.92) 0%, rgba(6,14,14,0.99) 100%)',
     boxSizing: 'border-box',
     borderTop: '1px solid rgba(0,188,212,0.12)',
@@ -5255,7 +5265,7 @@ function GlobalBottomNavigation() {
           grabber on the profile/story page and expanding DOWNWARD. */}
       <div style={{
         position: 'fixed',
-        top: 'calc(150px + env(safe-area-inset-top, 0px))',
+        top: 'calc(150px + max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))',
         left: '50%',
         transform: 'translateX(-50%)',
         display: 'flex',
@@ -5493,7 +5503,7 @@ function GlobalPublicChatHost({ user }: { user: any }) {
             position: 'fixed',
             ...(fabPos
               ? { left: Math.max(4, Math.min((typeof window !== 'undefined' ? window.innerWidth : 400) - FAB_SIZE - 4, fabPos.x)), top: Math.max(4, Math.min((typeof window !== 'undefined' ? window.innerHeight : 800) - FAB_SIZE - 4, fabPos.y)) }
-              : { right: 16, bottom: 'max(92px, calc(env(safe-area-inset-bottom, 0px) + 78px))' }),
+              : { right: 16, bottom: 'max(92px, calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 78px))' }),
             touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none',
             zIndex: 23000, width: FAB_SIZE, height: FAB_SIZE, borderRadius: '50%', cursor: 'pointer', padding: 0,
             border: '1.5px solid #3b82f6', background: 'rgba(6,16,18,0.94)',
@@ -5852,7 +5862,7 @@ export default function RootLayout({
       boxSizing: 'border-box'
     } : {
       minHeight: '100dvh',
-      paddingBottom: (storyPageActive || isChatsPanelRoute || storyMediaOpenRoot) ? 0 : 'calc(52px + env(safe-area-inset-bottom))',
+      paddingBottom: (storyPageActive || isChatsPanelRoute || storyMediaOpenRoot) ? 0 : 'calc(52px + max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
       boxSizing: 'border-box'
     }}>
         {isSettingsPage ? (
