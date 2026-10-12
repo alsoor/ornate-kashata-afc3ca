@@ -12,6 +12,7 @@ import { CreditsChip, AiPlanDialog } from './AiCreditsUI'; // AI-CREDITS
 import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
 import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
 import { detectAppIntent, answerAppIntent, intentToPanel, type PanelKind } from './appAssistant'; // APP-ASSISTANT
+import AiReplyWithTables from './AiTableView'; // TABLE-VIEW: tables inside Ai replies (standalone file)
 import { readFileForAi, speak, stopSpeaking, voiceOutputSupported } from './aiCapabilities'; // AI-CAPABILITIES: read files, voice replies
 
 interface Attachment {
@@ -1572,7 +1573,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
                 whiteSpace: 'pre-wrap',
               }}
             >
-              {m.content}
+              {m.role === 'assistant' && m.type !== 'table' ? <AiReplyWithTables content={m.content} /> : m.content} {/* TABLE-VIEW */}
               {m.role === 'assistant' && m.content && m.type !== 'offer' && voiceOutputSupported() && ( /* AI-CAPABILITIES: listen to the reply */
                 <button
                   type="button"

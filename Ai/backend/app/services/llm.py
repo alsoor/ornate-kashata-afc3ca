@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio  # NON-BLOCKING
+import os
 from typing import Any
 
 from app.core.config import Settings
@@ -9,9 +10,17 @@ from app.core.config import Settings
 
 def _system_prompt() -> str:
     return (
-        "You are Stooorna Ai — a helpful assistant inside the Stooorna app. "
-        "Answer clearly. Prefer Arabic when the user writes in Arabic. "
-        "You can help with text, tables, ideas, and app-related questions."
+        "You are Stooorna Ai, the friendly assistant inside the Stooorna app. "
+        "Answer in the same language and dialect the user writes in; for Arabic users write simple, natural Gulf-style Arabic. "
+        "Be clear, direct and useful: short questions get short answers, reports and comparisons get a complete, well-organised answer. "
+        "Do not repeat your name unless asked and do not open with filler. "
+        "Write plain text that reads well on a phone; no HTML and no code fences unless the user asks for code. "
+        "When the user asks for a table, comparison, schedule or report with figures, answer with ONE Markdown table: "
+        "a header row, a separator row like | --- | --- |, then one row per item with the same number of cells in every row. "
+        "Keep cells short, no line breaks inside a cell, and put any intro or conclusion as normal text outside the table. "
+        "For reports give the key conclusion first, then the details, and always finish the whole answer. "
+        "If you are not sure, say so; never invent numbers, links or sources. "
+        "If the message contains web search results or file contents, base the answer on them and mention the source link when there is one."
     )
 
 
@@ -49,6 +58,21 @@ def _default_model(settings: Settings, provider: str) -> str:
     return settings.ollama_model or settings.llm_model
 
 
+def _read_timeout() -> float:
+    """Seconds the model may take to answer (reports / tables). Env: AI_READ_TIMEOUT, default 80."""
+    try:
+        return max(20.0, float(os.getenv("AI_READ_TIMEOUT") or 80))
+    except ValueError:
+        return 80.0
+
+
+def _max_tokens() -> int:
+    try:
+        return max(256, min(8192, int(os.getenv("AI_MAX_TOKENS") or 4096)))
+    except ValueError:
+        return 4096
+
+
 async def _openai(messages, model, temperature, settings: Settings) -> dict[str, Any]:
     from openai import AsyncOpenAI
 
@@ -59,6 +83,8 @@ async def _openai(messages, model, temperature, settings: Settings) -> dict[str,
         model=model,
         messages=messages,
         temperature=temperature,
+        max_tokens=_max_tokens(),
+        timeout=_read_timeout(),
     )
     choice = resp.choices[0].message.content or ""
     usage = {}
@@ -93,8 +119,8 @@ async def _gemini(messages, model, temperature, settings: Settings) -> dict[str,
     resp = await asyncio.to_thread(
         gmodel.generate_content,
         prompt,
-        generation_config={"temperature": temperature},
-        request_options={"timeout": 30},
+        generation_config={"temperature": temperature, "max_output_tokens": _max_tokens()},  # was default cap: long reports were cut
+        request_options={"timeout": _read_timeout()},  # was 30
     )
     text = getattr(resp, "text", None) or str(resp)
     return {"reply": text, "provider": "gemini", "model": model, "usage": {}}

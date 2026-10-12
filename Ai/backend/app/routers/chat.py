@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio  # CLAUDE
 import logging  # CLAUDE
+import os
+import time
 
 from fastapi import APIRouter, HTTPException
 
@@ -63,12 +65,24 @@ async def chat(req: ChatRequest):
     result = None
     errors: list[str] = []
 
+    # TIMEOUT: one total budget for the whole reply (default 85s, just under the app's 90s abort).
+    # The first provider gets most of it; if it fails, the backup gets whatever time is left.
+    try:
+        total_budget = max(30.0, float(os.getenv("AI_TOTAL_TIMEOUT") or 85))
+    except ValueError:
+        total_budget = 85.0
+    started = time.monotonic()
+
+    def _left() -> float:
+        return max(5.0, total_budget - (time.monotonic() - started))
+
     async def _claude():
         return await claude_llm.chat_completion(
             message=message,
             history=history,
             model=req.model,
             temperature=req.temperature,
+            timeout=_left(),
         )
 
     async def _gemini():
@@ -81,13 +95,16 @@ async def chat(req: ChatRequest):
                 model=None if (req.model or "").lower().startswith("claude") else req.model,
                 temperature=req.temperature,
             ),
-            timeout=25,
-        )
+            timeout=_left() if not claude_llm.available() else min(_left(), total_budget * 0.65),
+        )  # was a fixed 25s: long reports timed out
 
     order = [("Claude", _claude), ("LLM", _gemini)] if want_claude else [("LLM", _gemini), ("Claude", _claude)]
     for name, fn in order:
         if name == "Claude" and not claude_llm.available():
             continue
+        if result is None and (time.monotonic() - started) >= total_budget - 5:
+            errors.append("time budget used up")
+            break  # no time left for another attempt
         try:
             result = await fn()
             break
