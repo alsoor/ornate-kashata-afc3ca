@@ -30,6 +30,22 @@ async def claude_check():
         return {"ok": False, "error": str(e)[:400], **info}
 
 
+@router.get("/gemini-check")  # DIAGNOSTIC: shows the real reason when the main model (Gemini) does not answer
+async def gemini_check():
+    settings = get_settings()
+    info = {"provider": settings.llm_provider, "model": llm._default_model(settings, settings.llm_provider.lower())}
+    try:
+        r = await asyncio.wait_for(
+            llm.chat_completion(message="Reply with the single word OK", history=[], settings=settings, temperature=0),
+            timeout=25,
+        )
+        return {"ok": True, "reply": (r.get("reply") or "")[:100], **info}
+    except asyncio.TimeoutError:
+        return {"ok": False, "error": "no answer after 25s (check the key, quota and model name)", **info}
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": str(e)[:400], **info}
+
+
 @router.post("", response_model=ChatResponse)
 async def chat(req: ChatRequest):
     settings = get_settings()
