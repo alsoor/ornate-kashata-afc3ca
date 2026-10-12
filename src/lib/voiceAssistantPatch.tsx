@@ -278,9 +278,31 @@ async function wikipediaFallback(q: string, signal: AbortSignal): Promise<Assist
   };
 }
 
+async function duckFallback(q: string, signal: AbortSignal): Promise<AssistantAnswer | null> {
+  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(stripQuestionWords(q) || q)}&format=json&no_html=1&skip_disambig=1`;
+  const r = await fetch(url, { signal });
+  if (!r.ok) return null;
+  const d: any = await r.json();
+  const text = String(d?.Answer || d?.AbstractText || d?.Definition || '').trim();
+  if (text.length < 15) return null;
+  const link = String(d?.AbstractURL || d?.DefinitionURL || '');
+  return {
+    text,
+    spoken: text.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ').slice(0, 320),
+    images: [],
+    sources: /^https?:\/\//.test(link) ? [{ title: 'DuckDuckGo', url: link }] : [],
+    provider: 'duckduckgo-client',
+    lang: 'en',
+  };
+}
+
 async function askAssistant(q: string, signal: AbortSignal, _name = ''): Promise<AssistantAnswer> {
   const local = localIntent(q) || smallTalk(q);
   if (local) return local;
+  try {
+    const d = await duckFallback(q, signal); // free, no key
+    if (d) return d;
+  } catch (e: any) { if (e?.name === 'AbortError') throw e; }
   try {
     const w = await wikipediaFallback(q, signal); // free, no key
     if (w) return w;
@@ -511,7 +533,7 @@ export function VoiceAssistantHost() {
     } else setPhase('idle');
   }, []);
 
-  const ask = useCallback(async (q: string, session: number) => {
+  const ask = useCallback(async (q: string, session: number, silent = false) => {
     setQuestion(q);
     setUiLang('en');
     setAnswer(null);
@@ -535,7 +557,8 @@ export function VoiceAssistantHost() {
       const said = res.spoken || res.text;
       const sayLang = 'en' as const;
       setUiLang('en');
-      void speakNatural(
+      if (silent) setPhase('idle');
+      else void speakNatural(
         said, sayLang, res.audio,
         () => session === sessionRef.current,
         () => { if (session === sessionRef.current) setPhase('speaking'); },
@@ -554,6 +577,21 @@ export function VoiceAssistantHost() {
       window.clearTimeout(timeout);
     }
   }, [speakNatural, afterSpeech]);
+
+  /** Typed search from the box at the top of the page (no talking, just the written answer). */
+  const [searchText, setSearchText] = useState('');
+  const runTyped = useCallback(() => {
+    const q = searchText.trim().slice(0, 300);
+    if (!q) return;
+    sessionRef.current += 1;
+    const session = sessionRef.current;
+    window.clearTimeout(startTimer.current);
+    killRecognition();
+    stopSpeaking();
+    try { abortRef.current?.abort(); } catch { /* ignore */ }
+    followUpRef.current = false;
+    void ask(q, session, true);
+  }, [searchText, ask, killRecognition]);
 
   /** Listens in American English (en-US). */
   const listen = useCallback((session: number, _lang: string, _attempt: number) => {
@@ -913,6 +951,28 @@ export function VoiceAssistantHost() {
             </div>
           ) : null}
 
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, border: '1px solid rgba(0,0,0,0.14)', borderRadius: 8, background: '#fff', padding: '0 6px 0 12px', marginBottom: 12 }}>
+            <input
+              type="search"
+              dir="auto"
+              value={searchText}
+              onChange={e => setSearchText(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runTyped(); (e.target as HTMLInputElement).blur(); } }}
+              placeholder="Search anything…"
+              enterKeyHint="search"
+              autoComplete="off"
+              style={{ flex: 1, minWidth: 0, height: 44, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 300, color: '#000' }}
+            />
+            <button
+              type="button"
+              aria-label="Search"
+              onClick={runTyped}
+              style={{ flex: '0 0 auto', width: 34, height: 34, borderRadius: 8, border: 'none', background: '#0b0b0b', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+            </button>
+          </div>
+
           {(question || heard) ? (
             <div dir="auto" style={{ fontSize: 14, fontWeight: 300, color: '#666', marginBottom: 10, textAlign: 'start', wordBreak: 'break-word' }}>
               {question || heard}
@@ -970,6 +1030,19 @@ export function VoiceAssistantHost() {
                   </a>
                 );
               })}
+            </div>
+          ) : null}
+          {(question || answer) && (question || searchText) ? (
+            <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
+              {[
+                ['Search the web', 'https://www.google.com/search?q='],
+                ['Images', 'https://www.google.com/search?tbm=isch&q='],
+                ['Videos', 'https://www.youtube.com/results?search_query='],
+              ].map(([label, base]) => (
+                <a key={label} href={base + encodeURIComponent(question || searchText)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 400, color: '#111', textDecoration: 'underline' }}>
+                  {label}
+                </a>
+              ))}
             </div>
           ) : null}
         </div>
