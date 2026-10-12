@@ -18865,7 +18865,7 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
       {LIVE_MEDIA_FEED_SHOW_NAME ? (
         <p style={{ position: 'absolute', left: 12, bottom: 14, right: 84, margin: 0, color: '#fff', fontWeight: 800, fontSize: '0.92rem', textShadow: '0 1px 3px rgba(0,0,0,0.75)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', pointerEvents: 'none' }}>{name}</p>
       ) : null}
-      <div style={{ position: 'absolute', right: 8, bottom: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}>
+      <div style={{ position: 'absolute', right: 8, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 64px)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 18 }}> {/* RAIL-UP: whole button column raised ~48px so the delete button is easy to tap (was bottom: 16) */}
         <LiveRailAvatar c={c} size={44} onOpenProfile={onOpenProfile} wrapperStyle={{ marginBottom: 6 }} />
         <button type="button" aria-label="Like" onClick={e => { e.stopPropagation(); onLike(); }} style={sideBtn}>
           <Heart size={34} strokeWidth={2} color={liked ? '#ef4444' : '#fff'} fill={liked ? '#ef4444' : 'rgba(255,255,255,0.0)'} style={{ filter: icoShadow }} />
