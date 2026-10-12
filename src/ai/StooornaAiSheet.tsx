@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Send, Clock, PenLine, Image as ImageIcon, Camera as CameraIcon, FileUp, ChevronLeft, X as XIcon, RefreshCw, Zap, ZapOff, Mic, Square, Volume2, VolumeX } from 'lucide-react';
 import { detectWallpaperIntent, searchWallpapers } from './wallpaperSearch'; // PHOTO-SEARCH
+import { detectSmartSearch, runSmartSearch } from './smartSearch'; // SMART-SEARCH: smart Pixabay search (standalone file)
 import MediaEditor from './MediaEditor'; // MEDIA-EDITOR
 import MergeMedia, { type MergeItem } from './MergeMedia'; // MERGE-MEDIA
 import { saveToLibrary } from './saveMedia'; // SAVE-LIBRARY
@@ -941,6 +942,39 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         } catch (err) {
           console.error('[Stooorna Ai] app assistant error:', err);
           pushAi(ar ? '⚠️ ما قدرت أجيب البيانات الحين، جرّب بعد شوي.' : '⚠️ Could not load the data right now, try again shortly.');
+        } finally {
+          if (timer) window.clearTimeout(timer);
+          if (!stale()) setIsTyping(false);
+        }
+      })();
+      return;
+    }
+
+    // SMART-SEARCH: smart Pixabay search (understands colour / size / count / video ...). Returns null for normal questions,
+    // so everything below (old photo search, chat answers) works exactly as before.
+    const smartIntent = pending.length === 0 ? detectSmartSearch(trimmed) : null;
+    if (smartIntent) {
+      void (async () => {
+        try {
+          const res = await runSmartSearch(smartIntent, controller?.signal);
+          if (stale()) return;
+          if (!res.photos.length) { pushAi(res.text); return; }
+          const aiMsg: Message = {
+            id: `a-${Date.now()}`,
+            role: 'assistant',
+            content: res.text,
+            type: 'gallery',
+            data: { photos: res.photos },
+            timestamp: Date.now(),
+          };
+          setMessages(prev => {
+            const withAi = [...prev, aiMsg];
+            syncChat(chatId, withAi);
+            return withAi;
+          });
+        } catch (err) {
+          console.error('[Stooorna Ai] smart search error:', err);
+          pushAi(ar ? '⚠️ ما قدرت أبحث الحين، جرّب بعد شوي.' : '⚠️ Could not search right now, try again shortly.');
         } finally {
           if (timer) window.clearTimeout(timer);
           if (!stale()) setIsTyping(false);
