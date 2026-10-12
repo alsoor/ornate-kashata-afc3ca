@@ -2,7 +2,8 @@ import { add_friend } from 'virtual:content';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import React from 'react';
-import { StooornaAiIcon, StooornaAiSheet, AiInfoPanel, AiPlanDialog, getCredits, openGeneralChat } from '@/ai';
+import { StooornaAiIcon, StooornaAiSheet, AiInfoPanel, AiPlanDialog, getCredits, openGeneralChat, loadDashboard, AI_POST_COST } from '@/ai';
+import { hasFreePass } from '@/ai/aiCredits'; // DOCK-SHORTCUTS: owner free pass → "Active" badge
 import { useAiIconVisible } from '@/lib/aiIconPatch';
 
 if (typeof document !== 'undefined' && !document.getElementById('stooorna-media-fix')) {
@@ -23037,6 +23038,12 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
   const active: DockKind | null = dockBubble?.kind ?? null;
   if (active === 'call' || active === 'live') warmRef.current.add(active);
   const [settingsMounted, setSettingsMounted] = useState(false);
+  // DOCK-SHORTCUTS: pages inside the bubble (Privacy X) ask the bubble to slide down and hide
+  useEffect(() => {
+    const h = () => dockSet(null);
+    window.addEventListener('stooorna:dock-close', h);
+    return () => window.removeEventListener('stooorna:dock-close', h);
+  }, []);
   useEffect(() => {
     if (guestMode || !user?.id) return;
     const w = window as any;
@@ -23378,6 +23385,20 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
   const publicVoiceStatus = usePublicVoiceRoomStatus(sc?.kind === 'live');
   const [friends, setFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
   const kind = sc?.kind;
+  // DOCK-SHORTCUTS: numbers shown on the right of the Stooorna Ai menu rows (requests / online / friends / points)
+  const [aiStats, setAiStats] = useState<{ requests: number; online: number; friends: number; balance: number | null; free: boolean } | null>(null);
+  useEffect(() => {
+    if (kind !== 'ai' || !user?.id) return;
+    let off = false;
+    void (async () => {
+      try {
+        const [n, c] = await Promise.all([loadDashboard(user).catch(() => null), getCredits(user).catch(() => null)]);
+        if (off) return;
+        setAiStats({ requests: n?.requests ?? 0, online: n?.online ?? 0, friends: n?.friends ?? 0, balance: c ? c.balance : null, free: hasFreePass() });
+      } catch { /* */ }
+    })();
+    return () => { off = true; };
+  }, [kind, user?.id]);
   useEffect(() => {
     if (kind !== 'call') return;
     let off = false;
@@ -23391,7 +23412,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
   if (!sc || typeof document === 'undefined' || !user?.id) return null;
   const close = () => dockShortcutSet(null);
   const vw = window.innerWidth;
-  const boxW = (sc.kind === 'call' || sc.kind === 'ai' || sc.kind === 'settings') ? 212 : 196; // DOCK-SHORTCUTS: LIVE rows now show names like the Call bubble
+  const boxW = sc.kind === 'ai' ? 244 : (sc.kind === 'call' || sc.kind === 'settings') ? 212 : 196; // DOCK-SHORTCUTS: LIVE rows now show names like the Call bubble
   const boxLeft = Math.max(8, Math.min(vw - boxW - 8, sc.x - boxW / 2));
   const tailLeft = Math.max(14, Math.min(boxW - 14, sc.x - boxLeft));
   const bottom = window.innerHeight - sc.top + 12;
@@ -23411,6 +23432,9 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
   const hot = publicVoiceStatus.present || publicVoiceStatus.talking;
   const pubC = hot ? '#f97316' : '#ef4444';
   const pubRgb = hot ? '249,115,22' : '239,68,68';
+  const pill = (txt: string, c: string, bg: string) => (
+    <span style={{ marginLeft: 'auto', padding: '2px 9px', borderRadius: 999, fontSize: '0.74rem', fontWeight: 900, color: c, background: bg, border: `1px solid ${c}55`, flexShrink: 0, lineHeight: 1.35 }}>{txt}</span>
+  );
   const circle = (c: string, rgb: string, glow: boolean): React.CSSProperties => ({
     width: 46, height: 46, borderRadius: '50%', cursor: 'pointer', padding: 0, flexShrink: 0,
     background: `rgba(${rgb},0.14)`, border: `1.5px solid rgba(${rgb},0.8)`, color: c,
@@ -23466,15 +23490,15 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
         {(sc.kind === 'ai' || sc.kind === 'settings') && (
           <>
             {(sc.kind === 'ai' ? ([
-              { key: 'req', label: 'Friend requests', c: '#f472b6', rgb: '244,114,182', text: '#fbcfe8', icon: <UserPlus size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('requests'); } },
-              { key: 'fr', label: 'My Friends', c: '#00BCD4', rgb: '0,188,212', text: '#67e8f9', icon: <Users size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('friends'); } },
-              { key: 'on', label: 'Online now', c: '#22c55e', rgb: '34,197,94', text: '#86efac', icon: <Radio size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('online'); } },
+              { key: 'req', label: 'Friend requests', c: '#f472b6', rgb: '244,114,182', text: '#fbcfe8', icon: <UserPlus size={20} strokeWidth={2.3} />, badge: aiStats && aiStats.requests > 0 ? pill(String(aiStats.requests), '#f472b6', 'rgba(244,114,182,0.18)') : null, run: () => { close(); dockAiOpen('requests'); } },
+              { key: 'fr', label: 'My Friends', c: '#00BCD4', rgb: '0,188,212', text: '#67e8f9', icon: <Users size={20} strokeWidth={2.3} />, badge: aiStats && aiStats.friends > 0 ? pill(String(aiStats.friends), '#67e8f9', 'rgba(0,188,212,0.18)') : null, run: () => { close(); dockAiOpen('friends'); } },
+              { key: 'on', label: 'Online now', c: '#22c55e', rgb: '34,197,94', text: '#86efac', icon: <Radio size={20} strokeWidth={2.3} />, badge: aiStats && aiStats.online > 0 ? pill(String(aiStats.online), '#86efac', 'rgba(34,197,94,0.2)') : null, run: () => { close(); dockAiOpen('online'); } },
               { key: 'chat', label: 'Open Chat', c: '#a78bfa', rgb: '167,139,250', text: '#ddd6fe', icon: <MessageCircle size={20} strokeWidth={2.3} />, run: () => { close(); openGeneralChat(); } },
-              { key: 'pay', label: 'Pay', c: '#facc15', rgb: '250,204,21', text: '#facc15', icon: <DockCardIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('pay'); } },
+              { key: 'pay', label: 'Pay', c: '#facc15', rgb: '250,204,21', text: '#facc15', icon: <DockCardIcon size={20} strokeWidth={2.3} />, badge: !aiStats ? null : aiStats.free ? pill('Active', '#4ade80', 'rgba(34,197,94,0.2)') : (aiStats.balance !== null && aiStats.balance < AI_POST_COST) ? pill('Upgrade', '#fca5a5', 'rgba(239,68,68,0.2)') : (aiStats.balance !== null ? pill(`${aiStats.balance} P`, '#facc15', 'rgba(250,204,21,0.16)') : null), run: () => { close(); dockAiOpen('pay'); } },
               { key: 'about', label: 'About', c: '#e5e7eb', rgb: '229,231,235', text: '#e5e7eb', icon: <DockInfoIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('app'); } },
             ]) : ([
               { key: 'profile', label: 'Profile', c: '#00BCD4', rgb: '0,188,212', text: '#67e8f9', icon: <DockUserIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockSettingsStart = '/settings'; dockSettingsNonce += 1; dockSet({ kind: 'settings', x: sc.x }); } }, // Profile = the Settings page on its PROFILE tab (fresh start)
-              { key: 'privacy', label: 'Privacy', c: '#22c55e', rgb: '34,197,94', text: '#86efac', icon: <DockShieldIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockSettingsStartSet('/privacy'); dockSet({ kind: 'settings', x: sc.x }); } },
+              { key: 'privacy', label: 'Privacy', c: '#22c55e', rgb: '34,197,94', text: '#86efac', icon: <DockShieldIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockSettingsStart = '/privacy'; dockSettingsNonce += 1; dockSet({ kind: 'settings', x: sc.x }); } },
             ])).map(it => (
               <button
                 key={it.key}
@@ -23487,6 +23511,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
               >
                 <span style={{ ...circle(it.c, it.rgb, false), width: 38, height: 38 }}>{it.icon}</span>
                 <span style={{ flex: 1, minWidth: 0, color: it.text, fontWeight: 800, fontSize: '0.84rem', whiteSpace: 'nowrap' }}>{it.label}</span>
+                {(it as any).badge}
               </button>
             ))}
           </>
@@ -23514,6 +23539,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
                 <span style={{ flex: 1, minWidth: 0, color: '#d7eeee', fontWeight: 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {f.name || f.username || 'Friend'}
                 </span>
+                <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', background: 'rgba(34,197,94,0.14)', border: '1.5px solid rgba(34,197,94,0.75)' }}><Phone size={15} strokeWidth={2.4} /></span>
               </button>
             ))}
           </>

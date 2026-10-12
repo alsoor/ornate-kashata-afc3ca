@@ -253,9 +253,8 @@ export function openGeneralChat(): void {
   try { window.dispatchEvent(new CustomEvent('stooorna:ai-close')); } catch { /* */ }
   window.setTimeout(() => {
     try {
-      localStorage.setItem('stooorna_public_chat_on', '1');
-      (window as any).__stooornaPublicChatOn = true;
-      window.dispatchEvent(new CustomEvent('stooorna:public-chat-switch', { detail: { on: true } }));
+      // the floating chat button's own switch is NOT touched here: the chat just opens, and after it is closed the
+      // floating button stays hidden unless the person had already turned it on themselves.
       window.dispatchEvent(new CustomEvent('stooorna:open-public-chat'));
     } catch { /* */ }
   }, 380);

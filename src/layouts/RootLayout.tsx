@@ -5401,6 +5401,7 @@ function GlobalPublicChatHost({ user }: { user: any }) {
     try { return localStorage.getItem('stooorna_public_chat_on') === '1'; } catch { return false; }
   });
   const [open, setOpen] = useState(false);
+  const tempChatOnRef = useRef(false); // true while the chat is open only because Stooorna Ai opened it (switch is OFF)
   const [busy, setBusy] = useState(false);
   // someone else is typing in the public chat → "..." dots appear on the side of the floating button
   const [typers, setTypers] = useState<{ count: number; name: string }>({ count: 0, name: '' });
@@ -5454,13 +5455,20 @@ function GlobalPublicChatHost({ user }: { user: any }) {
   // APP-ASSISTANT: "افتح الشات العام" from Stooorna Ai -> turn the general chat on and slide it up
   useEffect(() => {
     const h = () => {
-      try { localStorage.setItem('stooorna_public_chat_on', '1'); } catch { /* */ }
+      // do NOT save the switch: opening from Stooorna Ai shows the chat only; the floating button must not appear afterwards
+      let saved = false;
+      try { saved = localStorage.getItem('stooorna_public_chat_on') === '1'; } catch { /* */ }
+      if (!saved) tempChatOnRef.current = true;
       setOn(true);
       setOpen(true);
     };
     window.addEventListener('stooorna:open-public-chat', h);
     return () => window.removeEventListener('stooorna:open-public-chat', h);
   }, []);
+  // chat opened only through Stooorna Ai (switch was OFF): once it is closed, go back to OFF so no floating button is left behind
+  useEffect(() => {
+    if (!open && tempChatOnRef.current) { tempChatOnRef.current = false; setOn(false); }
+  }, [open]);
   // TEMPLATES-ALWAYS: الشات العام OFF => لا زر عائم ولا طبقة شات، لكن اللوحة تبقى مركّبة حتى يفتح Templates (الشريط السفلي) طبيعي
   if (!user?.id) return null;
   return (
