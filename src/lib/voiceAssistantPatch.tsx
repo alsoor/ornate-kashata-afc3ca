@@ -21,9 +21,9 @@ const Z_PAGE = 300000;
 const Z_ORB = 300001;
 const LANG_KEY = 'stooorna_voice_lang';        // لو حطيته (مثال en-US) يثبّت لغة التعرّف ويوقف التبديل التلقائي
 const LAST_LANG_KEY = 'stooorna_voice_lang_last';
-// النداء الصوتي "Stooorna": افتراضياً مطفي لحد ما المستخدم يشغّله من المفتاح داخل صفحة المساعد (يحتاج إذن مايك ويصرف بطارية).
-// غيّرها إلى true لو تبيه يشتغل تلقائياً عند كل المستخدمين من أول مرة.
-const WAKE_DEFAULT_ON = false;
+// Voice wake ("Stooorna" / Arabic spelling): now ON by default for every account, no tap needed.
+// A user can still switch it off from the toggle inside the assistant page (saved per account).
+const WAKE_DEFAULT_ON = true;
 const WAKE_KEY = 'stooorna_wake_on'; // يُحفظ لكل حساب: stooorna_wake_on_<userId>
 let globeEl: HTMLElement | null = null; // أيقونة الكرة الحالية (يسجّلها GlobeVoiceLongPress)
 
@@ -632,10 +632,8 @@ export function VoiceAssistantHost() {
     rec.onerror = (ev: any) => {
       const code = String(ev?.error || '');
       if (code === 'not-allowed' || code === 'service-not-allowed') {
-        wakeDelay.current = 0;
-        setWakeOn(false);
-        try { localStorage.setItem(`${WAKE_KEY}_${userId}`, '0'); } catch { /* ignore */ }
-        setWakeMsg('اسمح للمايك عشان يشتغل النداء  ·  Allow the microphone for voice wake');
+        wakeDelay.current = 0; // stop for this session only; it retries on the next app launch
+        setWakeMsg('Allow the microphone so voice wake can work');
       } else if (code === 'audio-capture') wakeDelay.current = 20000; // المايك مشغول (مكالمة/بث)
       else if (code === 'network') wakeDelay.current = 6000;
     };
@@ -654,6 +652,26 @@ export function VoiceAssistantHost() {
       setWakeOn(v === null ? WAKE_DEFAULT_ON : v === '1');
     } catch { setWakeOn(WAKE_DEFAULT_ON); }
   }, [userId]);
+
+  // Ask for the mic permission once (first touch) so wake listening can start without any further tap
+  useEffect(() => {
+    if (!wakeOn || !userId) return;
+    let done = false;
+    const warm = async () => {
+      if (done) return;
+      done = true;
+      try {
+        const md = navigator.mediaDevices;
+        if (!md?.getUserMedia) return;
+        const st = await md.getUserMedia({ audio: true });
+        st.getTracks().forEach(t => t.stop());
+        wakeDelay.current = 350;
+        setWakeMsg('');
+      } catch { /* permission denied or mic busy: wake retries by itself */ }
+    };
+    window.addEventListener('pointerdown', warm, { once: true, passive: true });
+    return () => window.removeEventListener('pointerdown', warm);
+  }, [wakeOn, userId]);
 
   useEffect(() => {
     const onVis = () => setHidden(document.hidden);
