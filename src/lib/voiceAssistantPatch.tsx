@@ -11,6 +11,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSession } from '@/lib/auth/auth-client';
+import { chatTurn, ttsOnly, playAudio, stopAudio, resetChat, prefetchGreeting, getLangPref, setLangPref, type LangPref } from '@/lib/voiceChat';
 
 export const VOICE_ASSISTANT_START = 'stooorna:voice-assistant-start';
 export const VOICE_ASSISTANT_STOP = 'stooorna:voice-assistant-stop';
@@ -36,6 +37,7 @@ interface AssistantAnswer {
   images: string[];
   sources: { title: string; url: string }[];
   provider?: string;
+  audio?: string; // base64 mp3 from the server voice (optional)
 }
 
 const hasArabic = (s: string) => /[\u0600-\u06FF]/.test(s);
@@ -102,7 +104,7 @@ function pickVoice(text: string): { voice: SpeechSynthesisVoice | null; female: 
 function cleanForSpeech(s: string): string {
   return s.replace(/https?:\/\/\S+/g, ' ').replace(/[*_`#>\[\]()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
-function stopSpeaking() { try { window.speechSynthesis?.cancel(); } catch { /* ignore */ } }
+function stopSpeaking() { stopAudio(); try { window.speechSynthesis?.cancel(); } catch { /* ignore */ } }
 
 function speak(text: string, onStart: () => void, onEnd: () => void) {
   const clean = cleanForSpeech(text);
@@ -187,10 +189,15 @@ async function wikipediaFallback(q: string, signal: AbortSignal): Promise<Assist
   };
 }
 
-async function askAssistant(q: string, signal: AbortSignal): Promise<AssistantAnswer> {
+async function askAssistant(q: string, signal: AbortSignal, name = ''): Promise<AssistantAnswer> {
   const local = localIntent(q);
   if (local) return local;
   const lang = hasArabic(q) ? 'ar' : 'en';
+  // Free conversation first (Gulf Arabic / American English). Image requests and failures fall through to the search flow below.
+  if (!wantsImages(q)) {
+    const c = await chatTurn(q, lang, name, signal);
+    if (c) return { text: c.text, spoken: c.spoken, images: [], sources: [], provider: 'chat', audio: c.audio };
+  }
   try {
     const r = await fetch(ENDPOINT, {
       method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -344,6 +351,7 @@ export function VoiceAssistantHost() {
   const nameRef = useRef('');
   nameRef.current = String(user?.username || user?.name || '').trim();
   const [wakeOn, setWakeOn] = useState(false);
+  const [langPref, setLangPrefState] = useState<LangPref>(() => getLangPref());
   const [wakeMsg, setWakeMsg] = useState('');
   const [hidden, setHidden] = useState(() => typeof document !== 'undefined' && document.hidden);
   const wakeRecRef = useRef<any>(null);
@@ -404,8 +412,42 @@ export function VoiceAssistantHost() {
     setPhase('idle');
     setHeard('');
     setNotice('');
-    if (closePage) { setPageOpen(false); setTyping(false); }
+    if (closePage) { setPageOpen(false); setTyping(false); resetChat(); }
   }, [killRecognition]);
+
+  const ttsFails = useRef(0);
+  const followUpRef = useRef(false);
+  const listenRef = useRef<((session: number, lang: string, attempt: number) => void) | null>(null);
+
+  /** Natural female voice (server) with automatic fallback to the phone's own voice. */
+  const speakNatural = useCallback(async (
+    text: string, lang: 'ar' | 'en', audio: string | undefined,
+    alive: () => boolean, onStart: () => void, onEnd: () => void,
+  ) => {
+    let b64: string | null = audio || null;
+    if (!b64 && ttsFails.current < 2) {
+      b64 = await ttsOnly(cleanForSpeech(text), lang).catch(() => null);
+      if (!b64) ttsFails.current += 1;
+    }
+    if (!alive()) return;
+    if (b64) {
+      const ok = await playAudio(getCtx(), b64, onStart, onEnd);
+      if (ok || !alive()) return;
+    }
+    speak(text, onStart, onEnd);
+  }, []);
+
+  /** After she finishes talking: keep the conversation going by listening again (chat answers only). */
+  const afterSpeech = useCallback((session: number, lang: 'ar' | 'en', convo: boolean) => {
+    if (session !== sessionRef.current) return;
+    if (convo) {
+      followUpRef.current = true;
+      setHeard('');
+      setNotice('');
+      setPhase('listening');
+      listenRef.current?.(session, lang === 'ar' ? 'ar-SA' : 'en-US', 0);
+    } else setPhase('idle');
+  }, []);
 
   const ask = useCallback(async (q: string, session: number) => {
     setQuestion(q);
@@ -420,18 +462,18 @@ export function VoiceAssistantHost() {
     abortRef.current = ac;
     const timeout = window.setTimeout(() => ac.abort(), 14000);
     try {
-      const res = await askAssistant(q, ac.signal);
+      const res = await askAssistant(q, ac.signal, nameRef.current);
       if (session !== sessionRef.current) return;
       setAnswer(res);
       setTyping(true);
-      speak(
-        res.spoken || res.text,
+      const said = res.spoken || res.text;
+      const sayLang: 'ar' | 'en' = hasArabic(said) ? 'ar' : 'en';
+      void speakNatural(
+        said, sayLang, res.audio,
+        () => session === sessionRef.current,
         () => { if (session === sessionRef.current) setPhase('speaking'); },
-        () => { if (session === sessionRef.current) setPhase('idle'); },
+        () => afterSpeech(session, sayLang, res.provider === 'chat'),
       );
-      window.setTimeout(() => {
-        if (session === sessionRef.current && !('speechSynthesis' in window)) setPhase('idle');
-      }, 400);
     } catch (e: any) {
       if (session !== sessionRef.current) return;
       beep('error');
@@ -445,7 +487,7 @@ export function VoiceAssistantHost() {
     } finally {
       window.clearTimeout(timeout);
     }
-  }, []);
+  }, [speakNatural, afterSpeech]);
 
   /** يسمع بلغة معيّنة. لو الثقة ضعيفة يبدّل العربي/الإنجليزي مرة وحدة تلقائياً */
   const listen = useCallback((session: number, lang: string, attempt: number) => {
@@ -495,6 +537,7 @@ export function VoiceAssistantHost() {
       const q = finalText.trim();
       if (!q) {
         beep('error'); setHeard('');
+        if (followUpRef.current) { followUpRef.current = false; setPhase('idle'); return; } // silence after her reply: keep the page, just stop listening
         if (autoCloseRef.current) { cancelAll(true); return; } // نداء بالصوت وما تكلمت => نقفل الصفحة
         setPhase('idle');
         return;
@@ -511,6 +554,7 @@ export function VoiceAssistantHost() {
         return;
       }
       try { localStorage.setItem(LAST_LANG_KEY, hasArabic(q) ? 'ar-SA' : 'en-US'); } catch { /* ignore */ }
+      followUpRef.current = false;
       void ask(q, session);
     };
     try { rec.start(); } catch {
@@ -519,6 +563,7 @@ export function VoiceAssistantHost() {
       setPhase('idle');
     }
   }, [ask, cancelAll]);
+  listenRef.current = listen;
 
   const begin = useCallback((newRect?: Rect | null) => {
     sessionRef.current += 1;
@@ -530,6 +575,7 @@ export function VoiceAssistantHost() {
 
     stopWake();
     autoCloseRef.current = false;
+    followUpRef.current = false;
     if (newRect) setRect(newRect);
     setPageOpen(true);
     setError('');
@@ -572,6 +618,7 @@ export function VoiceAssistantHost() {
     stopSpeaking();
     try { abortRef.current?.abort(); } catch { /* ignore */ }
     autoCloseRef.current = true;
+    followUpRef.current = false;
 
     const r = iconRectOf(globeEl);
     if (r) setRect(r);
@@ -596,9 +643,9 @@ export function VoiceAssistantHost() {
       setPhase('listening');
       listen(session, lang === 'ar' ? 'ar-SA' : 'en-US', 0);
     };
-    speak(say ? `${word}, ${say}` : word, () => {}, proceed);
+    void speakNatural(say ? `${word}, ${say}` : word, lang, undefined, () => session === sessionRef.current && !proceeded, () => {}, proceed);
     window.setTimeout(proceed, 4500); // لو النطق ما اشتغل لأي سبب ما نعلّق
-  }, [ask, listen, killRecognition, stopWake]);
+  }, [ask, listen, killRecognition, stopWake, speakNatural]);
 
   const startWake = useCallback(() => {
     stopWake();
@@ -684,7 +731,14 @@ export function VoiceAssistantHost() {
     if (wakeOn && userId && phase === 'idle' && !hidden) { wakeDelay.current = 350; startWake(); }
     else stopWake();
     return () => stopWake();
-  }, [wakeOn, userId, phase, hidden, startWake, stopWake]);
+  }, [wakeOn, userId, phase, hidden, langPref, startWake, stopWake]);
+
+  const chooseLang = (p: LangPref) => { setLangPref(p); setLangPrefState(p); setWakeMsg(''); };
+
+  // Pre-load the "Yes <username>" / Arabic greeting voice so it plays instantly after the wake word
+  useEffect(() => {
+    if (wakeOn && userId && nameRef.current) prefetchGreeting(nameRef.current);
+  }, [wakeOn, userId]);
 
   const toggleWake = () => {
     const next = !wakeOn;
@@ -795,6 +849,26 @@ export function VoiceAssistantHost() {
               </button>
             </div>
           ) : null}
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 }}>
+            <span style={{ fontSize: 12, fontWeight: 300, color: '#444' }}>Language</span>
+            <div role="group" aria-label="Language" style={{ display: 'flex', gap: 6, direction: 'ltr' }}>
+              {([['auto', 'Auto'], ['ar', 'AR'], ['en', 'EN']] as [LangPref, string][]).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={langPref === k}
+                  onClick={() => chooseLang(k)}
+                  style={{
+                    minWidth: 44, height: 28, padding: '0 10px', borderRadius: 14, border: '1px solid #0b0b0b', cursor: 'pointer',
+                    fontSize: 12, fontWeight: 300, background: langPref === k ? '#0b0b0b' : '#fff', color: langPref === k ? '#fff' : '#0b0b0b',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {(question || heard) ? (
             <div dir="auto" style={{ fontSize: 14, fontWeight: 300, color: '#666', marginBottom: 10, textAlign: 'start', wordBreak: 'break-word' }}>
