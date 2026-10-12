@@ -12,6 +12,7 @@ import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
 import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
 import { detectAppIntent, answerAppIntent, intentToPanel, type PanelKind } from './appAssistant'; // APP-ASSISTANT
 import { readFileForAi, speak, stopSpeaking, voiceOutputSupported } from './aiCapabilities'; // AI-CAPABILITIES: read files, voice replies
+import { installLocalAssistant } from './localAssistant'; // LOCAL-ASSISTANT: loads the free assistant with the sheet (added line)
 
 interface Attachment {
   id: string;
@@ -49,6 +50,8 @@ interface StooornaAiSheetProps {
     image?: string | null;
   } | null;
 }
+
+installLocalAssistant(); // LOCAL-ASSISTANT (added line)
 
 const DARK_GREEN = '#0a1f1a';
 const DARKER_GREEN = '#04120f';
