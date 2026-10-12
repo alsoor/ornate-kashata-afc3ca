@@ -5473,7 +5473,7 @@ function GlobalPublicChatHost({ user }: { user: any }) {
   if (!user?.id) return null;
   return (
     <>
-      {on && !open && headerLifted !== false ? (
+      {on && !open && !tempChatOnRef.current && headerLifted !== false ? ( /* tempChatOnRef: chat that Stooorna Ai opened while the switch is OFF → the floating button must not flash for even one frame while closing */
         <button
           type="button"
           onClick={() => { if (fabMovedRef.current) { fabMovedRef.current = false; return; } setOpen(true); }}
