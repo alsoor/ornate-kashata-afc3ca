@@ -22170,6 +22170,34 @@ function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
 
 // ── الهيدر السفلي: الأيقونات الأربع (Friends | Call | LIVE | Settings) تُعرض في أسفل الشاشة عبر بورتال
 // عشان ما تتأثر بأي transform في الصفحة. الأشكال والأسماء وطريقة الفتح نفس ما كانت بالضبط. ──
+// DOCK-SETTLE: on app start the bottom bar was first drawn ~one system-bar higher and then dropped to its real place (the window
+// finishes resizing a moment after the first paint) — that looked like two bars + a flash. The bar now stays invisible until its
+// own position has stopped changing for 300ms (max 1.5s after it first exists), then shows once. Later opens are instant.
+let dockSettledOnce = false;
+function useDockSettled(): boolean {
+  const [ok, setOk] = useState(dockSettledOnce);
+  useEffect(() => {
+    if (dockSettledOnce) { setOk(true); return; }
+    let raf = 0; let last = NaN; let since = performance.now(); let firstSeen = 0;
+    const fin = () => { dockSettledOnce = true; setOk(true); };
+    const tick = () => {
+      const now = performance.now();
+      const el = document.querySelector('[data-stooorna-icons-bottom]') as HTMLElement | null;
+      if (el) {
+        if (!firstSeen) { firstSeen = now; since = now; }
+        const t = Math.round(el.getBoundingClientRect().top);
+        if (t !== last) { last = t; since = now; }
+        else if (now - since >= 300) { fin(); return; }
+        if (now - firstSeen > 1500) { fin(); return; }
+      } else { since = now; }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  return ok;
+}
+
 function BottomHeaderPortal({ enabled, children }: { enabled: boolean; children: React.ReactNode }) {
   if (!enabled || typeof document === 'undefined') return <>{children}</>;
   return createPortal(<>{children}</>, document.body);
@@ -27184,6 +27212,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [dockSettingsGray, setDockSettingsGray] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const aiIconVisible = useAiIconVisible(user as any);
+  const dockSettled = useDockSettled(); // DOCK-SETTLE: no "bar jumps down" at app start
   useEffect(() => {
     const readTpl = () => {
       try {
@@ -29475,7 +29504,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
             borderTop: 'none',
             transform: 'translateY(0)',
-            transition: 'transform 0.25s ease',
+            transition: dockSettled ? 'transform 0.25s ease, opacity 0.18s ease' : 'none',
+            opacity: dockSettled ? 1 : 0, // DOCK-SETTLE
             overflow: 'hidden',
           } : { display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
                 <div style={guestMode ? {
