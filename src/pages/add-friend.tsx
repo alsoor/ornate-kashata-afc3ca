@@ -106,9 +106,21 @@ function DockEmbeddedApp({ onExit, startPath = '/settings' }: { onExit: (to: str
           {/* these pages size themselves with 100dvh — inside the bubble that means "the bubble" */}
           <style>{`.stooorna-dock-embed [style*="100dvh"], .stooorna-dock-embed [style*="100vh"] { height: 100% !important; max-height: 100% !important; min-height: 100% !important; }
 .stooorna-dock-embed [style*="position: fixed"] { max-height: 100dvh; }
-.stooorna-dock-embed div.flex.items-center.justify-between.pt-10 { padding-top: 14px !important; padding-bottom: 10px !important; }`}</style>
+.stooorna-dock-embed div.flex.items-center.justify-between.pt-10 { padding-top: 14px !important; padding-bottom: 10px !important; }
+.stooorna-dock-embed[data-dock-first-privacy="1"] button:has(> svg[class*="arrow-left"]) > svg { display: none !important; }
+.stooorna-dock-embed[data-dock-first-privacy="1"] button:has(> svg[class*="arrow-left"])::after { content: '\\2715'; font-size: 20px; font-weight: 700; line-height: 22px; color: inherit; }`}</style>
           <div
             className="stooorna-dock-embed"
+            data-dock-first-privacy={pathname === '/privacy' && hist.i === 0 ? '1' : undefined}
+            onClickCapture={(e) => {
+              // Privacy opened straight from the Settings long-press menu: its back arrow becomes an X that slides the page down and hides it
+              if (pathname !== '/privacy' || hist.i !== 0) return;
+              const b = (e.target as HTMLElement | null)?.closest?.('button');
+              if (b && b.querySelector('svg[class*="arrow-left"]')) {
+                e.stopPropagation(); e.preventDefault();
+                try { window.dispatchEvent(new CustomEvent('stooorna:dock-close')); } catch { /* */ }
+              }
+            }}
             style={{
               position: 'absolute', inset: 0, overflowY: 'auto', overflowX: 'hidden',
               WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', touchAction: 'pan-y',
@@ -23106,7 +23118,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           </button>
         </div>
         )}
-        {dockBubble.kind === 'settings' && (
+        {dockBubble.kind === 'settings' && dockSettingsStart !== '/privacy' && (
           <button
             type="button"
             aria-label="Close"
@@ -23283,7 +23295,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           {dockBubble.kind === 'settings' && (
             settingsMounted
               ? <DockEmbeddedApp key={`${dockSettingsStart}-${dockSettingsNonce}`} startPath={dockSettingsStart} onExit={(to) => { closeBubble(); navigate(to); }} />
-              : <p style={{ margin: '48px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>
+              : <p style={{ margin: '48px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)', opacity: dockSettingsStart === '/privacy' ? 0 : 1 }}>Loading…</p>
           )}
         </div>
       </div>

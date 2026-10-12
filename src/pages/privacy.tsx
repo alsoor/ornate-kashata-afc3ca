@@ -3,10 +3,10 @@ import { privacy } from 'virtual:content';
  * /privacy — Privacy settings: last seen, who can contact/call, block list
  */
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from "react-router";
+import { useNavigate, useLocation } from "react-router";
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Eye, EyeOff, Phone, MessageSquare, ShieldOff, Trash2, LockKeyhole, Unlock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, X as CloseX, Eye, EyeOff, Phone, MessageSquare, ShieldOff, Trash2, LockKeyhole, Unlock, AlertTriangle } from 'lucide-react';
 import { useSession, signOut } from '@/lib/auth/auth-client';
 import { useHeartbeat } from '@/hooks/usePresence';
 import UserAvatar from '@/components/UserAvatar';
@@ -74,6 +74,10 @@ function VisibilityPicker({
 }
 export default function PrivacyPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // opened inside the dock bubble (long-press on Settings → Privacy): show X that slides the page down instead of the back arrow
+  // X only when Privacy was opened straight from the Settings long-press menu (first page of the dock bubble); reached from inside Settings it keeps the normal back arrow
+  const inDock = String((location as any)?.key || '') === 'dock-0';
   const {
     user,
     isPending
@@ -329,14 +333,14 @@ export default function PrivacyPage() {
       }}>
           <motion.button whileTap={{
           scale: 0.85
-        }} onClick={() => navigate(-1)} style={{
+        }} onClick={() => { if (inDock) { try { window.dispatchEvent(new CustomEvent('stooorna:dock-close')); } catch { /* */ } return; } navigate(-1); }} style={{
           color: T.primary,
           background: 'none',
           border: 'none',
           cursor: 'pointer',
           padding: 4
         }}>
-            <ArrowLeft size={22} strokeWidth={2} />
+            {inDock ? <CloseX size={22} strokeWidth={2.2} /> : <ArrowLeft size={22} strokeWidth={2} />}
           </motion.button>
           <p style={{
           color: T.text,
