@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useRef } from 'react';
 
 interface StooornaAiIconProps {
   active?: boolean;
   onClick: () => void;
+  /** Long-press (≈450ms) — opens the shortcuts menu. A normal tap still calls onClick. */
+  onLongPress?: (el: HTMLElement) => void;
   size?: number;
 }
 
@@ -12,13 +14,31 @@ interface StooornaAiIconProps {
  * The globe rotates slowly (clockwise); a ring around it rotates even more slowly the opposite way (counter-clockwise).
  * Place this between LIVE and Templates in the bottom navigation.
  */
-export default function StooornaAiIcon({ active = false, onClick, size = 42 }: StooornaAiIconProps) {
+export default function StooornaAiIcon({ active = false, onClick, onLongPress, size = 42 }: StooornaAiIconProps) {
+  const press = useRef({ timer: 0, fired: false });
+  const endPress = () => { if (press.current.timer) { window.clearTimeout(press.current.timer); press.current.timer = 0; } };
   const glyph = Math.round(size * 0.74); // globe size
 
   return (
     <button
       type="button"
-      onClick={onClick}
+      onPointerDown={(e) => {
+        if (!onLongPress) return;
+        const el = e.currentTarget;
+        press.current.fired = false;
+        endPress();
+        press.current.timer = window.setTimeout(() => {
+          press.current.timer = 0;
+          press.current.fired = true;
+          try { if (navigator.vibrate) navigator.vibrate(15); } catch { /* */ }
+          onLongPress(el);
+        }, 450);
+      }}
+      onPointerUp={endPress}
+      onPointerLeave={endPress}
+      onPointerCancel={endPress}
+      onContextMenu={(e) => e.preventDefault()}
+      onClick={() => { if (press.current.fired) { press.current.fired = false; return; } onClick(); }}
       aria-label="Stooorna Ai"
       title="Stooorna Ai"
       style={{
@@ -40,6 +60,7 @@ export default function StooornaAiIcon({ active = false, onClick, size = 42 }: S
           : '0 2px 8px rgba(0,0,0,0.35)',
         transition: 'all 0.2s ease',
         flexShrink: 0,
+        touchAction: 'manipulation', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none',
       }}
     >
       {/* Frame ring — slow rotation, opposite direction to the globe */}

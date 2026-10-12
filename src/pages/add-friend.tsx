@@ -2,7 +2,7 @@ import { add_friend } from 'virtual:content';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import React from 'react';
-import { StooornaAiIcon, StooornaAiSheet } from '@/ai';
+import { StooornaAiIcon, StooornaAiSheet, AiInfoPanel, AiPlanDialog, getCredits, openGeneralChat } from '@/ai';
 import { useAiIconVisible } from '@/lib/aiIconPatch';
 
 if (typeof document !== 'undefined' && !document.getElementById('stooorna-media-fix')) {
@@ -59,8 +59,16 @@ if (typeof window !== 'undefined') {
  * /share) is handed to the real router through onExit and the bubble closes.
  */
 const DOCK_EMBED_PATHS = ['/settings', '/privacy', '/profile'];
-function DockEmbeddedApp({ onExit }: { onExit: (to: string) => void }) {
-  const [hist, setHist] = useState<{ stack: string[]; i: number }>({ stack: ['/settings'], i: 0 });
+// DOCK-SHORTCUTS: the Settings page can start on Profile / Privacy (long-press on the gear). A normal tap always starts on /settings.
+let dockSettingsStart = '/settings';
+let dockSettingsNonce = 0;
+function dockSettingsStartSet(path: '/settings' | '/profile' | '/privacy') {
+  if (dockSettingsStart === path) return;
+  dockSettingsStart = path;
+  dockSettingsNonce += 1;
+}
+function DockEmbeddedApp({ onExit, startPath = '/settings' }: { onExit: (to: string) => void; startPath?: string }) {
+  const [hist, setHist] = useState<{ stack: string[]; i: number }>({ stack: [startPath], i: 0 });
   const exitRef = useRef(onExit);
   exitRef.current = onExit;
   const cur = hist.stack[hist.i] || '/settings';
@@ -123,7 +131,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Menu, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ChevronsDown, ZoomIn } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Menu, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ChevronsDown, ZoomIn, CreditCard as DockCardIcon, Info as DockInfoIcon, User as DockUserIcon, Shield as DockShieldIcon } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -23267,7 +23275,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
           })()}
           {dockBubble.kind === 'settings' && (
             settingsMounted
-              ? <DockEmbeddedApp onExit={(to) => { closeBubble(); navigate(to); }} />
+              ? <DockEmbeddedApp key={`${dockSettingsStart}-${dockSettingsNonce}`} startPath={dockSettingsStart} onExit={(to) => { closeBubble(); navigate(to); }} />
               : <p style={{ margin: '48px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>Loading…</p>
           )}
         </div>
@@ -23289,7 +23297,8 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
 //  • Call long-press → friends (avatar + name); one tap calls directly.
 // A normal tap still opens the full page exactly as before.
 // ───────────────────────────────────────────────────────────────────────────────────────────
-type DockShortcutState = null | { kind: 'live' | 'call'; x: number; top: number; at: number };
+type DockShortcutKind = 'live' | 'call' | 'ai' | 'settings';
+type DockShortcutState = null | { kind: DockShortcutKind; x: number; top: number; at: number };
 let dockShortcutState: DockShortcutState = null;
 const dockShortcutSubs = new Set<() => void>();
 function dockShortcutGet(): DockShortcutState { return dockShortcutState; }
@@ -23318,11 +23327,43 @@ function makeDockLongPress(ms = 450) {
 }
 const liveDockLongPress = makeDockLongPress();
 const callDockLongPress = makeDockLongPress();
-function openDockShortcut(kind: 'live' | 'call', el: HTMLElement | null) {
+const settingsDockLongPress = makeDockLongPress();
+function openDockShortcut(kind: DockShortcutKind, el: HTMLElement | null) {
   const r = el?.getBoundingClientRect();
   const x = r ? r.left + r.width / 2 : (typeof window !== 'undefined' ? window.innerWidth / 2 : 180);
   const top = r ? r.top : (typeof window !== 'undefined' ? window.innerHeight - 90 : 600);
   dockShortcutSet({ kind, x, top, at: Date.now() });
+}
+
+// DOCK-SHORTCUTS: the Stooorna Ai long-press menu opens the Ai pages DIRECTLY (white list pages / plan box) without opening the chat sheet.
+type DockAiTarget = 'friends' | 'online' | 'requests' | 'app' | 'pay';
+function dockAiOpen(t: DockAiTarget) {
+  window.setTimeout(() => { try { window.dispatchEvent(new CustomEvent('stooorna:dock-ai-open', { detail: { target: t } })); } catch { /* */ } }, 0);
+}
+function DockAiPanelsHost({ user }: { user: any }) {
+  const [panel, setPanel] = useState<'friends' | 'online' | 'requests' | 'app' | 'summary' | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [balance, setBalance] = useState<number | null>(null);
+  useEffect(() => {
+    const h = (e: Event) => {
+      const t = (e as CustomEvent).detail?.target as DockAiTarget | undefined;
+      if (!t) return;
+      if (t === 'pay') {
+        setBalance(null);
+        setPlanOpen(true);
+        void getCredits(user).then(c => { if (c) setBalance(c.balance); }).catch(() => { /* */ });
+      } else setPanel(t);
+    };
+    window.addEventListener('stooorna:dock-ai-open', h);
+    return () => window.removeEventListener('stooorna:dock-ai-open', h);
+  }, [user]);
+  if (!user?.id) return null;
+  return (
+    <>
+      {panel && <AiInfoPanel kind={panel as any} user={user} onClose={() => setPanel(null)} onKind={k => setPanel(k as any)} />}
+      <AiPlanDialog open={planOpen} balance={balance} onClose={() => setPlanOpen(false)} />
+    </>
+  );
 }
 
 function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusOpen, setShowPublicVoice }: {
@@ -23350,7 +23391,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
   if (!sc || typeof document === 'undefined' || !user?.id) return null;
   const close = () => dockShortcutSet(null);
   const vw = window.innerWidth;
-  const boxW = sc.kind === 'call' ? 212 : 196; // DOCK-SHORTCUTS: LIVE rows now show names like the Call bubble
+  const boxW = (sc.kind === 'call' || sc.kind === 'ai' || sc.kind === 'settings') ? 212 : 196; // DOCK-SHORTCUTS: LIVE rows now show names like the Call bubble
   const boxLeft = Math.max(8, Math.min(vw - boxW - 8, sc.x - boxW / 2));
   const tailLeft = Math.max(14, Math.min(boxW - 14, sc.x - boxLeft));
   const bottom = window.innerHeight - sc.top + 12;
@@ -23395,7 +23436,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
           border: '1.5px solid #0f4040', boxShadow: '0 10px 28px rgba(0,0,0,0.5)',
           animation: 'stooornaDockShortcutPop .18s ease-out', transformOrigin: `${tailLeft}px 100%`,
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-          maxHeight: 'min(52vh, 360px)', overflowY: sc.kind === 'call' ? 'auto' : 'visible',
+          maxHeight: 'min(52vh, 360px)', overflowY: (sc.kind === 'call' || sc.kind === 'ai') ? 'auto' : 'visible',
           WebkitOverflowScrolling: 'touch', userSelect: 'none', WebkitUserSelect: 'none',
         }}
       >
@@ -23417,6 +23458,34 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px 5px 6px', borderRadius: 14, border: `1px solid rgba(${it.rgb},0.3)`, background: `rgba(${it.rgb},0.07)`, cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
               >
                 <span style={{ ...circle(it.c, it.rgb, it.glow), width: 38, height: 38 }}>{it.icon}</span>
+                <span style={{ flex: 1, minWidth: 0, color: it.text, fontWeight: 800, fontSize: '0.84rem', whiteSpace: 'nowrap' }}>{it.label}</span>
+              </button>
+            ))}
+          </>
+        )}
+        {(sc.kind === 'ai' || sc.kind === 'settings') && (
+          <>
+            {(sc.kind === 'ai' ? ([
+              { key: 'req', label: 'Friend requests', c: '#f472b6', rgb: '244,114,182', text: '#fbcfe8', icon: <UserPlus size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('requests'); } },
+              { key: 'fr', label: 'My Friends', c: '#00BCD4', rgb: '0,188,212', text: '#67e8f9', icon: <Users size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('friends'); } },
+              { key: 'on', label: 'Online now', c: '#22c55e', rgb: '34,197,94', text: '#86efac', icon: <Radio size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('online'); } },
+              { key: 'chat', label: 'Open Chat', c: '#a78bfa', rgb: '167,139,250', text: '#ddd6fe', icon: <MessageCircle size={20} strokeWidth={2.3} />, run: () => { close(); openGeneralChat(); } },
+              { key: 'pay', label: 'Pay', c: '#facc15', rgb: '250,204,21', text: '#facc15', icon: <DockCardIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('pay'); } },
+              { key: 'about', label: 'About', c: '#e5e7eb', rgb: '229,231,235', text: '#e5e7eb', icon: <DockInfoIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockAiOpen('app'); } },
+            ]) : ([
+              { key: 'profile', label: 'Profile', c: '#00BCD4', rgb: '0,188,212', text: '#67e8f9', icon: <DockUserIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockSettingsStart = '/settings'; dockSettingsNonce += 1; dockSet({ kind: 'settings', x: sc.x }); } }, // Profile = the Settings page on its PROFILE tab (fresh start)
+              { key: 'privacy', label: 'Privacy', c: '#22c55e', rgb: '34,197,94', text: '#86efac', icon: <DockShieldIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockSettingsStartSet('/privacy'); dockSet({ kind: 'settings', x: sc.x }); } },
+            ])).map(it => (
+              <button
+                key={it.key}
+                type="button"
+                role="menuitem"
+                aria-label={it.label}
+                title={it.label}
+                onClick={it.run}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px 5px 6px', borderRadius: 14, border: `1px solid rgba(${it.rgb},0.3)`, background: `rgba(${it.rgb},0.07)`, cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
+              >
+                <span style={{ ...circle(it.c, it.rgb, false), width: 38, height: 38 }}>{it.icon}</span>
                 <span style={{ flex: 1, minWidth: 0, color: it.text, fontWeight: 800, fontSize: '0.84rem', whiteSpace: 'nowrap' }}>{it.label}</span>
               </button>
             ))}
@@ -29350,6 +29419,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <>
           <DockBubbleHost guestMode={guestMode} user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} />
           <DockShortcutHost user={user} navigate={navigate} myLiveBroadcastKind={myLiveBroadcastKind} setProfilePlusOpen={setProfilePlusOpen} setShowPublicVoice={setShowPublicVoice} /> {/* DOCK-SHORTCUTS */}
+          <DockAiPanelsHost user={user} /> {/* DOCK-SHORTCUTS: Ai pages opened from the long-press menu */}
           </>
         )}
         <StooornaAiSheet
@@ -29524,6 +29594,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <StooornaAiIcon
                         active={aiOpen}
                         onClick={() => setAiOpen(v => !v)}
+                        onLongPress={(el) => openDockShortcut('ai', el)} /* DOCK-SHORTCUTS */
                         size={44}
                       />
                     </div>
@@ -29601,7 +29672,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 <motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
+                    onPointerDown={(e) => { const el = e.currentTarget as HTMLElement; settingsDockLongPress.start(() => openDockShortcut('settings', el)); }} /* DOCK-SHORTCUTS */
+                    onPointerUp={settingsDockLongPress.end}
+                    onPointerLeave={settingsDockLongPress.end}
+                    onPointerCancel={settingsDockLongPress.end}
+                    onContextMenu={(e) => e.preventDefault()}
                     onClick={(e) => {
+                        if (settingsDockLongPress.st.fired) { settingsDockLongPress.st.fired = false; return; } // DOCK-SHORTCUTS
+                        dockSettingsStartSet('/settings'); // a normal tap always opens the Settings page itself
                         try { sessionStorage.setItem('stooorna_settings_alert_seen', String(Date.now())); } catch { /* */ }
                         setDockSettingsGray(false);
                         openDockBubble('settings', e.currentTarget);
@@ -29609,6 +29687,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     aria-label="Settings"
                     title="Settings"
                     style={{
+                      WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
                       width: 44, height: 44, borderRadius: '50%',
                       // Settings only: gray icon + gray frame (the other dock icons stay white)
                       border: `1.5px solid ${dockSettingsGray ? '#4b5563' : '#9ca3af'}`,
