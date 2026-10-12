@@ -8,8 +8,8 @@ interface StooornaAiIconProps {
 
 /**
  * Bottom-bar icon for Stooorna Ai.
- * White rounded square with the black Stooorna globe logo inside.
- * The globe rotates slowly.
+ * White circle with the black Stooorna globe logo inside.
+ * The globe rotates slowly (clockwise); a ring around it rotates even more slowly the opposite way (counter-clockwise).
  * Place this between LIVE and Templates in the bottom navigation.
  */
 export default function StooornaAiIcon({ active = false, onClick, size = 42 }: StooornaAiIconProps) {
@@ -24,7 +24,8 @@ export default function StooornaAiIcon({ active = false, onClick, size = 42 }: S
       style={{
         width: size,
         height: size,
-        borderRadius: 14, // semi-circular / rounded square
+        borderRadius: '50%', // circle
+        position: 'relative',
         border: active ? '1.5px solid #ef4444' : '1px solid rgba(255,255,255,0.9)',
         background: '#ffffff',
         color: '#000000',
@@ -41,6 +42,21 @@ export default function StooornaAiIcon({ active = false, onClick, size = 42 }: S
         flexShrink: 0,
       }}
     >
+      {/* Frame ring — slow rotation, opposite direction to the globe */}
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 2,
+          borderRadius: '50%',
+          background: 'conic-gradient(from 0deg, #000 0deg 70deg, transparent 70deg 180deg, #000 180deg 250deg, transparent 250deg 360deg)',
+          WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))',
+          mask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))',
+          animation: 'stooornaAiIconRing 14s linear infinite',
+          pointerEvents: 'none',
+        }}
+      />
+
       {/* Stooorna Ai globe logo (black on white) — slow rotation */}
       <svg
         width={glyph}
@@ -52,7 +68,7 @@ export default function StooornaAiIcon({ active = false, onClick, size = 42 }: S
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden="true"
-        style={{ animation: 'stooornaAiIconGlobe 9s linear infinite', transformOrigin: '50% 50%' }}
+        style={{ animation: 'stooornaAiIconGlobe 9s linear infinite', transformOrigin: '50% 50%', position: 'relative' }}
       >
         <path d="M21.54 15H17a2 2 0 0 0-2 2v4.54" />
         <path d="M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17" />
@@ -65,8 +81,12 @@ export default function StooornaAiIcon({ active = false, onClick, size = 42 }: S
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        @keyframes stooornaAiIconRing {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(-360deg); }
+        }
         @media (prefers-reduced-motion: reduce) {
-          [aria-label="Stooorna Ai"] svg { animation: none !important; }
+          [aria-label="Stooorna Ai"] svg, [aria-label="Stooorna Ai"] span { animation: none !important; }
         }
       `}</style>
     </button>
