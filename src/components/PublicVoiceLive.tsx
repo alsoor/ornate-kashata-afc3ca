@@ -597,7 +597,7 @@ export default function PublicVoiceLive({
   const miniName = talker?.name || (talking ? (userName || 'You') : 'Public Voice');
   if (minimized) {
     return (
-      <div style={{ position: 'fixed', top: 'max(10px, env(safe-area-inset-top))', left: '50%', transform: 'translateX(-50%)', zIndex: 15050, width: 'min(92vw, 340px)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 16, background: 'rgba(6,16,18,0.96)', border: '1px solid rgba(239,68,68,0.45)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)', color: '#fff' }}>
+      <div style={{ position: 'fixed', top: 'max(10px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))', left: '50%', transform: 'translateX(-50%)', zIndex: 15050, width: 'min(92vw, 340px)', display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 16, background: 'rgba(6,16,18,0.96)', border: '1px solid rgba(239,68,68,0.45)', boxShadow: '0 10px 28px rgba(0,0,0,0.45)', color: '#fff' }}>
         <button type="button" onClick={onClose} aria-label="خروج من البث" style={{ width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', flexShrink: 0, background: 'rgba(239,68,68,0.16)', border: '1px solid rgba(239,68,68,0.5)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
           <LogOut size={17} strokeWidth={2.4} />
         </button>
@@ -640,7 +640,7 @@ export default function PublicVoiceLive({
         }
       `}</style>
 
-      <div style={{ padding: '8px 10px', display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div style={{ padding: 'calc(8px + max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px))) 10px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontWeight: 800, color: '#00BCD4', fontSize: 13 }}>Public Voice</p>
           <p style={{ margin: 0, fontSize: 10, color: 'rgba(150,200,200,0.65)' }}>Shared room</p>
@@ -664,7 +664,7 @@ export default function PublicVoiceLive({
           aria-label="تصغير البث للتصفح"
           title="تصغير — الصوت يبقى"
           style={{
-            position: 'absolute', top: 44, right: 10, zIndex: 30,
+            position: 'absolute', top: 'calc(44px + max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))', right: 10, zIndex: 30,
             width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
             background: 'rgba(0,188,212,0.14)', border: '1px solid rgba(0,188,212,0.45)',
             color: '#00BCD4', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
@@ -771,7 +771,7 @@ export default function PublicVoiceLive({
       </div>
 
       <div style={{
-        padding: '6px 10px max(10px, env(safe-area-inset-bottom))',
+        padding: '6px 10px max(10px, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
         display: 'flex',
         alignItems: 'center',
         gap: 8,
@@ -876,7 +876,7 @@ export default function PublicVoiceLive({
               background: 'linear-gradient(180deg, #0c1c1f 0%, #071112 100%)',
               borderTop: '1px solid rgba(0,188,212,0.25)',
               borderRadius: '16px 16px 0 0',
-              padding: '12px 12px max(16px, env(safe-area-inset-bottom))',
+              padding: '12px 12px max(16px, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
