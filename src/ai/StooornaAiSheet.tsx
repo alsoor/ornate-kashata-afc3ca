@@ -12,7 +12,7 @@ import AiQuickActions from './AiQuickActions'; // APP-ASSISTANT
 import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
 import { detectAppIntent, answerAppIntent, intentToPanel, type PanelKind } from './appAssistant'; // APP-ASSISTANT
 import { readFileForAi, speak, stopSpeaking, voiceOutputSupported } from './aiCapabilities'; // AI-CAPABILITIES: read files, voice replies
-import { installLocalAssistant } from './localAssistant'; // LOCAL-ASSISTANT: loads the free assistant with the sheet (added line)
+import { installLocalAssistant, localAnswer } from './localAssistant'; // LOCAL-ASSISTANT: loads the free assistant with the sheet (added line)
 
 interface Attachment {
   id: string;
@@ -1038,7 +1038,14 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
       }
       return notes;
     })();
-    filesReady.then(() => fetch(`${apiBase}/chat`, {
+    filesReady.then(async () => {
+      // LOCAL-ASSISTANT: answer free questions right here (chat + voice), without depending on the fetch hook
+      if (!fileAtts.length && content.indexOf('[File:') !== 0) {
+        let la: string | null = null;
+        try { la = await localAnswer(content, controller?.signal); } catch { la = null; }
+        if (la) return new Response(JSON.stringify({ reply: la }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return fetch(`${apiBase}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1046,7 +1053,8 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         history: nextMessages.slice(-12, -1).filter(m => m.content && m.type !== 'offer').map(m => ({ role: m.role, content: m.content })),
       }),
       signal: controller?.signal,
-    }))
+    });
+    })
       .then(async r => {
         if (!r.ok) {
           let detail = '';
