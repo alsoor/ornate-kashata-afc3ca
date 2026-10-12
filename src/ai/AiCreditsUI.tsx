@@ -36,7 +36,7 @@ export function CreditsChip({ balance, onClick }: { balance: number | null; onCl
 export function AiPlanDialog({ open, balance, onClose }: { open: boolean; balance: number | null; onClose: () => void }) {
   const [note, setNote] = useState('');
   if (!open) return null;
-  const empty = !canAfford(balance);
+  const empty = balance !== null && !canAfford(balance); // unknown balance (still loading) is never shown as "out of points"
   const pay = async () => {
     setNote('');
     const ok = await startPayment(); // opens nothing until Google Pay is connected

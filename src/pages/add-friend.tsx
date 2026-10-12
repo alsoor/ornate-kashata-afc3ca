@@ -23356,9 +23356,8 @@ function DockAiPanelsHost({ user }: { user: any }) {
       const t = (e as CustomEvent).detail?.target as DockAiTarget | undefined;
       if (!t) return;
       if (t === 'pay') {
-        setBalance(null);
-        setPlanOpen(true);
-        void getCredits(user).then(c => { if (c) setBalance(c.balance); }).catch(() => { /* */ });
+        // open the plan box only AFTER the balance is known, so it never flashes "You're out of points" first
+        void getCredits(user).then(c => { setBalance(c ? c.balance : null); }).catch(() => { /* */ }).finally(() => setPlanOpen(true));
       } else setPanel(t);
     };
     window.addEventListener('stooorna:dock-ai-open', h);
