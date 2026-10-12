@@ -243,6 +243,25 @@ function smallTalk(q: string): AssistantAnswer | null {
   return null;
 }
 
+// ───────────────────────── Google search (Arabic + English, fresh results) ─────────────────────────
+const hasArabic = (t: string) => /[\u0600-\u06FF]/.test(t);
+const TIMELY_RE = /(latest|newest|new |best|today|tonight|tomorrow|yesterday|current|right now|news|price|prices|score|scores|weather|release|released|update|trending|top \d*|this (year|week|month)|202\d|أحدث|احدث|جديد|الجديد|اخر|آخر|اليوم|الان|الآن|امس|أمس|بكرة|غدا|غداً|اخبار|أخبار|سعر|اسعار|أسعار|افضل|أفضل|نتيجة|نتائج|مباراة|طقس|الطقس|ترند)/i;
+const isTimely = (q: string) => TIMELY_RE.test(q);
+
+/** google.com link: language follows the text (Arabic -> hl=ar), time-sensitive questions get the current year and "past year" results. */
+function googleUrl(q: string, kind: 'web' | 'images' | 'videos' | 'news' = 'web'): string {
+  const text = q.trim();
+  const year = new Date().getFullYear();
+  const timely = isTimely(text);
+  const query = timely && !/\b20\d{2}\b/.test(text) ? `${text} ${year}` : text;
+  const p = new URLSearchParams({ q: query, hl: hasArabic(text) ? 'ar' : 'en' });
+  if (kind === 'images') p.set('tbm', 'isch');
+  else if (kind === 'videos') p.set('tbm', 'vid');
+  else if (kind === 'news') p.set('tbm', 'nws');
+  else if (timely) p.set('tbs', 'qdr:y');
+  return `https://www.google.com/search?${p.toString()}`;
+}
+
 const wantsImages = (q: string) => /(image|images|picture|pictures|photo|photos|show me)/i.test(q);
 
 // ───────────────────────── fallback: Wikipedia from the device ─────────────────────────
@@ -299,6 +318,12 @@ async function duckFallback(q: string, signal: AbortSignal): Promise<AssistantAn
 async function askAssistant(q: string, signal: AbortSignal, _name = ''): Promise<AssistantAnswer> {
   const local = localIntent(q) || smallTalk(q);
   if (local) return local;
+  if (isTimely(q)) {
+    const t = hasArabic(q)
+      ? 'هذا السؤال يحتاج نتائج حديثة، جهّزت لك بحث جوجل تحت.'
+      : 'That needs fresh results, so I prepared the Google search for you below.';
+    return { text: t, spoken: hasArabic(q) ? 'Opening fresh results on Google below.' : t, images: [], sources: [{ title: 'google.com', url: googleUrl(q) }], provider: 'google', lang: 'en' };
+  }
   try {
     const d = await duckFallback(q, signal); // free, no key
     if (d) return d;
@@ -590,7 +615,18 @@ export function VoiceAssistantHost() {
     stopSpeaking();
     try { abortRef.current?.abort(); } catch { /* ignore */ }
     followUpRef.current = false;
-    void ask(q, session, true);
+    if (localIntent(q) || smallTalk(q)) { void ask(q, session, true); return; } // time, math, jokes... answered right here
+    const url = googleUrl(q);
+    setQuestion(q);
+    setError('');
+    setNotice('');
+    setTyping(false);
+    setAnswer({
+      text: hasArabic(q) ? `نتائج جوجل لـ «${q}»` : `Google results for “${q}”`,
+      spoken: '', images: [], sources: [{ title: 'google.com', url }], provider: 'google', lang: 'en',
+    });
+    setPhase('idle');
+    try { window.open(url, '_blank', 'noopener'); } catch { /* the link below still works */ }
   }, [searchText, ask, killRecognition]);
 
   /** Listens in American English (en-US). */
@@ -958,7 +994,7 @@ export function VoiceAssistantHost() {
               value={searchText}
               onChange={e => setSearchText(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runTyped(); (e.target as HTMLInputElement).blur(); } }}
-              placeholder="Search anything…"
+              placeholder="Search Google · ابحث في جوجل"
               enterKeyHint="search"
               autoComplete="off"
               style={{ flex: 1, minWidth: 0, height: 44, border: 'none', outline: 'none', background: 'transparent', fontSize: 15, fontWeight: 300, color: '#000' }}
@@ -1034,12 +1070,13 @@ export function VoiceAssistantHost() {
           ) : null}
           {(question || answer) && (question || searchText) ? (
             <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: '6px 16px' }}>
-              {[
-                ['Search the web', 'https://www.google.com/search?q='],
-                ['Images', 'https://www.google.com/search?tbm=isch&q='],
-                ['Videos', 'https://www.youtube.com/results?search_query='],
-              ].map(([label, base]) => (
-                <a key={label} href={base + encodeURIComponent(question || searchText)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 400, color: '#111', textDecoration: 'underline' }}>
+              {([
+                ['Google · بحث', 'web'],
+                ['Images · صور', 'images'],
+                ['Videos · فيديو', 'videos'],
+                ['News · أخبار', 'news'],
+              ] as const).map(([label, kind]) => (
+                <a key={kind} href={googleUrl(question || searchText, kind)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, fontWeight: 400, color: '#111', textDecoration: 'underline' }}>
                   {label}
                 </a>
               ))}
