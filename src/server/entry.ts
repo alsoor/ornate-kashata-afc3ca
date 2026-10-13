@@ -28,6 +28,7 @@ import { registerAiIconRoutes } from "./ai-icon-patch.js"; // AI-ICON-PATCH (own
 import { registerImageProxyRoutes } from "./image-proxy-patch.js"; // IMAGE-PROXY-PATCH (save photos from the Ai chat)
 import { registerAiFreeRoutes } from "./ai-free-routes.js"; // AI-FREE (free chat / search / image / file routes for Stooorna Ai)
 import { registerFriendChatRoutes } from "./friend-chat-routes.js"; // FRIEND-CHAT-ROUTES (dedicated table, no hidden marker)
+import { registerFriendGroupChatRoutes } from "./friend-group-chat-routes.js"; // FRIEND-GROUP-CHAT (groups inside friend chat)
 import { createLiveBoxRouter } from "./liveBox.server.js"; // TREASURE-BOX
 
 // <api-imports>
@@ -1313,6 +1314,24 @@ registerFriendChatRoutes(app, {
     return accepted.some((f) => String(f?.friendId || "") === peerId);
   },
   push: (toId, fromName, text) => sendFcmToUser({ userId: toId, title: fromName, body: text, url: `/?openChat=1&peerName=${encodeURIComponent(fromName || "")}`, type: "message" as any }),
+});
+// ── FRIEND-GROUP-CHAT: قروبات داخل شات الأصدقاء (جداول fgc_*) — إضافة مستقلة، لا تلمس مسارات الشات القديمة ──
+registerFriendGroupChatRoutes(app, {
+  pool: templatesPool,
+  getUser: (req) => session.user(req),
+  isFriend: async (req, meId, peerId) => {
+    let body: any = null;
+    const fake: any = {
+      statusCode: 200, headersSent: false,
+      setHeader() { return fake; }, set() { return fake; }, header() { return fake; }, type() { return fake; },
+      status(c: number) { fake.statusCode = c; return fake; },
+      json(x: unknown) { body = x; return fake; }, send(x: unknown) { body = x; return fake; }, end() { return fake; },
+    };
+    await (friends_get_5 as any)(req, fake);
+    const accepted: Array<{ friendId?: string }> = Array.isArray(body?.accepted) ? body.accepted : [];
+    return accepted.some((f) => String(f?.friendId || "") === peerId);
+  },
+  push: (toId, title, text) => sendFcmToUser({ userId: toId, title, body: text, url: `/?openChat=1`, type: "message" as any }),
 });
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });

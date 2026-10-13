@@ -21,7 +21,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X, Image as ImageIcon } from 'lucide-react';
+import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X, Plus, Image as ImageIcon } from 'lucide-react';
 import { loadDashboard } from './appAssistant';
 // FRIEND-VOICE-LIVE: بث صوتي مباشر على المايك الأحمر داخل شات الصديق (ملف مستقل)
 import FriendVoiceLive, { FRIEND_VOICE_TAP_EVENT } from './FriendVoiceLive';
@@ -31,7 +31,7 @@ import { encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeS
 const LocationPickerSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationPickerSheet })));
 const LocationViewSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationViewSheet })));
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.8.0';
+export const FRIEND_CHAT_PATCH_VERSION = '1.9.0'; // 1.9.0: GROUP-CHAT
 
 /**
  * LOCATION-FREEZE-FIX: full-screen layer that lives on document.body (outside the Ai sheet).
@@ -87,6 +87,7 @@ interface Presence { online?: boolean; lastSeen?: number | null; typing?: boolea
 interface ChatMsg {
   id: string; clientId?: string; from: string; to?: string; text: string; ts: number;
   status?: 'sending' | 'sent' | 'failed'; read?: boolean; reaction?: string;
+  fromName?: string; kind?: 'text' | 'system'; // GROUP-CHAT
 }
 interface Adapter {
   listFriends(me: Me): Promise<Friend[]>;
@@ -241,7 +242,50 @@ const restAdapter: Adapter = {
   },
 };
 
-const adapter = (): Adapter => ({ ...restAdapter, ...((window as any).__STOOORNA_FRIEND_CHAT__ || {}) });
+/* ───────── GROUP-CHAT: قروبات داخل نفس الشات ─────────
+ * القروب يُعامل كأنه "صديق" معرّفه g:<groupId> ، فكل شيء موجود (الكاش، الإرسال، الصور، القائمة، العدّاد) يشتغل عليه.
+ * المسارات على /api/friend-group/* (ملف friend-group-chat-routes.ts). الشات العادي بين شخصين لم يتغير أبداً. */
+const isGroupId = (id?: string | null): boolean => !!id && id.startsWith('g:');
+const gid = (id: string): string => id.slice(2);
+const GROUP_GONE = 'GROUP_GONE';
+interface GroupMember { id: string; name: string; avatar?: string | null }
+interface GroupInfo { id: string; name: string; ownerId: string; members: GroupMember[] }
+async function gapi<T = any>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(`/api/friend-group${path}`, {
+    credentials: 'include', ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  if (r.status === 403 || r.status === 404) throw new Error(GROUP_GONE);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+const toGroupMsg = (o: any): ChatMsg => ({
+  id: `db-${o.id}`, ...(o.clientId ? { clientId: String(o.clientId) } : {}),
+  from: String(o.from), text: String(o.text ?? ''), ts: asTs(o.ts), read: !!o.read, status: 'sent',
+  fromName: o.fromName ? String(o.fromName) : undefined, kind: o.kind === 'system' ? 'system' : 'text',
+});
+const adapter = (): Adapter => {
+  const b: Adapter = { ...restAdapter, ...((window as any).__STOOORNA_FRIEND_CHAT__ || {}) };
+  return {
+    ...b,
+    fetchMessages: (me, pid) => isGroupId(pid) ? gapi(`/${gid(pid)}/messages`).then(d => (d?.messages || []).map(toGroupMsg)) : b.fetchMessages(me, pid),
+    send: (me, pid, text, cid) => isGroupId(pid)
+      ? gapi(`/${gid(pid)}/messages`, { method: 'POST', body: JSON.stringify({ body: text, clientId: cid }) }).then(d => (typeof d?.id === 'number' ? { id: `db-${d.id}`, ...(typeof d?.ts === 'number' ? { ts: d.ts } : {}) } : undefined))
+      : b.send(me, pid, text, cid),
+    unread: async (me) => {
+      const base = { ...(await b.unread(me)) };
+      try {
+        const d = await gapi('/unread');
+        Object.entries(d?.byGroup || {}).forEach(([k, v]) => { const n = Number(v || 0); if (n > 0) base[`g:${k}`] = n; });
+      } catch { /* */ }
+      return base;
+    },
+    markRead: (me, pid) => (isGroupId(pid) ? Promise.resolve() : b.markRead(me, pid)), // GET messages already marks the group as read
+    presence: (me, pid) => (isGroupId(pid) ? Promise.resolve({}) : b.presence(me, pid)),
+    typing: (me, pid) => (isGroupId(pid) ? Promise.resolve() : b.typing(me, pid)),
+    react: (me, pid, mid, em) => (isGroupId(pid) ? Promise.resolve() : b.react(me, pid, mid, em)),
+  };
+};
 
 /* ───────────────────────── Helpers ───────────────────────── */
 const DARK_GREEN = '#0a1f1a';
@@ -400,6 +444,12 @@ function FriendChatPatch() {
   const [locView, setLocView] = useState<{ lat: number; lng: number; label: string; name?: string | null; avatar?: string | null } | null>(null);
   const [imgView, setImgView] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // GROUP-CHAT: members of the open group, invite sheet
+  const [groupInfo, setGroupInfo] = useState<GroupInfo | null>(null);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteSel, setInviteSel] = useState<string[]>([]);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const isGroup = isGroupId(peer?.id);
   const photoRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (!sheet || mode !== 'chat' || !peer) { setPlusOpen(false); setLocPickerOpen(false); setLocView(null); setImgView(null); } }, [sheet, mode, peer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -471,7 +521,7 @@ function FriendChatPatch() {
           void adapter().markRead(me, peer.id);
           setUnread(u => { const n = { ...u }; delete n[peer.id]; return n; });
         }
-      } catch { /* offline: keep cache */ }
+      } catch (e: any) { if (e?.message === GROUP_GONE && isGroupId(peer.id)) dropGroup(peer.id); /* offline: keep cache */ }
     };
     void pull();
     const t = window.setInterval(pull, 3000);
@@ -563,6 +613,54 @@ function FriendChatPatch() {
     }
   }, [me]);
   const sendRef = useRef(sendText); sendRef.current = sendText;
+
+  /* GROUP-CHAT ─ removed / left / group deleted => clean it from the list and go back */
+  const dropGroup = (id: string, msg = 'لم تعد عضواً في هذا القروب') => {
+    const m = meRef.current;
+    setRecents(prev => { const next = prev.filter(r => r.id !== id); if (m) saveRecents(m.id, next); return next; });
+    if (peerRef.current?.id === id) { setPeer(null); setListOpen(false); }
+    setGroupInfo(null); setInviteOpen(false); flash(msg);
+  };
+  /* GROUP-CHAT ─ live members of the open group (also detects "you were removed") */
+  useEffect(() => {
+    if (mode !== 'chat' || !peer || !isGroupId(peer.id) || !me) { setGroupInfo(null); return; }
+    let alive = true;
+    const pull = async () => {
+      try {
+        const d = await gapi<GroupInfo>(`/${gid(peer.id)}`);
+        if (!alive) return;
+        setGroupInfo(d);
+        setPeer(p => (p && p.id === peer.id && p.name !== d.name ? { ...p, name: d.name } : p));
+      } catch (e: any) { if (alive && e?.message === GROUP_GONE) dropGroup(peer.id); }
+    };
+    void pull();
+    const t = window.setInterval(pull, 4000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [mode, peer?.id, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* GROUP-CHAT ─ groups you were added to appear in the chat list; groups you were removed from disappear */
+  useEffect(() => {
+    if (mode !== 'chat' || !me) return;
+    let alive = true;
+    const sync = async () => {
+      try {
+        const d = await gapi<{ groups: GroupInfo[] }>('/list');
+        if (!alive) return;
+        const mine = new Map((d.groups || []).map(g => [`g:${g.id}`, g] as [string, GroupInfo]));
+        setRecents(prev => {
+          const kept = prev.filter(r => !isGroupId(r.id) || mine.has(r.id));
+          const have = new Set(kept.map(r => r.id));
+          const added: Recent[] = [];
+          mine.forEach((g, k) => { if (!have.has(k)) added.push({ id: k, name: g.name, avatar: null, ts: Date.now() }); });
+          if (!added.length && kept.length === prev.length) return prev;
+          const next = [...added, ...kept]; saveRecents(me.id, next); return next;
+        });
+      } catch { /* */ }
+    };
+    void sync();
+    const t = window.setInterval(sync, 7000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [mode, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setInviteOpen(false); setInviteSel([]); }, [peer?.id, mode]);
 
   /* FRIEND-CHAT-MEDIA ─ location: same encoding as the Saved Messages chat, travels as the message text */
   const sendPickedLocation = (lat: number, lng: number, label: string) => {
@@ -691,7 +789,7 @@ function FriendChatPatch() {
       }
       else if (label === 'Voice') { // FRIEND-VOICE-LIVE: داخل شات صديق = بث صوتي مباشر ؛ خارج الشات = النص فقط
         e.preventDefault(); e.stopPropagation();
-        if (!peerRef.current) flash('النص فقط متاح في شات الأصدقاء حالياً'); else window.dispatchEvent(new CustomEvent(FRIEND_VOICE_TAP_EVENT));
+        if (!peerRef.current) flash('النص فقط متاح في شات الأصدقاء حالياً'); else if (isGroupId(peerRef.current.id)) flash('البث الصوتي غير متاح في القروب حالياً'); else window.dispatchEvent(new CustomEvent(FRIEND_VOICE_TAP_EVENT));
       }
     };
     const onSubmit = (e: Event) => {
@@ -767,6 +865,48 @@ function FriendChatPatch() {
       setRecents(next); saveRecents(me.id, next);
     }
   };
+  /* GROUP-CHAT ─ invite / leave / kick */
+  const myName = me?.name || me?.username || 'me';
+  const myAvatar = me?.avatarUrl || me?.image || null;
+  const isOwner = !!groupInfo && groupInfo.ownerId === me?.id;
+  const inviteCandidates = (friends || []).filter(f => f.id !== me?.id && (isGroup ? !groupInfo?.members.some(m => m.id === f.id) : f.id !== peer?.id));
+  const doInvite = async () => {
+    if (!me || !peer || !inviteSel.length || inviteBusy) return;
+    const chosen = inviteCandidates.filter(f => inviteSel.includes(f.id));
+    if (!chosen.length) return;
+    setInviteBusy(true);
+    try {
+      if (isGroup) {
+        for (const f of chosen) await gapi(`/${gid(peer.id)}/invite`, { method: 'POST', body: JSON.stringify({ userId: f.id, name: f.name, avatar: f.avatar ?? null }) });
+        const d = await gapi<GroupInfo>(`/${gid(peer.id)}`); setGroupInfo(d);
+        flash('تمت الدعوة');
+      } else {
+        const ms = [peer, ...chosen];
+        const d = await gapi<{ id: string; name: string }>('/create', { method: 'POST', body: JSON.stringify({
+          name: [myName, ...ms.map(x => x.name)].join(', '), me: { name: myName, avatar: myAvatar },
+          members: ms.map(x => ({ id: x.id, name: x.name, avatar: x.avatar ?? null })),
+        }) });
+        openPeer({ id: `g:${d.id}`, name: d.name, avatar: null });
+      }
+      setInviteOpen(false); setInviteSel([]);
+    } catch (e: any) { flash(e?.message === GROUP_GONE ? 'لا تملك صلاحية الدعوة (أو لم تعد عضواً)' : 'تعذرت الدعوة — تأكد أنه من أصدقائك'); }
+    finally { setInviteBusy(false); }
+  };
+  const leaveGroup = async () => {
+    if (!peer || !isGroup) return;
+    if (!window.confirm('Leave this group?')) return;
+    try { await gapi(`/${gid(peer.id)}/leave`, { method: 'POST' }); dropGroup(peer.id, 'غادرت القروب'); }
+    catch (e: any) { if (e?.message === GROUP_GONE) dropGroup(peer.id); else flash('تعذرت المغادرة'); }
+  };
+  const kickMember = async (m: GroupMember) => {
+    if (!peer || !isGroup || !isOwner || m.id === me?.id) return;
+    if (!window.confirm(`Remove ${m.name} from the group?`)) return;
+    try {
+      await gapi(`/${gid(peer.id)}/kick`, { method: 'POST', body: JSON.stringify({ userId: m.id }) });
+      setGroupInfo(g => (g ? { ...g, members: g.members.filter(x => x.id !== m.id) } : g));
+      flash(`تم طرد ${m.name}`);
+    } catch { flash('تعذر الطرد'); }
+  };
   /* REACTIONS: long-press (0.45s) on the friend's message -> emoji bubble in the middle -> pick -> sticks on the message */
   const reactionOf = (m: ChatMsg): string => (reactions[m.id] !== undefined ? reactions[m.id] : m.reaction || '');
   const clearPress = () => { if (pressTimer.current) { window.clearTimeout(pressTimer.current); pressTimer.current = 0; } };
@@ -819,8 +959,15 @@ function FriendChatPatch() {
   /** delete whole conversations from your side (no server change): hides everything up to now, removes the rectangle */
   const deleteChats = async (ids: string[]) => {
     if (!me || !ids.length) return;
-    if (!window.confirm(`Delete ${ids.length > 1 ? ids.length + ' chats' : 'this chat'}? It will be cleared from your side only.`)) return;
+    if (!window.confirm(ids.some(isGroupId)
+      ? `Delete ${ids.length > 1 ? ids.length + ' chats' : 'this chat'}? Groups will be left, other chats are cleared from your side only.`
+      : `Delete ${ids.length > 1 ? ids.length + ' chats' : 'this chat'}? It will be cleared from your side only.`)) return;
     for (const id of ids) {
+      if (isGroupId(id)) { // GROUP-CHAT: deleting a group from the list = leaving it
+        try { await gapi(`/${gid(id)}/leave`, { method: 'POST' }); } catch { /* already gone */ }
+        try { localStorage.removeItem(cacheKey(me.id, id)); } catch { /* */ }
+        continue;
+      }
       let latest = Date.now();
       try { const msgs = await adapter().fetchMessages(me, id); msgs.forEach(m => { if (m.ts > latest) latest = m.ts; }); } catch { /* */ } // opening = marks incoming as read
       try { localStorage.setItem(clearKey(me.id, id), String(latest)); localStorage.removeItem(cacheKey(me.id, id)); } catch { /* */ }
@@ -895,7 +1042,7 @@ function FriendChatPatch() {
         <div
           data-sfc-portal="1"
           style={{
-            position: 'absolute', left: pillLeft, right: 12, top: 0, bottom: 0, display: 'flex', alignItems: 'center',
+            position: 'absolute', left: pillLeft, right: peer ? 62 : 12, top: 0, bottom: 0, display: 'flex', alignItems: 'center',
             zIndex: 6, pointerEvents: 'none',
           }}
         >
@@ -916,6 +1063,81 @@ function FriendChatPatch() {
           </button>
         </div>,
         sheet.header,
+      )}
+
+      {/* GROUP-CHAT: "+" (where the red dot was) -> invite friends into this chat (turns it into a group) */}
+      {mode === 'chat' && peer && !selectMode && createPortal(
+        <div data-sfc-portal="1" style={{ position: 'absolute', right: 12, top: 0, bottom: 0, display: 'flex', alignItems: 'center', zIndex: 9, pointerEvents: 'none' }}>
+          <button
+            type="button" aria-label="Invite friends" onClick={() => { setInviteSel([]); setInviteOpen(true); }}
+            style={{ pointerEvents: 'auto', width: 42, height: 42, borderRadius: '50%', border: 'none', cursor: 'pointer', background: DARK_GREEN, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.25)', padding: 0, WebkitTapHighlightColor: 'transparent' }}
+          ><Plus size={22} strokeWidth={2.6} /></button>
+        </div>,
+        sheet.header,
+      )}
+
+      {/* GROUP-CHAT: members strip (tap a member = owner removes him) + Leave */}
+      {mode === 'chat' && peer && isGroup && groupInfo && createPortal(
+        <div style={{ position: 'absolute', left: 0, right: 0, top: rect.top, height: 66, zIndex: 11, background: '#fff', borderBottom: '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 8, padding: '0 10px' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: 12, overflowX: 'auto', alignItems: 'center', scrollbarWidth: 'none' }}>
+            {groupInfo.members.map(m => {
+              const canKick = isOwner && m.id !== me?.id;
+              return (
+                <button
+                  key={m.id} type="button" title={m.name}
+                  onClick={() => (canKick ? void kickMember(m) : flash(m.id === groupInfo.ownerId ? `${m.name} — صاحب القروب` : m.name))}
+                  style={{ flexShrink: 0, border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, width: 52, WebkitTapHighlightColor: 'transparent' }}
+                >
+                  <span style={{ position: 'relative', display: 'block' }}>
+                    {m.avatar
+                      ? <img src={m.avatar} alt="" style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', display: 'block', border: m.id === groupInfo.ownerId ? '2px solid #f59e0b' : '2px solid transparent' }} />
+                      : <span style={{ width: 38, height: 38, borderRadius: '50%', background: DARK_GREEN, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, border: m.id === groupInfo.ownerId ? '2px solid #f59e0b' : '2px solid transparent', boxSizing: 'border-box' }}>{(m.name[0] || '?').toUpperCase()}</span>}
+                    {canKick && <span style={{ position: 'absolute', top: -3, right: -3, width: 15, height: 15, borderRadius: '50%', background: '#ef4444', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={10} strokeWidth={3} /></span>}
+                  </span>
+                  <span style={{ fontSize: 10.5, color: '#4b5563', maxWidth: 52, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.id === me?.id ? 'You' : m.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <button
+            type="button" onClick={() => void leaveGroup()}
+            style={{ flexShrink: 0, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', borderRadius: 999, padding: '8px 14px', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}
+          >Leave</button>
+        </div>,
+        sheet.inner,
+      )}
+
+      {/* GROUP-CHAT: invite sheet */}
+      {mode === 'chat' && peer && inviteOpen && createPortal(
+        <>
+          <div role="presentation" onClick={() => setInviteOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 49, background: 'rgba(0,0,0,0.3)' }} />
+          <div onClick={e => e.stopPropagation()} style={{ position: 'absolute', left: 10, right: 10, bottom: rect.bottom + 8, zIndex: 50, maxHeight: '62%', display: 'flex', flexDirection: 'column', background: '#fff', borderRadius: 20, boxShadow: '0 12px 36px rgba(0,0,0,0.3)', padding: 10, animation: 'sfcPop 0.18s ease-out' }}>
+            <p style={{ margin: '4px 8px 8px', fontWeight: 800, fontSize: 15, color: '#222' }}>{isGroup ? 'ادعُ أصدقاء للقروب' : 'ادعُ أصدقاء — يتحول الشات إلى قروب'}</p>
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {friends === null && <p style={emptyStyle}>…</p>}
+              {friends !== null && inviteCandidates.length === 0 && <p style={emptyStyle}>لا يوجد أصدقاء آخرون لدعوتهم</p>}
+              {inviteCandidates.map(f => {
+                const on = inviteSel.includes(f.id);
+                return (
+                  <button key={f.id} type="button" onClick={() => setInviteSel(a => (a.includes(f.id) ? a.filter(x => x !== f.id) : [...a, f.id]))} style={{ ...rowStyle, background: on ? 'rgba(10,31,26,0.07)' : 'transparent' }}>
+                    {f.avatar
+                      ? <img src={f.avatar} alt="" style={{ ...circle, objectFit: 'cover' }} />
+                      : <span style={{ ...circle, background: DARK_GREEN, color: '#fff' }}>{(f.name[0] || '?').toUpperCase()}</span>}
+                    <span style={nameStyle}>{f.name}</span>
+                    <span style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${DARK_GREEN}`, background: on ? DARK_GREEN : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      {on && <Check size={14} color="#fff" strokeWidth={3} />}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button" disabled={!inviteSel.length || inviteBusy} onClick={() => void doInvite()}
+              style={{ marginTop: 8, border: 'none', borderRadius: 999, padding: '12px 16px', fontWeight: 800, fontSize: 15, color: '#fff', background: inviteSel.length ? DARK_GREEN : '#d1d5db', cursor: inviteSel.length && !inviteBusy ? 'pointer' : 'default', opacity: inviteBusy ? 0.7 : 1 }}
+            >{inviteBusy ? '…' : inviteSel.length ? `Invite (${inviteSel.length})` : 'Invite'}</button>
+          </div>
+        </>,
+        sheet.inner,
       )}
 
       {/* PRESENCE: small white tag under the friend's name (red line) */}
@@ -945,7 +1167,7 @@ function FriendChatPatch() {
       {mode === 'chat' && createPortal(
         <div
           style={{
-            position: 'absolute', left: 0, right: 0, top: rect.top, bottom: rect.bottom, zIndex: 10,
+            position: 'absolute', left: 0, right: 0, top: rect.top + (peer && isGroup ? 66 : 0), bottom: rect.bottom, zIndex: 10,
             background: '#fff', display: 'flex', flexDirection: 'column', overflowY: 'auto',
             padding: '16px 14px', gap: 8,
           }}
@@ -1002,12 +1224,16 @@ function FriendChatPatch() {
             </div>
           )}
           {peer && (chat.peerId === peer.id ? chat.list : []).map(m => {
+            if (m.kind === 'system') { // GROUP-CHAT: "X joined / left / was removed"
+              return <div key={m.clientId || m.id} dir="auto" style={{ alignSelf: 'center', background: 'rgba(0,0,0,0.06)', color: '#6b7280', fontSize: 12, padding: '4px 12px', borderRadius: 999, textAlign: 'center', maxWidth: '90%' }}>{m.text}</div>;
+            }
             const mine = m.from === myId;
             const loc = decodeSavedLocation(m.text); // FRIEND-CHAT-MEDIA
             const med = loc ? null : decodeSavedMediaLink(m.text); // FRIEND-CHAT-MEDIA
             const media = !!loc || !!med;
             return (
               <div key={m.clientId || m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+                {isGroup && !mine && m.fromName && <span dir="auto" style={{ fontSize: 11.5, fontWeight: 700, color: '#0f766e', margin: '0 6px 2px' }}>{m.fromName}</span>}
                 <div style={{ position: 'relative', maxWidth: '100%', marginBottom: reactionOf(m) ? 12 : 0 }}>
                 <div
                   dir="auto"
@@ -1116,7 +1342,7 @@ function FriendChatPatch() {
       )}
 
       {/* FRIEND-VOICE-LIVE: ذبذبات + بث صوتي على المايك الأحمر (داخل شات الصديق فقط) */}
-      <FriendVoiceLive me={me} peer={peer} active={mode === 'chat' && !!peer} formEl={sheet.form} onFlash={flash} />
+      <FriendVoiceLive me={me} peer={peer} active={mode === 'chat' && !!peer && !isGroup} formEl={sheet.form} onFlash={flash} />
 
       {/* FRIEND-CHAT-MEDIA: hidden photo input (opened from the "+" menu) */}
       <input ref={photoRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
