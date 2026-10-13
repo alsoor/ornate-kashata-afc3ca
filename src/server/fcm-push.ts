@@ -124,7 +124,10 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
       [uid, uid, uname, uname],
     );
     const tokens: string[] = list.map((r) => String(r.token)).filter(Boolean);
-    if (!tokens.length) return;
+    if (!tokens.length) {
+      console.log('[fcm] no registered device for', uid || uname);
+      return;
+    }
 
     const isCall = m.type === 'call';
     const resp = await getMessaging().sendEachForMulticast({
@@ -136,6 +139,11 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
         ttl: isCall ? 30_000 : 24 * 60 * 60 * 1000,
         notification: { channelId: 'default' },
       },
+    });
+
+    console.log(`[fcm] sent ${resp.successCount}/${tokens.length} to ${uid || uname}`);
+    resp.responses.forEach((r) => {
+      if (r.error) console.warn('[fcm] failed:', r.error.code, r.error.message);
     });
 
     // Remove dead tokens.
