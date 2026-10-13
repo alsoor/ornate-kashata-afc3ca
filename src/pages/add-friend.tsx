@@ -11055,7 +11055,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               aria-label="Post notifications"
               title="Post notifications"
               style={{
-                position: 'absolute', top: 'calc(max(10px, env(safe-area-inset-top, 0px)) + 3px)', insetInlineEnd: 10, width: 32, height: 32, borderRadius: '50%',
+                position: 'absolute', top: 'max(10px, env(safe-area-inset-top, 0px))', insetInlineEnd: 10, width: 32, height: 32, borderRadius: '50%',
                 background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)',
                 border: coverUrl ? 'none' : '1px solid rgba(255,255,255,0.28)',
                 color: '#fff', cursor: 'pointer', padding: 0,
