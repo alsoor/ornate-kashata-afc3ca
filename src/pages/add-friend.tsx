@@ -11047,27 +11047,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           >
             <X size={17} strokeWidth={2.4} />
           </motion.button>
-          {!!user?.id && String(user.id) !== String(authorId) && !isHiddenPrivate && (
-            <motion.button
-              whileTap={{ scale: 0.88 }}
-              type="button"
-              onClick={() => setBellOpen(true)}
-              aria-label="Post notifications"
-              title="Post notifications"
-              style={{
-                position: 'absolute', top: 'max(10px, env(safe-area-inset-top, 0px))', insetInlineEnd: 10, width: 32, height: 32, borderRadius: '50%',
-                background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)',
-                border: coverUrl ? 'none' : '1px solid rgba(255,255,255,0.28)',
-                color: '#fff', cursor: 'pointer', padding: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5,
-                WebkitTapHighlightColor: 'transparent',
-              }}
-            >
-              {bellMode === 'off'
-                ? <Bell size={17} strokeWidth={2.2} color="#fff" />
-                : <Bell size={17} strokeWidth={2.2} color="#fff" fill="#fff" />}
-            </motion.button>
-          )}
           {pinnedTrack && (
             <div style={{
               position: 'absolute', left: 0, right: 0, bottom: 8,
@@ -11267,6 +11246,28 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 </div>
               )}
             </div>
+          )}
+
+          {/* Post-notification bell — under the three dots */}
+          {!!user?.id && String(user.id) !== String(authorId) && !isHiddenPrivate && (
+            <motion.button
+              whileTap={{ scale: 0.88 }}
+              type="button"
+              onClick={() => setBellOpen(true)}
+              aria-label="Post notifications"
+              title="Post notifications"
+              style={{
+                width: 32, height: 32, borderRadius: '50%', marginTop: 4, flexShrink: 0,
+                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.28)',
+                color: '#fff', cursor: 'pointer', padding: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              {bellMode === 'off'
+                ? <Bell size={17} strokeWidth={2.2} color="#fff" />
+                : <Bell size={17} strokeWidth={2.2} color="#fff" fill="#fff" />}
+            </motion.button>
           )}
         </div>
 
