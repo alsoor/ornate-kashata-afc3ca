@@ -10746,7 +10746,6 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const chooseBellMode = async (m: PostBellMode) => {
     const prev = bellMode;
     setBellMode(m);
-    setBellOpen(false);
     try {
       const r = await fetch('/api/post-bell', {
         method: 'PUT',
@@ -11264,9 +11263,11 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 WebkitTapHighlightColor: 'transparent',
               }}
             >
-              {bellMode === 'off'
-                ? <Bell size={17} strokeWidth={2.2} color="#fff" />
-                : <Bell size={17} strokeWidth={2.2} color="#fff" fill="#fff" />}
+              {bellMode === 'all'
+                ? <BellRing size={17} strokeWidth={2.2} color={CLR_PRIMARY} />
+                : bellMode === 'relevant'
+                  ? <Bell size={17} strokeWidth={2.2} color={CLR_PRIMARY} />
+                  : <BellOff size={17} strokeWidth={2.2} color={CLR_PRIMARY} />}
             </motion.button>
           )}
         </div>
@@ -11429,8 +11430,22 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 style={{
                   width: '100%', maxWidth: 320, borderRadius: 22, background: '#0b1f21',
                   border: `1px solid ${CLR_PRIMARY_BORDER}`, boxShadow: '0 20px 60px rgba(0,0,0,0.6)', padding: '16px 12px 10px',
+                  position: 'relative',
                 }}
               >
+                <button
+                  type="button"
+                  onClick={() => setBellOpen(false)}
+                  aria-label="Close"
+                  style={{
+                    position: 'absolute', top: 10, left: 10, width: 26, height: 26, borderRadius: '50%',
+                    background: CLR_PRIMARY_FAINT, border: `1px solid ${CLR_PRIMARY_BORDER}`, color: CLR_PRIMARY,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  <X size={14} strokeWidth={2.6} />
+                </button>
                 <p style={{ margin: '0 6px 2px', color: CLR_TEXT_DIM, fontSize: '0.74rem', fontWeight: 600 }}>
                   الإشعارات من {name || username || '—'}
                 </p>
