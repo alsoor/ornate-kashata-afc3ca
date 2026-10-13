@@ -1,5 +1,6 @@
 import './imageEditPatch'; // IMAGE-PATCH: fixes 404 on image edit + image understanding (no change to the sheet)
 import './aiCapabilities'; // AI-CAPABILITIES: context, web search, image creation, saved chats (no change to the sheet)
+import './friendChatPatch'; // FRIEND-CHAT: avatar tap -> friends list -> chat inside the sheet (no change to the sheet)
 export { default as StooornaAiSheet } from './StooornaAiSheet';
 export { default as StooornaAiIcon } from './StooornaAiIcon';
 export { default as MediaEditor } from './MediaEditor'; // MEDIA-EDITOR
@@ -11,3 +12,4 @@ export { default as AiInfoPanel } from './AiInfoPanel'; // APP-ASSISTANT
 export { detectAppIntent, answerAppIntent, openGeneralChat, loadDashboard, clearAssistantCache } from './appAssistant'; // APP-ASSISTANT
 export { listChats, loadChat, openChat, newChat, deleteChat, exportChatText, readFileForAi, clearPendingFiles, startListening, voiceInputSupported, speak, stopSpeaking, voiceOutputSupported, generateImage, installStooornaAiCapabilities, STOOORNA_AI_CAPS_VERSION } from './aiCapabilities'; // AI-CAPABILITIES
 export { default as MergeMedia } from './MergeMedia'; // MERGE-MEDIA
+export { installFriendChatPatch, FRIEND_CHAT_PATCH_VERSION } from './friendChatPatch'; // FRIEND-CHAT
