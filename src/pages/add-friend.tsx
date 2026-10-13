@@ -144,7 +144,7 @@ import { hydrateVipDirectory } from '@/lib/vipPatch';
 import { LiveVipDock } from '@/components/LiveVipDock';
 import { resolveVipNameStyle } from '@/lib/vipPatch';
 import DirectChatScreen from '@/components/DirectChatScreen';
-import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Menu, Bell, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ChevronsDown, ZoomIn, CreditCard as DockCardIcon, Info as DockInfoIcon, User as DockUserIcon, Shield as DockShieldIcon } from 'lucide-react';
+import { Search, UserPlus, Clock, Check, X, MessageCircle, Plus, Trash2, ShieldOff, Lock, LockKeyhole, Eye, EyeOff, Send, LogOut, Mic, MicOff, Image as ImageIcon, Images, Video, FileText, Play, Pause, Phone, PhoneOff, ArrowLeft, MoreVertical, MoreHorizontal, Menu, Bell, BellRing, BellOff, Maximize2, Minimize2, Heart, Users, Repeat2, Hash, Inbox, Smile, Music, Camera, Zap, ZapOff, SlidersHorizontal, Download, Bookmark, PenLine, ClipboardPaste, Pin, PinOff, Volume2, VolumeX, Settings, Radio, Building2, LogIn, MapPin, Headphones, Film, ChevronLeft, ChevronRight, ChevronsDown, ZoomIn, CreditCard as DockCardIcon, Info as DockInfoIcon, User as DockUserIcon, Shield as DockShieldIcon } from 'lucide-react';
 import { useFriendRequestSeen } from '@/lib/friendRequestSeen';
 import { normalizeUserQuery, filterUsersForQuery } from '@/lib/userSearch';
 import type { IAgoraRTCClient, IMicrophoneAudioTrack, IAgoraRTCRemoteUser } from 'agora-rtc-sdk-ng';
@@ -10713,6 +10713,7 @@ export interface FriendStoryProfileProps {
    * the public chat passes a value above all of its own overlays so the profile always opens ON TOP of it. */
   zBase?: number;
 }
+type PostBellMode = 'all' | 'relevant' | 'off';
 export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false, riseFromBottom = false, hideLiveButton = false, zBase }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   // Layering (all relative to Z): backdrop = Z, panel = Z+1, followers list = Z+60, nested profile = Z+200, media lightbox = Z+300
@@ -10725,6 +10726,37 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [avatarExpanded, setAvatarExpanded] = useState(false);
   const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>('none');
   const [visitorCountry, setVisitorCountry] = useState('');
+  // ── Post-notification bell (per profile): off by default, saved on the server ──
+  const [bellMode, setBellMode] = useState<PostBellMode>('off');
+  const [bellOpen, setBellOpen] = useState(false);
+  useEffect(() => {
+    if (!user?.id || !authorId || String(user.id) === String(authorId)) return;
+    let cancelled = false;
+    setBellMode('off');
+    void (async () => {
+      try {
+        const r = await fetch(`/api/post-bell/${encodeURIComponent(authorId)}`, { credentials: 'include' });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (!cancelled && (d?.mode === 'all' || d?.mode === 'relevant' || d?.mode === 'off')) setBellMode(d.mode);
+      } catch { /* keep default */ }
+    })();
+    return () => { cancelled = true; };
+  }, [authorId, user?.id]);
+  const chooseBellMode = async (m: PostBellMode) => {
+    const prev = bellMode;
+    setBellMode(m);
+    setBellOpen(false);
+    try {
+      const r = await fetch('/api/post-bell', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ authorId, mode: m }),
+      });
+      if (!r.ok) setBellMode(prev);
+    } catch { setBellMode(prev); }
+  };
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
@@ -11015,6 +11047,27 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           >
             <X size={17} strokeWidth={2.4} />
           </motion.button>
+          {!!user?.id && String(user.id) !== String(authorId) && !isHiddenPrivate && (
+            <motion.button
+              whileTap={{ scale: 0.88 }}
+              type="button"
+              onClick={() => setBellOpen(true)}
+              aria-label="Post notifications"
+              title="Post notifications"
+              style={{
+                position: 'absolute', top: 'max(10px, env(safe-area-inset-top, 0px))', insetInlineEnd: 10, width: 32, height: 32, borderRadius: '50%',
+                background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.08)',
+                border: coverUrl ? 'none' : '1px solid rgba(255,255,255,0.28)',
+                color: '#fff', cursor: 'pointer', padding: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5,
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              {bellMode === 'off'
+                ? <Bell size={17} strokeWidth={2.2} color="#fff" />
+                : <Bell size={17} strokeWidth={2.2} color="#fff" fill="#fff" />}
+            </motion.button>
+          )}
           {pinnedTrack && (
             <div style={{
               position: 'absolute', left: 0, right: 0, bottom: 8,
@@ -11353,6 +11406,67 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           document.body
         )}
       </AnimatePresence>
+
+      {/* Post-notification menu — centered bubble (All / Most relevant / Off) */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {bellOpen && (
+            <motion.div
+              key="post-bell-backdrop"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              onClick={() => setBellOpen(false)}
+              style={{
+                position: 'fixed', inset: 0, zIndex: Z + 400, background: 'rgba(0,0,0,0.55)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, direction: 'rtl',
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94 }}
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: '100%', maxWidth: 320, borderRadius: 22, background: '#0b1f21',
+                  border: `1px solid ${CLR_PRIMARY_BORDER}`, boxShadow: '0 20px 60px rgba(0,0,0,0.6)', padding: '16px 12px 10px',
+                }}
+              >
+                <p style={{ margin: '0 6px 2px', color: CLR_TEXT_DIM, fontSize: '0.74rem', fontWeight: 600 }}>
+                  الإشعارات من {name || username || '—'}
+                </p>
+                <p style={{ margin: '0 6px 10px', color: CLR_TEXT, fontSize: '0.95rem', fontWeight: 800 }}>المنشورات</p>
+                {([
+                  { id: 'all' as PostBellMode, label: 'الكل', sub: 'إشعار مع كل منشور جديد', Icon: BellRing },
+                  { id: 'relevant' as PostBellMode, label: 'الأكثر صلة', sub: 'إشعار واحد كل فترة', Icon: Bell },
+                  { id: 'off' as PostBellMode, label: 'إيقاف', sub: 'بدون إشعارات', Icon: BellOff },
+                ]).map(opt => {
+                  const active = bellMode === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => { void chooseBellMode(opt.id); }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 10px', marginBottom: 2,
+                        border: 'none', borderRadius: 14, cursor: 'pointer', textAlign: 'start',
+                        background: active ? CLR_PRIMARY_FAINT : 'transparent', color: CLR_TEXT,
+                        WebkitTapHighlightColor: 'transparent',
+                      }}
+                    >
+                      <opt.Icon size={22} strokeWidth={2} color={active ? CLR_PRIMARY : '#fff'} />
+                      <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                        <span style={{ fontSize: '0.92rem', fontWeight: 700 }}>{opt.label}</span>
+                        <span style={{ fontSize: '0.7rem', color: CLR_TEXT_DIM }}>{opt.sub}</span>
+                      </span>
+                      {active && <Check size={19} strokeWidth={2.8} color={CLR_PRIMARY} />}
+                    </button>
+                  );
+                })}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Fullscreen avatar lightbox */}
       <AnimatePresence>

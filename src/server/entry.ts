@@ -19,6 +19,7 @@ import { registerAiCreditsRoutes } from "./ai-credits-routes.js"; // AI-CREDITS
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
 import { migrateFcm, registerFcmRoutes, sendFcmToUser, sendFcmToAll } from "./fcm-push.js"; // FCM-PUSH
+import { migratePostBell, registerPostBellRoutes, makePostBellPush, makeTemplatePostBellPush } from "./post-bell.js"; // POST-BELL
 import { registerSavedRoomRoutes } from "./saved-room-patch.js";
 import { registerForgotPasswordRoutes, registerLiveIconRoutes } from "./forgot-password-patch.js"; // FORGOT-PASSWORD-PATCH
 import { registerAdsRoutes } from "./ads-patch.js"; // ADS-PATCH
@@ -611,6 +612,7 @@ app.post("/api/live-chat/voice", (req, res) => {
 registerChatImageRoutes(app);
 registerNotificationRoutes(app);
 registerFcmRoutes(app); // FCM-PUSH
+registerPostBellRoutes(app); // POST-BELL
 registerSavedRoomRoutes(app);
 app.post("/api/live-chat/media", (req, res) => {
   const body = (req.body || {}) as any;
@@ -1271,6 +1273,7 @@ registerLiveBurstRoutes(app, { getUserId: async (req) => (await session.user(req
 registerAppReleaseRoutes(app, { getUser: (req) => session.user(req), ownerIds: OWNER_IDS }); // APP-RELEASES-PATCH
 app.use("/api/live-box", createLiveBoxRouter()); // TREASURE-BOX
 
+app.use("/api", makeTemplatePostBellPush((req) => session.user(req))); // POST-BELL: Templates posts also notify the people who rang the bell (the Templates routes below are unchanged)
 // ── TEMPLATES-PATCH: Templates (صور/فيديو) تُحفظ على السيرفر ولا تُحذف إلا بطلب DELETE من ناشرها (أو الأدمن) ──
 // 1) لو لقينا MySQL pool داخل ./db/client يُستخدم (جدول templates_posts ينشأ تلقائياً).
 // 2) غير ذلك: ملف JSON داخل ASSETS_DIR/_private/templates (محمي من الوصول العام) — يبقى فقط لو ASSETS_DIR على Volume دائم.
@@ -2222,7 +2225,8 @@ app.get("/api/owner/stats", owner_stats_get_64);
 app.get("/api/owner/users", owner_users_get_65);
 app.patch("/api/owner/users/:id", owner_users_id_patch_66);
 app.get("/api/posts", posts_get_67);
-app.post("/api/posts", posts_post_68);
+// POST-BELL: the original handler is unchanged; the middleware only pushes to people who rang the author's bell after a successful post
+app.post("/api/posts", makePostBellPush((req) => session.user(req)), posts_post_68);
 app.get("/api/posts/comment-unread", posts_comment_unread_get_69);
 app.post("/api/posts/comment-unread", posts_comment_unread_post_70);
 app.get("/api/posts/comments/received", posts_comments_received_get_71);
@@ -2544,6 +2548,7 @@ app.get("/api/push/generate-vapid", (_req, res) => {
 		await addUserPrivacyIsPrivate();
 		await migratePush();
 		await migrateFcm(); // FCM-PUSH
+		await migratePostBell(); // POST-BELL
 		await addSecretChats();
 		await addFileVideoType();
 		await addPostShareType();
