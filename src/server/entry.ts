@@ -18,7 +18,7 @@ import { registerTemplatesShareRoutes } from "./templates-share-patch.js"; // TE
 import { registerAiCreditsRoutes } from "./ai-credits-routes.js"; // AI-CREDITS
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
-import { migrateFcm, registerFcmRoutes } from "./fcm-push.js"; // FCM-PUSH
+import { migrateFcm, registerFcmRoutes, sendFcmToUser, sendFcmToAll } from "./fcm-push.js"; // FCM-PUSH
 import { registerSavedRoomRoutes } from "./saved-room-patch.js";
 import { registerForgotPasswordRoutes, registerLiveIconRoutes } from "./forgot-password-patch.js"; // FORGOT-PASSWORD-PATCH
 import { registerAdsRoutes } from "./ads-patch.js"; // ADS-PATCH
@@ -406,7 +406,36 @@ app.get("/api/auth/:action/:detail", auth_action_detail_get_2);
 app.post("/api/auth/:action/:detail", auth_action_detail_post_3);
 app.get("/api/call/token", call_token_get_4);
 app.get("/api/call/invite", call_invite_get);
-app.post("/api/call/invite", call_invite_post);
+// FCM-PUSH: ring the callee's phone even when the app is closed (the normal invite handler below is unchanged)
+const callPushSeen = new Map<string, number>();
+const callInvitePush: RequestHandler = (req, _res, next) => {
+  void (async () => {
+    try {
+      const b = (req.body || {}) as Record<string, unknown>;
+      const toId = String(b.toUserId || "").trim();
+      if (b.clear || !toId || !b.channel) return;
+      const u = await session.user(req).catch(() => null);
+      if (!u || session.owns(u, toId)) return;
+      const key = `${toId}|${String(b.channel)}`;
+      const now = Date.now();
+      if (now - (callPushSeen.get(key) || 0) < 20_000) return;
+      callPushSeen.set(key, now);
+      for (const [k, t] of callPushSeen) if (now - t > 120_000) callPushSeen.delete(k);
+      const who = String(b.hostName || (u as any).name || (u as any).username || "Someone").slice(0, 60);
+      await sendFcmToUser({
+        userId: toId,
+        title: who,
+        body: b.video ? "Incoming video call" : "Incoming call",
+        url: "/",
+        type: "call",
+      });
+    } catch (e) {
+      console.error("[fcm] call push failed:", e);
+    }
+  })();
+  next();
+};
+app.post("/api/call/invite", callInvitePush, call_invite_post);
 app.post("/api/call/invite/clear", call_invite_clear_post);
 app.get("/api/friends", friends_get_5);
 app.post("/api/friends", friends_post_6);
@@ -904,6 +933,24 @@ app.post("/api/live-presence", (req, res) => {
   mem.set(hostId, row);
   // also index lowercase for lookups
   if (hostId.toLowerCase() !== hostId) mem.set(hostId.toLowerCase(), row);
+  // FCM-PUSH: tell everyone with the app installed that a live just opened (once per host every 30 minutes)
+  {
+    const g = globalThis as typeof globalThis & { __stooornaLivePushed?: Map<string, number> };
+    if (!g.__stooornaLivePushed) g.__stooornaLivePushed = new Map();
+    const pushed = g.__stooornaLivePushed;
+    const nowMs = Date.now();
+    if (nowMs - (pushed.get(hostId.toLowerCase()) || 0) > 30 * 60_000) {
+      pushed.set(hostId.toLowerCase(), nowMs);
+      void sendFcmToAll({
+        exceptUserId: hostId,
+        exceptUsername: row.hostUsername || "",
+        title: row.hostName || row.hostUsername || "Stooorna",
+        body: kind === "camera" ? "Is live now (video)" : "Is live now (voice)",
+        url: "/",
+        type: "live",
+      });
+    }
+  }
   res.json({ ok: true, active: true, hostId, kind });
 });
 
@@ -2090,6 +2137,14 @@ app.post("/api/voice-invite", guarded(async (req, res) => {
     const list = (st.inbox.get(key) || []).filter((i) => now - i.at < VOICE_INVITE_TTL_MS && i.hostId !== hostId);
     list.push(row);
     st.inbox.set(key, list.slice(-10));
+    // FCM-PUSH: tell the invited person on their phone, even when the app is closed
+    void sendFcmToUser({
+      userId: toId,
+      title: row.hostName || row.fromName || "Stooorna",
+      body: inviteKind === "camera" ? "Invited you to join a live video" : "Invited you to join a live voice room",
+      url: "/",
+      type: "invite",
+    });
     return res.json({ ok: true, id, at: now });
   }
 

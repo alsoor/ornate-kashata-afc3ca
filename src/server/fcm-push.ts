@@ -163,3 +163,54 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
     console.error('[fcm] send failed:', e);
   }
 }
+
+export type FcmBroadcast = {
+  exceptUserId?: string;
+  exceptUsername?: string;
+  title: string;
+  body: string;
+  url?: string;
+  type?: string;
+};
+
+/** Sends to every registered device except the given user (used for "someone went live"). Never throws. */
+export async function sendFcmToAll(m: FcmBroadcast): Promise<void> {
+  try {
+    if (!ensureFirebase()) return;
+    const uid = String(m.exceptUserId || '');
+    const uname = String(m.exceptUsername || '').replace(/^@/, '').toLowerCase();
+
+    const list = await rows(
+      `SELECT DISTINCT token FROM fcm_tokens
+       WHERE NOT ((? <> '' AND user_id = ?) OR (? <> '' AND LOWER(username) = ?))
+       LIMIT 500`,
+      [uid, uid, uname, uname],
+    );
+    const tokens: string[] = list.map((r) => String(r.token)).filter(Boolean);
+    if (!tokens.length) return;
+
+    const resp = await getMessaging().sendEachForMulticast({
+      tokens,
+      notification: { title: m.title || 'Stooorna', body: (m.body || '').slice(0, 180) },
+      data: { url: m.url || '/', type: m.type || '' },
+      android: {
+        priority: 'high',
+        ttl: 10 * 60 * 1000,
+        notification: { channelId: 'default' },
+      },
+    });
+    console.log(`[fcm] broadcast ${m.type || ''} sent ${resp.successCount}/${tokens.length}`);
+
+    const dead: string[] = [];
+    resp.responses.forEach((r, i) => {
+      const code = r.error?.code || '';
+      if (
+        code === 'messaging/registration-token-not-registered' ||
+        code === 'messaging/invalid-registration-token'
+      ) dead.push(tokens[i]);
+    });
+    for (const t of dead) await client().execute('DELETE FROM fcm_tokens WHERE token = ?', [t]);
+  } catch (e) {
+    console.error('[fcm] broadcast failed:', e);
+  }
+}
