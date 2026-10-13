@@ -178,6 +178,7 @@ import { isStoryOwner, isModerator, getActiveBan, fetchModerators, onModerationC
 import { noteHostClosed, refreshStoryLives, startStoryLiveWatch, storyLiveStillOpen, readStoryLive } from '@/lib/liveStoryPresencePatch';
 import { VoiceInviteGlobalWatcher } from '@/lib/liveVoiceInvite'; // VOICE-INVITE-PATCH
 import GuestHomeExtras from '@/components/GuestHomeExtras';
+import { useBackClose } from '@/lib/hardwareBack'; // HARDWARE-BACK-PATCH
 
 // ── PERF: code splitting — these are only drawn after a tap, so their code is downloaded on first use (not at app start) ──
 const PublicVoiceLive = React.lazy(() => import('@/components/PublicVoiceLive'));
@@ -3170,6 +3171,7 @@ function HeaderStoryCircle({
   const hasStory = items.length > 0;
   const hasUnseen = items.some(it => !it.seen);
   const [choiceOpen, setChoiceOpen] = useState(false);
+  useBackClose(choiceOpen, () => setChoiceOpen(false)); // HARDWARE-BACK-PATCH
   const btnRef = useRef<HTMLButtonElement>(null);
   // ── موضع القائمة المنبثقة (View Story / Video Live / Voice Live) ─────────
   // كانت القائمة تُرسم داخل هذا العنصر مباشرة (position: absolute)، فإن كانت
@@ -3417,7 +3419,9 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
     // Double-tap flip disabled
   }
   const [requestsBoxOpen, setRequestsBoxOpen] = useState(false);
+  useBackClose(requestsBoxOpen, () => setRequestsBoxOpen(false)); // HARDWARE-BACK-PATCH
   const [liveMapOpen, setLiveMapOpen] = useState(!!startWithLiveMap);
+  useBackClose(liveMapOpen, () => setLiveMapOpen(false)); // HARDWARE-BACK-PATCH
   const [livePins, setLivePins] = useState<{ id: string; name: string; username: string; avatarUrl: string | null; lat: number; lng: number; at?: number }[]>([]);
   const [liveCenter, setLiveCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [liveMsgPeer, setLiveMsgPeer] = useState<{ id: string; name: string } | null>(null);
@@ -3822,6 +3826,7 @@ function CameraStoryCapture({ onClose, onPublish, avatarUrl, userName, friendReq
   }
   const [flashOn, setFlashOn] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  useBackClose(filtersOpen, () => setFiltersOpen(false)); // HARDWARE-BACK-PATCH
   const [filter, setFilter] = useState<CameraFilterId>('none');
   // فقط 0.5x (عدسة واسعة) و1x (طبيعي) — أزلنا 2x/3x لأنهما بدون تكبير عتاد حقيقي
   // كانا يعطيان نفس نتيجة القصّ الرقمي البسيط ولا يضيفان شيء فعليًا.
@@ -6025,6 +6030,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   const modDialogOpenRef = useRef(false);
   useEffect(() => { modDialogOpenRef.current = moderationOpen; }, [moderationOpen]);
   const [storyMenuOpen, setStoryMenuOpen] = useState(false);
+  useBackClose(storyMenuOpen, () => setStoryMenuOpen(false)); // HARDWARE-BACK-PATCH
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   // صوت فيديو القصة: يبدأ بصوت (لأن المشاهد فتح القصة بنقرة)، وإن منع المتصفح التشغيل بالصوت
@@ -6042,6 +6048,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   const commentInputRef = useRef<HTMLInputElement>(null);
   // ── شيت التعليقات العامة على القصة — يفتح فوق نفس شاشة عرض القصة، ويشوفه أي شخص يدخل يعلق ──
   const [commentsSheetOpen, setCommentsSheetOpen] = useState(false);
+  useBackClose(commentsSheetOpen, () => setCommentsSheetOpen(false)); // HARDWARE-BACK-PATCH
   // الشيت كامل كان draggable بالكامل، فأي لمسة قصيرة (زي زر الإعجاب) كانت أحياناً
   // تُفسَّر كبداية سحب فتُلغى إعادة onClick على الزر — نحصر السحب الآن بمقبض
   // السحب فقط (dragListener={false} + useDragControls) بدل كل الشيت، فتبقى
@@ -6052,6 +6059,7 @@ function StoryViewer({ groups, startGroupIdx, myId, myName = '', myAvatarUrl = n
   const [publicCommentsCount, setPublicCommentsCount] = useState<number>(0);
   // ── الزائد المنقول من الشريط السفلي للبوست العام (إعدادات/أصدقاء/اتصال/دردشة/بث) ──
   const [storyPlusOpen, setStoryPlusOpen] = useState(false);
+  useBackClose(storyPlusOpen, () => setStoryPlusOpen(false)); // HARDWARE-BACK-PATCH
   const incomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
   const storyPlusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
 
@@ -8954,8 +8962,10 @@ function PostCard({
   const hasMedia = mediaItems.length > 0;
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video' } | null>(null);
   const [postMenuOpen, setPostMenuOpen] = useState(false);
+  useBackClose(postMenuOpen, () => setPostMenuOpen(false)); // HARDWARE-BACK-PATCH
   // ── قائمة الثلاث نقاط + كتم الصوت داخل المعاينة كاملة الشاشة (mediaLightbox) ──
   const [lightboxMenuOpen, setLightboxMenuOpen] = useState(false);
+  useBackClose(lightboxMenuOpen, () => setLightboxMenuOpen(false)); // HARDWARE-BACK-PATCH
   // ── معرض الصور المتعددة داخل المنشور — تنقل يمين/يسار + عداد صفحات (1/N) زي انستغرام ──
   const [mediaPage, setMediaPage] = useState(0);
   const [cardEngTick, setCardEngTick] = useState(0);
@@ -9016,6 +9026,7 @@ function PostCard({
     recordPostView(post.id, post.authorId);
   }, [post.id, post.authorId]);
   const [captionSheetOpen, setCaptionSheetOpen] = useState(false);
+  useBackClose(captionSheetOpen, () => setCaptionSheetOpen(false)); // HARDWARE-BACK-PATCH
 
   return (
     <>
@@ -9963,7 +9974,9 @@ const MiniProfileModal = ({
   const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>('none');
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
+  useBackClose(friendMenuOpen, () => setFriendMenuOpen(false)); // HARDWARE-BACK-PATCH
   const [followersModalOpen, setFollowersModalOpen] = useState(false);
+  useBackClose(followersModalOpen, () => setFollowersModalOpen(false)); // HARDWARE-BACK-PATCH
   // Manual "hide my followers" switch — only meaningful/editable when this is my own
   // profile; persisted locally and best-effort synced to the backend (see
   // FollowersListModal for the shared implementation used across this file).
@@ -10738,6 +10751,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   // ── Post-notification bell (per profile): off by default, saved on the server ──
   const [bellMode, setBellMode] = useState<PostBellMode>('off');
   const [bellOpen, setBellOpen] = useState(false);
+  useBackClose(bellOpen, () => setBellOpen(false)); // HARDWARE-BACK-PATCH
   useEffect(() => {
     if (!user?.id || !authorId || String(user.id) === String(authorId)) return;
     let cancelled = false;
@@ -10767,11 +10781,13 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   };
   const [friendLoading, setFriendLoading] = useState(false);
   const [friendMenuOpen, setFriendMenuOpen] = useState(false);
+  useBackClose(friendMenuOpen, () => setFriendMenuOpen(false)); // HARDWARE-BACK-PATCH
   const [authorPosts, setAuthorPosts] = useState<PostItem[]>([]);
   // فتح الصورة/الفيديو فقط بملء الشاشة — بدون فتح صفحة المنشور الكاملة القديمة
   const [mediaLightbox, setMediaLightbox] = useState<{ url: string; type: 'image' | 'video'; post: PostItem } | null>(null);
   // Followers list of the profile I'm visiting (only reachable when its owner hasn't locked it)
   const [theirFollowersOpen, setTheirFollowersOpen] = useState(false);
+  useBackClose(theirFollowersOpen, () => setTheirFollowersOpen(false)); // HARDWARE-BACK-PATCH
   const [theirFollowers, setTheirFollowers] = useState<Friend[]>([]);
   const [theirFollowersLoading, setTheirFollowersLoading] = useState(false);
   const [theirFollowersError, setTheirFollowersError] = useState<string | null>(null);
@@ -13347,6 +13363,7 @@ function GlobeVoiceControl({ userId, userName, avatarUrl, layout = 'row', render
   const [, setVoiceEnabled] = useState(() => globeVoiceJoinedRef.current);
   const [joining, setJoining] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  useBackClose(panelOpen, () => setPanelOpen(false)); // HARDWARE-BACK-PATCH
   const [error, setError] = useState('');
   // ── Call duration timer — starts counting only once the peer has actually joined
   // too (the call was "answered"), not the moment I tap the phone myself. ──
@@ -15079,7 +15096,9 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
   const noteActiveRef = useRef(false);
   noteActiveRef.current = noteActive;
   const [noteOpen, setNoteOpen] = useState(false);
+  useBackClose(noteOpen, () => setNoteOpen(false)); // HARDWARE-BACK-PATCH
   const [notePdfOpen, setNotePdfOpen] = useState(false);
+  useBackClose(notePdfOpen, () => setNotePdfOpen(false)); // HARDWARE-BACK-PATCH
   const [noteMediaView, setNoteMediaView] = useState<{ kind: 'image' | 'video'; url: string } | null>(null);
   useEffect(() => { if (!noteOpen) setNoteMediaView(null); }, [noteOpen]);
   const [noteToast, setNoteToast] = useState(false);
@@ -15739,6 +15758,7 @@ function SavedMessagesScreen({
   const [items, setItems] = useState<SavedMsg[]>(() => (userId ? loadSavedMessages(userId) : []));
   const [text, setText] = useState('');
   const [plusOpen, setPlusOpen] = useState(false);
+  useBackClose(plusOpen, () => setPlusOpen(false)); // HARDWARE-BACK-PATCH
   const [busy, setBusy] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [toast, setToast] = useState('');
@@ -15746,6 +15766,7 @@ function SavedMessagesScreen({
   const [mediaView, setMediaView] = useState<{ kind: 'image' | 'video'; url: string } | null>(null);
   /** Telegram-style location picker (send) + viewer (open a saved location) */
   const [locPickerOpen, setLocPickerOpen] = useState(false);
+  useBackClose(locPickerOpen, () => setLocPickerOpen(false)); // HARDWARE-BACK-PATCH
   const [locView, setLocView] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const photoRef = useRef<HTMLInputElement | null>(null);
@@ -15819,6 +15840,7 @@ function SavedMessagesScreen({
   };
   const [roomMembers, setRoomMembers] = useState<Array<{ userId: string; username: string; name: string }>>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
+  useBackClose(inviteOpen, () => setInviteOpen(false)); // HARDWARE-BACK-PATCH
   // SAVED-INVITE-WAITING-PATCH: invited friends stay "Waiting..." until they accept
   const pendingKey = `stooorna_saved_pending_${userId}`;
   const [pendingInvites, setPendingInvites] = useState<Array<{ username: string; name?: string; avatarUrl?: string | null }>>(() => {
@@ -19438,8 +19460,10 @@ export function PublicLiveCommentsPanel({
   const [, setEmojiOpen] = useState(false);
   const [composerDock, setComposerDock] = useState<'none' | 'emoji' | 'gallery' | 'voice'>('none');
   const [plusOpen, setPlusOpen] = useState(false);   // "+" bubble that holds Photos / Voice / Emoji / Video AI
+  useBackClose(plusOpen, () => setPlusOpen(false)); // HARDWARE-BACK-PATCH
   // ── Location (Telegram-style picker + viewer) ──
   const [locPickerOpen, setLocPickerOpen] = useState(false);
+  useBackClose(locPickerOpen, () => setLocPickerOpen(false)); // HARDWARE-BACK-PATCH
   const [locView, setLocView] = useState<{ lat: number; lng: number; label: string; name?: string | null; avatar?: string | null } | null>(null);
   useEffect(() => {
     const onProfile = (e: Event) => {
@@ -19487,6 +19511,7 @@ export function PublicLiveCommentsPanel({
   const [kbInset, setKbInset] = useState(0);
   const [liveTypers, setLiveTypers] = useState<Array<{ userId: string; name: string; activity?: string }>>([]);
   const [tplOpen, setTplOpen] = useState(false);
+  useBackClose(tplOpen, () => setTplOpen(false)); // HARDWARE-BACK-PATCH
   // ── Templates bubble (dock icon between LIVE and Settings): the photos/videos gallery now lives here instead of behind the sheet ──
   const [tplBubble, setTplBubble] = useState<null | { x: number }>(null);
   // KEEP-ALIVE: once built (on first open, or pre-built at idle) the Templates bubble stays mounted and is only hidden.
@@ -19506,6 +19531,7 @@ export function PublicLiveCommentsPanel({
   }, [tplWarm]);
   // templates-favorites-bubble: yellow-framed Favorites page that opens on top of the Templates page
   const [tplFavOpen, setTplFavOpen] = useState(false);
+  useBackClose(tplFavOpen, () => setTplFavOpen(false)); // HARDWARE-BACK-PATCH
   useEffect(() => { if (!tplBubble) setTplFavOpen(false); }, [tplBubble]);
   useEffect(() => {
     const onBubble = (e: Event) => {
@@ -19522,6 +19548,7 @@ export function PublicLiveCommentsPanel({
     return () => window.removeEventListener('stooorna:templates-studio', onStudio);
   }, []);
   const [openMediaId, setOpenMediaId] = useState<string | null>(null);
+  useBackClose(openMediaId != null, () => setOpenMediaId(null)); // HARDWARE-BACK-PATCH
   // ── round video / voice recorder state ──
   const [onceViewId, setOnceViewId] = useState<string | null>(null);   // view-once round video currently open
   // Full-screen photo/video from the chat list: first tap opens it, second tap closes it (same as Saved Messages)
@@ -19534,6 +19561,7 @@ export function PublicLiveCommentsPanel({
   const [editingId, setEditingId] = useState<string | null>(null);   // message currently being edited
   // ── Big emoji picker (opened from the green dot in the top badge) ──
   const [bigEmojiOpen, setBigEmojiOpen] = useState(false);
+  useBackClose(bigEmojiOpen, () => setBigEmojiOpen(false)); // HARDWARE-BACK-PATCH
   const lpTimerRef = useRef<number | null>(null);
   const lpStartRef = useRef<{ x: number; y: number } | null>(null);
   useEffect(() => {
@@ -23198,6 +23226,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
   setShowPublicVoice: (v: boolean) => void;
 }) {
   const dockBubble = useSyncExternalStore(dockSubscribe, dockGet, dockGet);
+  useBackClose(!!dockBubble, () => dockSet(null)); // HARDWARE-BACK-PATCH: Call / LIVE / Settings pages close with the phone back button
   const publicVoiceStatus = usePublicVoiceRoomStatus(dockBubble?.kind === 'live');
   const [dockFriends, setDockFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
   const [dockFriendsLoading, setDockFriendsLoading] = useState(false);
@@ -23534,7 +23563,9 @@ function dockAiOpen(t: DockAiTarget) {
 }
 function DockAiPanelsHost({ user }: { user: any }) {
   const [panel, setPanel] = useState<'friends' | 'online' | 'requests' | 'app' | 'summary' | null>(null);
+  useBackClose(panel != null, () => setPanel(null)); // HARDWARE-BACK-PATCH
   const [planOpen, setPlanOpen] = useState(false);
+  useBackClose(planOpen, () => setPlanOpen(false)); // HARDWARE-BACK-PATCH
   const [balance, setBalance] = useState<number | null>(null);
   useEffect(() => {
     const h = (e: Event) => {
@@ -23565,6 +23596,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
   setShowPublicVoice: (v: boolean) => void;
 }) {
   const sc = useSyncExternalStore(dockShortcutSubscribe, dockShortcutGet, dockShortcutGet);
+  useBackClose(!!sc, () => dockShortcutSet(null)); // HARDWARE-BACK-PATCH
   const dock = useSyncExternalStore(dockSubscribe, dockGet, dockGet);
   const publicVoiceStatus = usePublicVoiceRoomStatus(sc?.kind === 'live');
   const [friends, setFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
@@ -23831,6 +23863,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // tree) instead of local state, so the song keeps playing across navigation even
   // after this page unmounts. See musicPlayerStore above for details. ──
   const [musicModalOpen, setMusicModalOpen] = useState(false);
+  useBackClose(musicModalOpen, () => setMusicModalOpen(false)); // HARDWARE-BACK-PATCH
   // ── Top hamburger menu — sits at the very top of the page above everything else.
   // Groups the Music and Posts-box (shared inbox) features into one small menu, so
   // they're tucked away instead of taking up their own row of icons. ──
@@ -23931,6 +23964,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // ── Stories state ────────────────────────────────────────────────────────────
   const [storyGroups, setStoryGroups] = useState<StoryGroup[]>(() => (user?.id && headerListsCache.uid === String(user.id) ? headerListsCache.stories as StoryGroup[] : []));
   const [viewerGroupIdx, setViewerGroupIdx] = useState<number | null>(null);
+  useBackClose(viewerGroupIdx != null, () => setViewerGroupIdx(null)); // HARDWARE-BACK-PATCH
   const [storyUploading, setStoryUploading] = useState(false);
   const storyFileRef = useRef<HTMLInputElement>(null);
   // ref for adding extra media from inside the viewer
@@ -23938,6 +23972,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // ── Story moderation: who can delete any story (owner + granted moderators) + publish-ban modal ──
   const [modTick, setModTick] = useState(0);
   const [storyBanOpen, setStoryBanOpen] = useState(false);
+  useBackClose(storyBanOpen, () => setStoryBanOpen(false)); // HARDWARE-BACK-PATCH
   useEffect(() => {
     void fetchModerators();
     const off = onModerationChanged(() => setModTick(x => x + 1));
@@ -23952,8 +23987,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [, setStoryPickerOpen] = useState<null | 'main' | 'add'>(null);
   // 4-option menu opened from the "+" badge on my story avatar: نشر إعلان للقصة / نشر صورة / نشر فيديو / نشر إعلان للقصة عبر الكاميرا
   const [publishMenuOpen, setPublishMenuOpen] = useState(false);
+  useBackClose(publishMenuOpen, () => setPublishMenuOpen(false)); // HARDWARE-BACK-PATCH
   // فتح الكاميرا المدمجة لالتقاط ونشر القصة مباشرة
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
+  useBackClose(cameraCaptureOpen, () => setCameraCaptureOpen(false)); // HARDWARE-BACK-PATCH
   const [cameraStartWithLiveMap, setCameraStartWithLiveMap] = useState(false);
   // إخفاء الشريط السفلي أثناء الكاميرا
   useEffect(() => {
@@ -24216,15 +24253,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     }
   }, []);
   const [showComposer, setShowComposer] = useState(false);
+  useBackClose(showComposer, () => setShowComposer(false)); // HARDWARE-BACK-PATCH
   const [composerCameraForPost, setComposerCameraForPost] = useState(false);
   const [myAdsHubOpen, setMyAdsHubOpen] = useState(false);
+  useBackClose(myAdsHubOpen, () => setMyAdsHubOpen(false)); // HARDWARE-BACK-PATCH
   const [myAdsHubTab, setMyAdsHubTab] = useState<'video' | 'photo' | 'pdf'>('video');
   const [feedAdViewer, setFeedAdViewer] = useState<any | null>(null);
+  useBackClose(feedAdViewer != null, () => setFeedAdViewer(null)); // HARDWARE-BACK-PATCH
   const [feedAdsTick, setFeedAdsTick] = useState(0);
   const [adClockTick, setAdClockTick] = useState(0);
   // العدّاد كان يعيد رسم صفحة القصة كاملة كل ثانية — الحين يتحدّث فقط لما واجهة إعلانات ظاهرة
   const adUiOpenRef = useRef(false);
   const [adDetailOpen, setAdDetailOpen] = useState<any | null>(null);
+  useBackClose(adDetailOpen != null, () => setAdDetailOpen(null)); // HARDWARE-BACK-PATCH
   useEffect(() => {
     const onAds = () => setFeedAdsTick(x => x + 1);
     window.addEventListener('stooorna:feed-ads', onAds);
@@ -24310,6 +24351,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // ── مستطيل «Paste»: الرابط المُلصق (composerLinkInput) يُعرض كاملًا فورًا مع النص ──
   const [composerLinkPreviewUrl, setComposerLinkPreviewUrl] = useState('');
   const [composerSiteViewerUrl, setComposerSiteViewerUrl] = useState<string | null>(null);
+  useBackClose(composerSiteViewerUrl != null, () => setComposerSiteViewerUrl(null)); // HARDWARE-BACK-PATCH
   useEffect(() => {
     const open = (url: string) => setComposerSiteViewerUrl(url);
     bindInAppSiteOpener(open);
@@ -24353,6 +24395,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     }
   }
   const [openComments, setOpenComments] = useState<PostItem | null>(null);
+  useBackClose(openComments != null, () => setOpenComments(null)); // HARDWARE-BACK-PATCH
   // Only the "Post" tab (text posts) opens PostDetailPage with a slide-in-from-the-side
   // animation; Video/Photo grid thumbnails keep the original fade/scale-in behavior.
   const [, setPostDetailEnterSide] = useState(false);
@@ -24367,6 +24410,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   /** عند فتح بوست من داخل البروفايل — البوست فوق البروفايل؛ عند فتح بروفايل من البوست — البروفايل فوق البوست */
   const [singlePostFromProfile, setSinglePostFromProfile] = useState(false);
   const [adDetailsOpen, setAdDetailsOpen] = useState(false);
+  useBackClose(adDetailsOpen, () => setAdDetailsOpen(false)); // HARDWARE-BACK-PATCH
   const [, setAdVideoPaused] = useState(false);
   const [, setSinglePostChromeVisible] = useState(true);
   const [singlePostMediaPage, setSinglePostMediaPage] = useState(0);
@@ -24374,6 +24418,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const singlePostMediaScrollRef = useRef<HTMLDivElement | null>(null);
   const singlePostTouchRef = useRef<{ x: number; y: number; t: number } | null>(null);
   const [textFeedSearchOpen, setTextFeedSearchOpen] = useState(false);
+  useBackClose(textFeedSearchOpen, () => setTextFeedSearchOpen(false)); // HARDWARE-BACK-PATCH
   const [textFeedSearchQuery, setTextFeedSearchQuery] = useState('');
   const textFeedSearchInputRef = useRef<HTMLInputElement | null>(null);
   function openSinglePostView(post: PostItem, fromProfile = false, startMediaIndex?: number) {
@@ -24540,8 +24585,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [postInteractions, setPostInteractions] = useState<PostInteractionItem[]>([]);
   const [sharedInboxLoading, setSharedInboxLoading] = useState(false);
   const [sharedInboxOpen, setSharedInboxOpen] = useState(false);
+  useBackClose(sharedInboxOpen, () => setSharedInboxOpen(false)); // HARDWARE-BACK-PATCH
   const [, setSharedInboxStoryOnly] = useState(false);
   const [openSharedThread, setOpenSharedThread] = useState<SharedPostItem | null>(null);
+  useBackClose(openSharedThread != null, () => setOpenSharedThread(null)); // HARDWARE-BACK-PATCH
   const [sharedThreadComments, setSharedThreadComments] = useState<Record<number, SharedPostComment[]>>({});
   const [sharedCommentText, setSharedCommentText] = useState('');
   const [sharedCommentSending, setSharedCommentSending] = useState(false);
@@ -24551,6 +24598,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [storyCommentThreads, setStoryCommentThreads] = useState<StoryCommentThread[]>([]);
   const [storyCommentThreadsLoading, setStoryCommentThreadsLoading] = useState(false);
   const [openStoryCommentThread, setOpenStoryCommentThread] = useState<StoryCommentThread | null>(null);
+  useBackClose(openStoryCommentThread != null, () => setOpenStoryCommentThread(null)); // HARDWARE-BACK-PATCH
   const [storyThreadComments, setStoryThreadComments] = useState<Record<number, StoryComment[]>>({});
   const [storyThreadCommentText, setStoryThreadCommentText] = useState('');
   const [storyThreadCommentSending, setStoryThreadCommentSending] = useState(false);
@@ -26486,6 +26534,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // or when a user story is published / a live is open (see effect below).
   const [headerOpen, setHeaderOpen] = useState(false);
   const [profileSlideOpen, setProfileSlideOpen] = useState(false);
+  useBackClose(profileSlideOpen, () => setProfileSlideOpen(false)); // HARDWARE-BACK-PATCH
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   // [perf] نسخة مؤجّلة من حالة الشيت للوحة الشات الثقيلة (تُحمَّل بعد بدء حركة الشيت لا قبلها)
@@ -26494,6 +26543,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   void bottomBarHidden; // الهيد السفلي ثابت — الحالة محفوظة فقط للتوافق
   // الشات كطبقة كاملة فوق الصفحات (ضغطة مطوّلة على Call) — لا يرفع الشيت
   const [chatOverlayOpen, setChatOverlayOpen] = useState(false);
+  useBackClose(chatOverlayOpen, () => setChatOverlayOpen(false)); // HARDWARE-BACK-PATCH
   useEffect(() => { if (!headerOpen) setChatOverlayOpen(false); }, [headerOpen]);
   useEffect(() => {
     const on = (e: Event) => setBottomBarHidden(!!(e as CustomEvent).detail?.hidden);
@@ -26512,6 +26562,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, []);
   useEffect(() => { if (headerOpen) setLiveScrollHidden(false); }, [headerOpen]);
   const [visitorProfileOpen, setVisitorProfileOpen] = useState(false);
+  useBackClose(visitorProfileOpen, () => setVisitorProfileOpen(false)); // HARDWARE-BACK-PATCH
   // Visitor (not signed in): header stays fully lifted, sign-in icon + language choice replace Settings
   const guestMode = !isPending && !user?.id;
   const [guestLang, setGuestLang] = useState<'en' | 'ar'>(() => readGuestLang());
@@ -26529,6 +26580,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [chatLifted, setChatLifted] = useState(false);
   // Templates photo/video viewer open → the bottom dock bar (Call / LIVE / Templates / Settings) is hidden completely
   const [tplMediaOpen, setTplMediaOpen] = useState(false);
+  useBackClose(tplMediaOpen, () => setTplMediaOpen(false)); // HARDWARE-BACK-PATCH
   // Leaving Templates: bottom bar is re-mounted (dockBarKey) behind a 1-second refresh overlay so the page re-activates.
   const [tplRefreshing, setTplRefreshing] = useState(false);
   const [dockBarKey, setDockBarKey] = useState(0);
@@ -26597,6 +26649,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [, setProfilePlusOpen] = useState(false);
   // ── Dock bubble: tapping Call / LIVE / Settings opens a speech-bubble panel above the dock, with a tail pointing at the tapped icon ──
   const [showPublicVoice, setShowPublicVoice] = useState(false);
+  useBackClose(showPublicVoice, () => setShowPublicVoice(false)); // HARDWARE-BACK-PATCH
   const [publicChatSwitchOn, setPublicChatSwitchOn] = useState(() => {
     try { return localStorage.getItem('stooorna_public_chat_on') === '1'; } catch { return false; }
   });
@@ -27216,6 +27269,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // switch shown inside that modal. Persisted locally and best-effort synced to the
   // backend; degrades gracefully if the backend field doesn't exist yet. ──
   const [followersModalOpen, setFollowersModalOpen] = useState(false);
+  useBackClose(followersModalOpen, () => setFollowersModalOpen(false)); // HARDWARE-BACK-PATCH
   // True when the profile on screen was opened from the followers list, so closing it
   // (X) returns to the followers list instead of dropping back to the home page.
   const [returnToFollowers, setReturnToFollowers] = useState(false);
@@ -27346,7 +27400,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // 1:1 chat screen per friend, using the same persistence layer as the share-mini chat
   // (thread key 'direct' keeps it separate from the post-share threads keyed 'share').
   const [friendChatListOpen, setFriendChatListOpen] = useState(false);
+  useBackClose(friendChatListOpen, () => setFriendChatListOpen(false)); // HARDWARE-BACK-PATCH
   const [normalChatPickerOpen, setNormalChatPickerOpen] = useState(false);
+  useBackClose(normalChatPickerOpen, () => setNormalChatPickerOpen(false)); // HARDWARE-BACK-PATCH
   useEffect(() => {
     if (!friendChatListOpen || !user) return;
     void loadFriends();
@@ -27377,7 +27433,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [, setFriendChatMsgs] = useState<ShareThreadMsg[]>([]);
   const [, setFriendChatText] = useState('');
   const [friendChatCallLogOpen, setFriendChatCallLogOpen] = useState(false);
+  useBackClose(friendChatCallLogOpen, () => setFriendChatCallLogOpen(false)); // HARDWARE-BACK-PATCH
   const [friendChatCallLogMenuOpen, setFriendChatCallLogMenuOpen] = useState(false);
+  useBackClose(friendChatCallLogMenuOpen, () => setFriendChatCallLogMenuOpen(false)); // HARDWARE-BACK-PATCH
   const callHistoryDotState = useSyncExternalStore(subscribeActiveCall, getActiveCallSnapshot, getActiveCallSnapshot);
   const myLiveBroadcastKind = useLiveBroadcastKind(user?.id);
   // نقطة أيقونة البث بالأعلى: خضراء إذا أنا أو أي صديق/صاحب قصة في بث الآن
@@ -27427,6 +27485,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [dockTplYellow, setDockTplYellow] = useState(false);
   const [dockSettingsGray, setDockSettingsGray] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
+  useBackClose(aiOpen, () => setAiOpen(false)); // HARDWARE-BACK-PATCH
   const aiIconVisible = useAiIconVisible(user as any);
   const dockSettled = useDockSettled(); // DOCK-SETTLE: no "bar jumps down" at app start
   useEffect(() => {
@@ -27484,6 +27543,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     };
   }, [user?.id, (user as any)?.username]);
   const [storyRequestsBoxOpen, setStoryRequestsBoxOpen] = useState(false);
+  useBackClose(storyRequestsBoxOpen, () => setStoryRequestsBoxOpen(false)); // HARDWARE-BACK-PATCH
   const [storyReqRespondingId, setStoryReqRespondingId] = useState<number | null>(null);
   const [storyReqTab, setStoryReqTab] = useState<'search' | 'requests'>('requests');
   const [storyReqQuery, setStoryReqQuery] = useState('');
@@ -27525,6 +27585,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [, setFriendChatShowEmoji] = useState(false);
   const [, setFriendChatShowAttach] = useState(false);
   const [friendChatAvatarViewerOpen, setFriendChatAvatarViewerOpen] = useState(false);
+  useBackClose(friendChatAvatarViewerOpen, () => setFriendChatAvatarViewerOpen(false)); // HARDWARE-BACK-PATCH
   function openNormalChat(friend: Friend) {
     const qs = new URLSearchParams();
     qs.set('with', String(friend.friendId));
@@ -27672,6 +27733,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   });
   /** Story / account page sheet over public posts */
   const [storyHomeSheetOpen, setStoryHomeSheetOpen] = useState(false);
+  useBackClose(storyHomeSheetOpen, () => setStoryHomeSheetOpen(false)); // HARDWARE-BACK-PATCH
   /** When true, public posts dismiss to the right while the account page enters from the left */
   const [accountSlideFromLeft, setAccountSlideFromLeft] = useState(false);
   useEffect(() => {
@@ -27780,6 +27842,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
   // Secret Chat modal state
   const [showNewSecret, setShowNewSecret] = useState(false);
+  useBackClose(showNewSecret, () => setShowNewSecret(false)); // HARDWARE-BACK-PATCH
   const [scName, setScName] = useState('');
   const [, setScPin] = useState('');
   const [scSelectedMembers, setScSelectedMembers] = useState<string[]>([]);
@@ -27788,6 +27851,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
   // Secret Chat open — PIN gate
   const [openingChat, setOpeningChat] = useState<SecretChat | null>(null);
+  useBackClose(openingChat != null, () => setOpeningChat(null)); // HARDWARE-BACK-PATCH
   const [openPin, setOpenPin] = useState('');
   const [openPinVisible, setOpenPinVisible] = useState(false);
   const [openPinError, setOpenPinError] = useState('');
@@ -27815,6 +27879,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [scIsRecording, setScIsRecording] = useState(false);
   const [scRecordSecs, setScRecordSecs] = useState(0);
   const [scShowAttach, setScShowAttach] = useState(false);
+  useBackClose(scShowAttach, () => setScShowAttach(false)); // HARDWARE-BACK-PATCH
   const scMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const scAudioChunksRef = useRef<Blob[]>([]);
   const scRecordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
