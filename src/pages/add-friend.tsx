@@ -23751,54 +23751,166 @@ export default function AddFriendPage() {
 
   // ── DEEP-LINK FROM EXTERNAL NOTIFICATION ──
   // When the user taps a push notification outside the app, the FCM data.url
-  // brings them here with query params. We open the exact place and then clean the URL.
+  // (or Capacitor actionPerformed / cold-start launch URL) lands here with query
+  // params. We open the exact place and then clean the URL so it does not re-fire.
   useEffect(() => {
-    const sp = new URLSearchParams(window.location.search);
-    let handled = false;
-
-    // Incoming call
-    if (sp.get("incomingCall") === "1") {
-      const channel = sp.get("channel") || "";
-      const from = sp.get("from") || "Someone";
-      if (channel) {
-        try {
-          window.dispatchEvent(new CustomEvent("stooorna:incoming-call-ui", {
-            detail: { ringing: true, channel, hostName: from, video: sp.get("video") === "1", at: Date.now() }
-          }));
-        } catch { /* ignore */ }
-        handled = true;
-      }
-    }
-
-    // Open private chat (approximate — opens friends list / last chat if peer id known)
-    if (sp.get("openChat") === "1") {
+    const applyDeepLink = (rawUrl: string) => {
       try {
-        window.dispatchEvent(new CustomEvent("stooorna:open-private-chat", {
-          detail: { peerName: sp.get("peerName") || "" }
-        }));
+        const abs = rawUrl.startsWith("http") || rawUrl.startsWith("/")
+          ? (rawUrl.startsWith("http") ? rawUrl : `${window.location.origin}${rawUrl}`)
+          : `${window.location.origin}/${rawUrl}`;
+        const u = new URL(abs);
+        // Live routes: navigate so /live and /live-camera open the room directly
+        if (u.pathname.startsWith("/live")) {
+          const target = u.pathname + u.search + u.hash;
+          if (window.location.pathname + window.location.search !== target) {
+            try { navigate(target); } catch { window.location.assign(target); }
+          }
+          return true;
+        }
+        // Post deep link: /?openPost=1&postId=… or /posts/:id
+        const postId = u.searchParams.get("postId") || (u.pathname.match(/^\/posts\/([^/?#]+)/) || [])[1] || "";
+        if (u.searchParams.get("openPost") === "1" || postId) {
+          if (postId) {
+            try {
+              window.dispatchEvent(new CustomEvent("stooorna:open-post", { detail: { postId } }));
+            } catch { /* ignore */ }
+          }
+          return true;
+        }
+        // Merge query onto current location for the handlers below
+        const sp = u.searchParams;
+        let handled = false;
+
+        if (sp.get("incomingCall") === "1") {
+          const channel = sp.get("channel") || "";
+          const from = sp.get("from") || "Someone";
+          if (channel) {
+            try {
+              window.dispatchEvent(new CustomEvent("stooorna:incoming-call-ui", {
+                detail: {
+                  ringing: true,
+                  channel,
+                  hostName: from,
+                  callerId: sp.get("fromId") || "",
+                  video: sp.get("video") === "1",
+                  at: Date.now(),
+                },
+              }));
+            } catch { /* ignore */ }
+            handled = true;
+          }
+        }
+
+        if (sp.get("openChat") === "1") {
+          try {
+            window.dispatchEvent(new CustomEvent("stooorna:open-private-chat", {
+              detail: {
+                peerName: sp.get("peerName") || "",
+                peerId: sp.get("peerId") || "",
+              },
+            }));
+            // Also fire the stronger event that actually opens DirectChat
+            window.dispatchEvent(new CustomEvent("stooorna:open-friend-chat", {
+              detail: {
+                friendId: sp.get("peerId") || "",
+                peerId: sp.get("peerId") || "",
+                peerName: sp.get("peerName") || "",
+              },
+            }));
+          } catch { /* ignore */ }
+          handled = true;
+        }
+
+        if (sp.get("openGeneralChat") === "1") {
+          try { openGeneralChat(); } catch { /* ignore */ }
+          handled = true;
+        }
+
+        // Invite to live while still on home path (fallback if path was not /live)
+        if (sp.get("openLive") === "1" || sp.get("hostId")) {
+          const hostId = sp.get("hostId") || "";
+          if (hostId) {
+            const kind = sp.get("kind") === "camera" || sp.get("video") === "1" ? "live-camera" : "live";
+            const qs = new URLSearchParams();
+            qs.set("hostId", hostId);
+            if (sp.get("hostName")) qs.set("hostName", sp.get("hostName")!);
+            if (sp.get("hostUsername")) qs.set("hostUsername", sp.get("hostUsername")!);
+            if (sp.get("hostAvatar")) qs.set("hostAvatar", sp.get("hostAvatar")!);
+            const target = `/${kind}?${qs.toString()}`;
+            try { navigate(target); } catch { window.location.assign(target); }
+            handled = true;
+          }
+        }
+
+        return handled;
+      } catch {
+        return false;
+      }
+    };
+
+    // 1) URL bar / FCM that opened the app with a path
+    const sp = new URLSearchParams(window.location.search);
+    let handled = applyDeepLink(window.location.pathname + window.location.search + window.location.hash);
+
+    // 2) Capacitor: notification tap while app was killed / backgrounded
+    //    (PushNotifications + App.getLaunchUrl). Safe no-op on pure web.
+    const wireNative = async () => {
+      try {
+        const Cap = (window as any).Capacitor;
+        if (!Cap?.isNativePlatform?.()) return;
+        // Cold start launch URL
+        try {
+          const App = (await import("@capacitor/app").catch(() => null)) as any;
+          const launch = await App?.App?.getLaunchUrl?.();
+          if (launch?.url) applyDeepLink(String(launch.url));
+          App?.App?.addListener?.("appUrlOpen", (ev: any) => {
+            if (ev?.url) applyDeepLink(String(ev.url));
+          });
+        } catch { /* plugin missing */ }
+        try {
+          const Push = (await import("@capacitor/push-notifications").catch(() => null)) as any;
+          const PN = Push?.PushNotifications;
+          if (!PN) return;
+          PN.addListener("pushNotificationActionPerformed", (action: any) => {
+            const data = action?.notification?.data || action?.notification?.extra || {};
+            const url = String(data.url || data.click_action || data.link || "").trim();
+            if (url) applyDeepLink(url);
+            else if (data.type === "call" && data.channel) {
+              applyDeepLink(`/?incomingCall=1&channel=${encodeURIComponent(data.channel)}&from=${encodeURIComponent(data.from || data.title || "Someone")}&video=${data.video === "1" ? "1" : "0"}&fromId=${encodeURIComponent(data.fromId || "")}`);
+            } else if (data.type === "message") {
+              applyDeepLink(`/?openChat=1&peerId=${encodeURIComponent(data.peerId || "")}&peerName=${encodeURIComponent(data.peerName || data.title || "")}`);
+            } else if (data.type === "live" || data.type === "invite") {
+              const path = data.kind === "camera" ? "/live-camera" : "/live";
+              applyDeepLink(`${path}?hostId=${encodeURIComponent(data.hostId || "")}&hostName=${encodeURIComponent(data.hostName || "")}`);
+            }
+          });
+        } catch { /* plugin missing */ }
       } catch { /* ignore */ }
-      handled = true;
-    }
+    };
+    void wireNative();
 
-    // Open general / public chat
-    if (sp.get("openGeneralChat") === "1") {
-      try { openGeneralChat(); } catch { /* ignore */ }
-      handled = true;
-    }
-
-    // Live / invite already handled by router if path is /live or /live-camera
-    // (the server now sends those full paths)
+    // 3) Custom event from a service worker / other code that already extracted the URL
+    const onNotifNav = (e: Event) => {
+      const d = (e as CustomEvent).detail as { url?: string } | undefined;
+      if (d?.url) applyDeepLink(String(d.url));
+    };
+    window.addEventListener("stooorna:notification-navigate", onNotifNav as EventListener);
 
     if (handled) {
       // Clean the query so it doesn't re-trigger
       const clean = new URLSearchParams(sp);
-      ["incomingCall", "channel", "video", "from", "openChat", "peerName", "openGeneralChat"].forEach(k => clean.delete(k));
+      ["incomingCall", "channel", "video", "from", "fromId", "openChat", "peerName", "peerId", "openGeneralChat", "openPost", "postId", "openLive", "hostId", "hostName", "hostUsername", "hostAvatar", "kind"].forEach(k => clean.delete(k));
       const qs = clean.toString();
       const newUrl = window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
       try { window.history.replaceState({}, "", newUrl); } catch { /* ignore */ }
-      setSearchParams(clean, { replace: true });
+      try { setSearchParams(clean, { replace: true }); } catch { /* ignore */ }
     }
-  }, [searchParams]);
+
+    return () => {
+      window.removeEventListener("stooorna:notification-navigate", onNotifNav as EventListener);
+    };
+  }, [searchParams, navigate]);
 
   const { user, isPending } = useSession();
   // GPS-ALL-USERS-PATCH: while I am online with the map toggle ON, my last place stays fresh for everybody
@@ -27354,23 +27466,51 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [, setFriendChatReactMsgId] = useState<string | null>(null);
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
 
-  // Deep-link: open private chat when notification is tapped
+  // Deep-link: open private chat when notification is tapped (peerId preferred, else match by name)
   useEffect(() => {
     const onOpen = (e: Event) => {
       const d = (e as CustomEvent).detail as { peerName?: string; peerId?: string } | undefined;
-      // If we have a peerId we could look it up; for now open the friends list tab so the user sees the chat
+      const peerId = String(d?.peerId || "").trim();
+      const peerName = String(d?.peerName || "").trim();
+      // Prefer the event that opens DirectChat with a concrete friend row
+      if (peerId) {
+        try {
+          window.dispatchEvent(new CustomEvent("stooorna:open-friend-chat", {
+            detail: { friendId: peerId, peerId, peerName: peerName || undefined },
+          }));
+          return;
+        } catch { /* fall through */ }
+      }
+      if (peerName) {
+        const match = friends.find(f =>
+          String(f.name || "").toLowerCase() === peerName.toLowerCase()
+          || String(f.username || "").toLowerCase() === peerName.toLowerCase()
+          || String(f.username || "").toLowerCase() === peerName.replace(/^@/, "").toLowerCase()
+        );
+        if (match) {
+          try {
+            window.dispatchEvent(new CustomEvent("stooorna:open-friend-chat", {
+              detail: {
+                friendId: String(match.friendId),
+                peerId: String(match.friendId),
+                peerName: match.name || match.username || peerName,
+                peerAvatar: match.avatarUrl,
+              },
+            }));
+            return;
+          } catch { /* ignore */ }
+        }
+      }
+      // Fallback: friends tab so the user can pick the conversation
       try {
         const sp = new URLSearchParams(window.location.search);
-        if (!sp.has("tab")) {
-          sp.set("tab", "friends");
-          window.history.replaceState({}, "", window.location.pathname + "?" + sp.toString());
-        }
+        sp.set("tab", "friends");
+        window.history.replaceState({}, "", window.location.pathname + "?" + sp.toString());
       } catch { /* ignore */ }
-      // Optionally scroll or highlight; the friends list will show unread
     };
     window.addEventListener("stooorna:open-private-chat", onOpen as EventListener);
     return () => window.removeEventListener("stooorna:open-private-chat", onOpen as EventListener);
-  }, []);
+  }, [friends]);
 
   const [friendChatTypingTick, setFriendChatTypingTick] = useState(0);
 
