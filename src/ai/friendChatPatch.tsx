@@ -24,7 +24,7 @@ import { createRoot } from 'react-dom/client';
 import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X } from 'lucide-react';
 import { loadDashboard } from './appAssistant';
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.5.0';
+export const FRIEND_CHAT_PATCH_VERSION = '1.5.1';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -301,6 +301,7 @@ function FriendChatPatch() {
   const [reactions, setReactions] = useState<Record<string, string>>({});
   const pressTimer = useRef(0);
   const pickerAt = useRef(0);
+  const pressXY = useRef({ x: 0, y: 0, t: 0 });
 
   /* 1) find the sheet whenever it opens / closes */
   useEffect(() => {
@@ -550,17 +551,27 @@ function FriendChatPatch() {
   /* REACTIONS: long-press (0.45s) on the friend's message -> emoji bubble in the middle -> pick -> sticks on the message */
   const reactionOf = (m: ChatMsg): string => (reactions[m.id] !== undefined ? reactions[m.id] : m.reaction || '');
   const clearPress = () => { if (pressTimer.current) { window.clearTimeout(pressTimer.current); pressTimer.current = 0; } };
+  const openPicker = (id: string) => {
+    if (Date.now() - pickerAt.current < 700) return; // already opened by the timer or the context-menu event
+    pickerAt.current = Date.now();
+    try { navigator.vibrate?.(15); } catch { /* */ }
+    setPicker(id);
+  };
   const pressProps = (id: string) => ({
-    onPointerDown: () => {
+    onPointerDown: (e: React.PointerEvent) => {
       clearPress();
-      pressTimer.current = window.setTimeout(() => {
-        pressTimer.current = 0; pickerAt.current = Date.now();
-        try { navigator.vibrate?.(15); } catch { /* */ }
-        setPicker(id);
-      }, 450);
+      pressXY.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+      pressTimer.current = window.setTimeout(() => { pressTimer.current = 0; openPicker(id); }, 450);
     },
-    onPointerUp: clearPress, onPointerLeave: clearPress, onPointerCancel: clearPress,
-    onContextMenu: (e: React.SyntheticEvent) => e.preventDefault(),
+    // cancel only if the finger really moved (scrolling), not on tiny shakes
+    onPointerMove: (e: React.PointerEvent) => {
+      if (pressTimer.current && Math.hypot(e.clientX - pressXY.current.x, e.clientY - pressXY.current.y) > 12) clearPress();
+    },
+    onPointerUp: clearPress,
+    // some Android browsers fire pointercancel when the long-press starts: ignore it unless it came very early (= scroll)
+    onPointerCancel: () => { if (Date.now() - pressXY.current.t < 250) clearPress(); },
+    // fallback: the native long-press (context menu) opens the same emoji bubble
+    onContextMenu: (e: React.SyntheticEvent) => { e.preventDefault(); clearPress(); openPicker(id); },
   });
   const pickerMsg = picker ? chat.list.find(x => x.id === picker) : undefined;
   const pickReaction = (emoji: string) => {
@@ -785,7 +796,7 @@ function FriendChatPatch() {
                     padding: '9px 13px', borderRadius: 18, borderBottomRightRadius: mine ? 6 : 18, borderBottomLeftRadius: mine ? 18 : 6,
                     fontSize: 15, lineHeight: '21px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     opacity: m.status === 'sending' ? 0.7 : 1, cursor: m.status === 'failed' ? 'pointer' : 'default',
-                    ...(mine ? {} : { userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties),
+                    ...(mine ? {} : { userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' } as React.CSSProperties),
                   }}
                 >{m.text}</div>
                 {reactionOf(m) && (
