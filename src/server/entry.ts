@@ -2253,7 +2253,49 @@ app.post("/api/room/admin", room_admin_post_95);
 app.get("/api/room/counts", room_counts_get_96);
 app.post("/api/room/floor", room_floor_post_97);
 app.post("/api/room/heartbeat", room_heartbeat_post_98);
-app.post("/api/room/join", room_join_post_99);
+// FCM-PUSH: when someone enters the public voice live, their accepted friends get a phone notification (no invite needed)
+const publicVoicePushSeen = new Map<string, number>();
+const publicVoiceJoinPush: RequestHandler = (req, _res, next) => {
+  void (async () => {
+    try {
+      const b = (req.body || {}) as Record<string, unknown>;
+      if (String(b.roomId || "") !== "stooorna-public-voice") return;
+      const u = await session.user(req).catch(() => null);
+      if (!u) return;
+      const me = String((u as any).id);
+      const now = Date.now();
+      if (now - (publicVoicePushSeen.get(me) || 0) < 15 * 60_000) return;
+      publicVoicePushSeen.set(me, now);
+      for (const [k, t] of publicVoicePushSeen) if (now - t > 60 * 60_000) publicVoicePushSeen.delete(k);
+      // read the caller's own friends list through the normal friends handler
+      let body: any = null;
+      const fake: any = {
+        statusCode: 200,
+        headersSent: false,
+        setHeader() { return fake; },
+        set() { return fake; },
+        header() { return fake; },
+        type() { return fake; },
+        status(c: number) { fake.statusCode = c; return fake; },
+        json(x: unknown) { body = x; return fake; },
+        send(x: unknown) { body = x; return fake; },
+        end() { return fake; },
+      };
+      await (friends_get_5 as any)(req, fake);
+      const accepted: Array<{ friendId?: string }> = Array.isArray(body?.accepted) ? body.accepted : [];
+      const who = String(b.name || b.username || (u as any).name || (u as any).username || "A friend").slice(0, 60);
+      for (const f of accepted.slice(0, 200)) {
+        const fid = String(f?.friendId || "").trim();
+        if (!fid || fid === me) continue;
+        await sendFcmToUser({ userId: fid, title: who, body: "Joined the public voice live", url: "/", type: "live" });
+      }
+    } catch (e) {
+      console.error("[fcm] public voice push failed:", e);
+    }
+  })();
+  next();
+};
+app.post("/api/room/join", publicVoiceJoinPush, room_join_post_99);
 app.post("/api/room/leave", room_leave_post_100);
 app.get("/api/room/live-status", room_live_status_get_101);
 app.get("/api/room/names", room_names_get_102);
