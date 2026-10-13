@@ -13,3 +13,4 @@ export { detectAppIntent, answerAppIntent, openGeneralChat, loadDashboard, clear
 export { listChats, loadChat, openChat, newChat, deleteChat, exportChatText, readFileForAi, clearPendingFiles, startListening, voiceInputSupported, speak, stopSpeaking, voiceOutputSupported, generateImage, installStooornaAiCapabilities, STOOORNA_AI_CAPS_VERSION } from './aiCapabilities'; // AI-CAPABILITIES
 export { default as MergeMedia } from './MergeMedia'; // MERGE-MEDIA
 export { installFriendChatPatch, FRIEND_CHAT_PATCH_VERSION } from './friendChatPatch'; // FRIEND-CHAT
+export { default as FriendVoiceLive, FRIEND_VOICE_LIVE_VERSION } from './FriendVoiceLive'; // FRIEND-VOICE-LIVE

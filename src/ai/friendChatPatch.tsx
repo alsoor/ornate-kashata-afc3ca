@@ -21,15 +21,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X, Image as ImageIcon, MapPin } from 'lucide-react';
+import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X, Image as ImageIcon } from 'lucide-react';
 import { loadDashboard } from './appAssistant';
+// FRIEND-VOICE-LIVE: بث صوتي مباشر على المايك الأحمر داخل شات الصديق (ملف مستقل)
+import FriendVoiceLive, { FRIEND_VOICE_TAP_EVENT } from './FriendVoiceLive';
 // FRIEND-CHAT-MEDIA: نفس نظام شات المحفوظات بالضبط (اللوكيشن + إرسال الصور) — نفس المكونات ونفس التشفير
 import { LocationChatCard } from '@/components/LocationPickerPatch';
 import { encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeSavedMediaLink, prepareSavedMediaWithin } from '@/lib/savedMediaPatch';
 const LocationPickerSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationPickerSheet })));
 const LocationViewSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationViewSheet })));
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.7.1';
+export const FRIEND_CHAT_PATCH_VERSION = '1.8.0';
 
 /**
  * LOCATION-FREEZE-FIX: full-screen layer that lives on document.body (outside the Ai sheet).
@@ -687,7 +689,10 @@ function FriendChatPatch() {
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         if (!peerRef.current) flash('النص فقط متاح في شات الأصدقاء حالياً'); else setPlusOpen(v => !v); // خارج الشات (قائمة المحادثات): الرسالة فقط — داخل الشات: قائمة الصور واللوكيشن
       }
-      else if (label === 'Voice') { e.preventDefault(); e.stopPropagation(); flash('النص فقط متاح في شات الأصدقاء حالياً'); }
+      else if (label === 'Voice') { // FRIEND-VOICE-LIVE: داخل شات صديق = بث صوتي مباشر ؛ خارج الشات = النص فقط
+        e.preventDefault(); e.stopPropagation();
+        if (!peerRef.current) flash('النص فقط متاح في شات الأصدقاء حالياً'); else window.dispatchEvent(new CustomEvent(FRIEND_VOICE_TAP_EVENT));
+      }
     };
     const onSubmit = (e: Event) => {
       if (modeRef.current !== 'chat') return;
@@ -1110,6 +1115,9 @@ function FriendChatPatch() {
         sheet.inner,
       )}
 
+      {/* FRIEND-VOICE-LIVE: ذبذبات + بث صوتي على المايك الأحمر (داخل شات الصديق فقط) */}
+      <FriendVoiceLive me={me} peer={peer} active={mode === 'chat' && !!peer} formEl={sheet.form} onFlash={flash} />
+
       {/* FRIEND-CHAT-MEDIA: hidden photo input (opened from the "+" menu) */}
       <input ref={photoRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
 
@@ -1126,7 +1134,6 @@ function FriendChatPatch() {
           >
             {([
               { key: 'photo', label: 'Photo', icon: <ImageIcon size={18} strokeWidth={2.2} />, run: () => { holdFilePicker(); photoRef.current?.click(); } },
-              { key: 'location', label: 'Location', icon: <MapPin size={18} strokeWidth={2.2} />, run: () => setLocPickerOpen(true) },
             ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).map(it => (
               <button
                 key={it.key} type="button" disabled={busy}
