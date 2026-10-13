@@ -61,23 +61,34 @@ async function api<T = any>(path: string, init?: RequestInit): Promise<T> {
   return r.json();
 }
 
+/** FIX: the app's real backend is same-origin `/api/...` with the session cookie (not the Railway /dm/* routes). */
+async function local<T = any>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(path, {
+    credentials: 'include',
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
 const asTs = (v: any): number => {
   if (typeof v === 'number') return v < 1e12 ? v * 1000 : v;
   const n = Date.parse(v);
   return Number.isFinite(n) ? n : Date.now();
 };
 const toFriend = (o: any): Friend | null => {
-  const id = o?.id ?? o?.userId ?? o?.friendId;
-  const name = o?.name ?? o?.displayName ?? o?.username;
+  const id = o?.friendId ?? o?.userId ?? o?.id; // FIX: `id` in /api/friends is the row id; `friendId` is the user
+  const name = o?.name || o?.displayName || o?.username || o?.email;
   if (!id || !name) return null;
   return { id: String(id), name: String(name), avatar: o?.avatarUrl ?? o?.avatar ?? o?.image ?? null };
 };
 const toMsg = (o: any): ChatMsg => ({
-  id: String(o.id ?? o._id ?? `${o.from ?? o.senderId}_${o.ts ?? o.createdAt}`),
+  id: typeof o.id === 'number' ? `db-${o.id}` : String(o.id ?? o._id ?? `${o.from ?? o.senderId}_${o.ts ?? o.createdAt}`),
   clientId: o.clientId ? String(o.clientId) : undefined,
   from: String(o.from ?? o.senderId ?? o.fromId),
   to: o.to ?? o.receiverId ?? o.toId,
-  text: String(o.text ?? o.content ?? o.message ?? ''),
+  text: o.type && o.type !== 'text' && !o.text ? '📎 وسائط' : String(o.text ?? o.body ?? o.content ?? o.message ?? ''),
   ts: asTs(o.ts ?? o.createdAt ?? o.timestamp),
   read: !!(o.read ?? o.readAt),
   status: 'sent',
@@ -98,38 +109,49 @@ function findFriends(o: any, depth = 0): Friend[] | null {
 
 const restAdapter: Adapter = {
   async listFriends(me) {
+    // 1) the app's real friends endpoint (same one the Add-Friend page uses)
+    try {
+      const d = await local('/api/friends');
+      const arr = Array.isArray(d) ? d : d?.accepted || d?.friends || [];
+      const seen = new Set<string>();
+      const list = (arr.map(toFriend).filter(Boolean) as Friend[]).filter(f => {
+        if (f.id === me.id || seen.has(f.id)) return false;
+        seen.add(f.id); return true;
+      });
+      if (list.length) return list;
+    } catch { /* fall through */ }
+    // 2) the dashboard data (the screen already shows the friends count from here)
+    try {
+      const d = await (loadDashboard as any)(me);
+      const l = findFriends(d);
+      if (l && l.length) return l;
+    } catch { /* fall through */ }
+    // 3) old external route (kept as last resort)
     try {
       const d = await api(`/dm/friends?userId=${encodeURIComponent(me.id)}`);
       const arr = Array.isArray(d) ? d : d?.friends || [];
-      const list = arr.map(toFriend).filter(Boolean) as Friend[];
-      if (list.length) return list;
-    } catch { /* fall through */ }
-    try {
-      const d = await (loadDashboard as any)(me);
-      return findFriends(d) || [];
+      return arr.map(toFriend).filter(Boolean) as Friend[];
     } catch { return []; }
   },
   async fetchMessages(me, peerId) {
-    const d = await api(`/dm/messages?userId=${encodeURIComponent(me.id)}&peerId=${encodeURIComponent(peerId)}`);
+    const d = await local(`/api/messages?with=${encodeURIComponent(peerId)}`);
     return (Array.isArray(d) ? d : d?.messages || []).map(toMsg);
   },
   async send(me, peerId, text, clientId) {
-    const d = await api('/dm/send', { method: 'POST', body: JSON.stringify({ fromId: me.id, toId: peerId, text, clientId }) });
-    const m = d?.message || d;
-    return m && (m.id || m._id) ? toMsg({ ...m, clientId }) : undefined;
+    const d = await local('/api/messages', { method: 'POST', body: JSON.stringify({ receiverId: peerId, body: text }) });
+    // only return the server id: the optimistic copy keeps from/text/ts
+    return typeof d?.id === 'number' ? { id: `db-${d.id}` } : undefined;
   },
   async unread(me) {
     try {
-      const d = await api(`/dm/unread?userId=${encodeURIComponent(me.id)}`);
-      const o = d?.unread || d || {};
+      const d = await local('/api/messages/unread');
+      const o = d?.bySender || {};
       const out: Record<string, number> = {};
       Object.keys(o).forEach(k => { const n = Number(o[k]); if (n > 0) out[k] = n; });
       return out;
     } catch { return {}; }
   },
-  async markRead(me, peerId) {
-    try { await api('/dm/read', { method: 'POST', body: JSON.stringify({ userId: me.id, peerId }) }); } catch { /* */ }
-  },
+  async markRead() { /* GET /api/messages?with=... already marks incoming messages as read */ },
 };
 
 const adapter = (): Adapter => ({ ...restAdapter, ...((window as any).__STOOORNA_FRIEND_CHAT__ || {}) });
