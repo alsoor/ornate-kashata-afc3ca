@@ -789,7 +789,7 @@ function FriendChatPatch() {
       }
       else if (label === 'Voice') { // FRIEND-VOICE-LIVE: داخل شات صديق = بث صوتي مباشر ؛ خارج الشات = النص فقط
         e.preventDefault(); e.stopPropagation();
-        if (!peerRef.current) flash('النص فقط متاح في شات الأصدقاء حالياً'); else if (isGroupId(peerRef.current.id)) flash('البث الصوتي غير متاح في القروب حالياً'); else window.dispatchEvent(new CustomEvent(FRIEND_VOICE_TAP_EVENT));
+        if (!peerRef.current) flash('النص فقط متاح في شات الأصدقاء حالياً'); else window.dispatchEvent(new CustomEvent(FRIEND_VOICE_TAP_EVENT));
       }
     };
     const onSubmit = (e: Event) => {
@@ -1342,7 +1342,7 @@ function FriendChatPatch() {
       )}
 
       {/* FRIEND-VOICE-LIVE: ذبذبات + بث صوتي على المايك الأحمر (داخل شات الصديق فقط) */}
-      <FriendVoiceLive me={me} peer={peer} active={mode === 'chat' && !!peer && !isGroup} formEl={sheet.form} onFlash={flash} />
+      <FriendVoiceLive me={me} peer={peer} active={mode === 'chat' && !!peer} formEl={sheet.form} onFlash={flash} />
 
       {/* FRIEND-CHAT-MEDIA: hidden photo input (opened from the "+" menu) */}
       <input ref={photoRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />

@@ -7,6 +7,7 @@
  *  - أثناء البث تطلع ذبذبات (دوائر موجية) حول دائرة المايك تتفاعل مع شدة الصوت.
  *  - تضغط المايك مرة ثانية => تطلع من البث. الخروج من الشات/تغيير الصديق/إغلاق الصفحة => يطلع تلقائياً.
  *  - خارج الشات (قائمة المحادثات) الميزة لا تعمل (friendChatPatch يعرض رسالة "النص فقط").
+ *  - GROUP-VOICE: داخل القروب (g:<id>) نفس الشي لكن جماعي: كل الأعضاء بنفس القناة، من يضغط المايك يدخل ويسمع الكل، وأعضاء القروب يشوفون المايك أخضر.
  *
  * الربط: friendChatPatch.tsx يرسم <FriendVoiceLive/> ويرسل الحدث FRIEND_VOICE_TAP_EVENT عند الضغط على المايك داخل شات صديق.
  * الاتصال: نفس طريقة PublicVoiceLive بالضبط (/api/call/token + Agora RTC + /api/room/signal للإشعار).
@@ -58,6 +59,10 @@ async function fetchToken(channel: string, userId: string) {
   return r.json() as Promise<{ token: string; uid: number; appId: string }>;
 }
 
+/* GROUP-VOICE: القروب معرّفه g:<id> — القناة الصوتية ثابتة لكل أعضاء القروب */
+const isGroupPeer = (id?: string | null): boolean => !!id && id.startsWith('g:');
+const roomFor = (meId: string, peerId: string): string => (isGroupPeer(peerId) ? friendVoiceRoom('group', peerId) : friendVoiceRoom(meId, peerId));
+
 const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 /* ───────── component ───────── */
@@ -66,6 +71,9 @@ export default function FriendVoiceLive({ me, peer, active, formEl, onFlash }: P
   const [connecting, setConnecting] = useState(false);
   const [peerIn, setPeerIn] = useState(false);     // الصديق داخل القناة الآن
   const [peerLive, setPeerLive] = useState(false); // الصديق بدأ بث وأنا مو داخل (دعوة)
+  const [count, setCount] = useState(0);          // GROUP-VOICE: عدد اللي معي بالقناة
+  const [liveName, setLiveName] = useState('');    // GROUP-VOICE: اسم العضو اللي بدأ البث
+  const liveNameRef = useRef('');
   const [level, setLevel] = useState(0);
   const [secs, setSecs] = useState(0);
   const [rect, setRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -98,7 +106,7 @@ export default function FriendVoiceLive({ me, peer, active, formEl, onFlash }: P
     if (hbRef.current) { window.clearInterval(hbRef.current); hbRef.current = 0; }
     const wasLive = liveRef.current;
     liveRef.current = false;
-    setLive(false); setPeerIn(false); setLevel(0); setSecs(0);
+    setLive(false); setPeerIn(false); setCount(0); setLevel(0); setSecs(0);
     if (wasLive) await signal(false);
     try { micRef.current?.stop(); micRef.current?.close(); } catch { /* */ }
     micRef.current = null;
@@ -116,7 +124,7 @@ export default function FriendVoiceLive({ me, peer, active, formEl, onFlash }: P
     const m = meRef.current; const p = peerRef.current;
     if (!m || !p || busyRef.current || liveRef.current) return;
     busyRef.current = true; setConnecting(true);
-    const room = friendVoiceRoom(m.id, p.id);
+    const room = roomFor(m.id, p.id); // GROUP-VOICE
     sessionRef.current = { room, meId: m.id, peerId: p.id, meName: String(m.username || m.name || '') };
     try {
       const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
@@ -136,10 +144,10 @@ export default function FriendVoiceLive({ me, peer, active, formEl, onFlash }: P
       client.on('user-unpublished', (ru: IAgoraRTCRemoteUser, mediaType: string) => {
         if (mediaType === 'audio') { ru.audioTrack?.stop(); remoteRef.current.delete(ru.uid as number); }
       });
-      client.on('user-joined', () => setPeerIn(true));
+      client.on('user-joined', () => { setPeerIn(true); setCount(Math.max(1, client.remoteUsers.length)); });
       client.on('user-left', (ru: IAgoraRTCRemoteUser) => {
         ru.audioTrack?.stop(); remoteRef.current.delete(ru.uid as number);
-        setPeerIn(client.remoteUsers.length > 0);
+        setPeerIn(client.remoteUsers.length > 0); setCount(client.remoteUsers.length);
       });
 
       await client.join(appId, room, token, uid || uidFromString(m.id));
@@ -156,7 +164,7 @@ export default function FriendVoiceLive({ me, peer, active, formEl, onFlash }: P
           try { await client.subscribe(ru, 'audio'); if (ru.audioTrack) { remoteRef.current.set(ru.uid as number, ru.audioTrack); ru.audioTrack.play(); } } catch { /* */ }
         }
       }
-      setPeerIn(client.remoteUsers.length > 0);
+      setPeerIn(client.remoteUsers.length > 0); setCount(client.remoteUsers.length);
 
       liveRef.current = true; setLive(true); setPeerLive(false); peerUntilRef.current = 0;
       void signal(true);
@@ -193,7 +201,9 @@ export default function FriendVoiceLive({ me, peer, active, formEl, onFlash }: P
   useEffect(() => {
     if (!active || !me || !peer) return;
     let alive = true;
-    const room = friendVoiceRoom(me.id, peer.id);
+    const room = roomFor(me.id, peer.id); // GROUP-VOICE
+    const grp = isGroupPeer(peer.id);
+    const members = new Map<string, number>(); // GROUP-VOICE: عضو -> وقت انتهاء إشارة البث
     let since = Date.now() - 6000;
     const pull = async () => {
       try {
@@ -205,11 +215,25 @@ export default function FriendVoiceLive({ me, peer, active, formEl, onFlash }: P
             const at = Number(raw?.at || 0);
             if (at > since) since = at;
             const msg = raw?.payload || raw?.data || raw;
-            if (msg?.t !== 'fv' || String(msg.from) !== String(peer.id)) continue;
+            if (msg?.t !== 'fv') continue;
+            if (grp) { // GROUP-VOICE: أي عضو (غيري) يبدأ بث => القروب كله ينادى
+              const from = String(msg.from);
+              if (from === String(me.id)) continue;
+              if (msg.on) { members.set(from, Date.now() + LIVE_TTL_MS); if (msg.name) liveNameRef.current = String(msg.name); }
+              else members.delete(from);
+              continue;
+            }
+            if (String(msg.from) !== String(peer.id)) continue;
             peerUntilRef.current = msg.on ? Date.now() + LIVE_TTL_MS : 0;
           }
         }
       } catch { /* */ }
+      if (grp) { // GROUP-VOICE
+        let until = 0;
+        members.forEach((u, k) => { if (u > Date.now()) until = Math.max(until, u); else members.delete(k); });
+        peerUntilRef.current = until;
+        if (alive) setLiveName(liveNameRef.current);
+      }
       if (alive) setPeerLive(!liveRef.current && Date.now() < peerUntilRef.current);
     };
     void pull();
@@ -252,11 +276,16 @@ export default function FriendVoiceLive({ me, peer, active, formEl, onFlash }: P
   if (!show || !rect) return null;
 
   const accent = live || connecting ? '#ef4444' : '#22c55e';
+  const isGrp = isGroupPeer(peer?.id);
   const label = connecting
     ? 'جاري الاتصال…'
     : live
-      ? (peerIn ? `LIVE · ${mmss(secs)} · ${peer?.name || ''} معك` : `LIVE · ${mmss(secs)} · بانتظار ${peer?.name || 'صديقك'}`)
-      : `${peer?.name || 'صديقك'} في بث صوتي — اضغط المايك للدخول`;
+      ? (isGrp
+        ? (peerIn ? `LIVE · ${mmss(secs)} · ${Math.max(1, count)} معك` : `LIVE · ${mmss(secs)} · بانتظار أعضاء القروب`)
+        : (peerIn ? `LIVE · ${mmss(secs)} · ${peer?.name || ''} معك` : `LIVE · ${mmss(secs)} · بانتظار ${peer?.name || 'صديقك'}`))
+      : (isGrp
+        ? `${liveName || 'عضو'} بدأ بث صوتي في ${peer?.name || 'القروب'} — اضغط المايك للدخول`
+        : `${peer?.name || 'صديقك'} في بث صوتي — اضغط المايك للدخول`);
   const amp = 1 + Math.min(1, level * 3) * 0.9;
 
   return createPortal(
