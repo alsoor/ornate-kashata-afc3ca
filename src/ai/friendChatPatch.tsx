@@ -43,16 +43,36 @@ function ModalLayer({ children, onEsc }: { children: React.ReactNode; onEsc?: ()
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current; if (!el) return;
-    const stop = (e: Event) => { e.stopPropagation(); };
+    /* FREEZE-FIX-2: the old code called stopPropagation() on the layer itself, which also blocked React's own delegated
+       listener (React listens for portal content on document.body) => every React tap/drag handler inside the picker was dead.
+       Now the events are stopped on document.body instead: React's listener on body still runs, but the sheet's
+       document-level handlers (outside click, drag-to-close, scroll lock) no longer see them. */
+    const host: HTMLElement = document.body;
+    const stop = (e: Event) => { if (el.contains(e.target as Node)) e.stopPropagation(); };
     const evs = ['pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'touchstart', 'touchmove', 'touchend', 'wheel', 'focusin', 'keydown'];
-    evs.forEach(n => el.addEventListener(n, stop, { passive: true } as AddEventListenerOptions));
+    evs.forEach(n => host.addEventListener(n, stop, { passive: true } as AddEventListenerOptions));
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onEsc?.(); };
     el.addEventListener('keydown', onKey);
-    return () => { evs.forEach(n => el.removeEventListener(n, stop)); el.removeEventListener('keydown', onKey); };
+    /* native close button: works even if the content below never reacts to touches */
+    const closeBtn = el.querySelector('[data-sfc-native-close]') as HTMLElement | null;
+    const onClose = (e: Event) => { e.preventDefault(); e.stopPropagation(); onEsc?.(); };
+    closeBtn?.addEventListener('click', onClose);
+    return () => {
+      evs.forEach(n => host.removeEventListener(n, stop));
+      el.removeEventListener('keydown', onKey);
+      closeBtn?.removeEventListener('click', onClose);
+    };
   }, [onEsc]);
   return (
     <div ref={ref} data-sfc-layer="1" style={{ position: 'fixed', inset: 0, zIndex: 2147483000, pointerEvents: 'auto', touchAction: 'auto', overscrollBehavior: 'contain' }}>
       {children}
+      <button
+        type="button" data-sfc-native-close="1" aria-label="Close"
+        style={{
+          position: 'absolute', top: 'max(10px, env(safe-area-inset-top))', left: 10, zIndex: 2147483001, width: 36, height: 36, borderRadius: '50%',
+          border: 'none', background: 'rgba(17,17,17,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
+        }}
+      ><X size={18} /></button>
     </div>
   );
 }
