@@ -1325,19 +1325,6 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
             zIndex: 5,
           }}
         >
-          {/* AI-TOP-X: black X in the top middle of the Stooorna Ai page */}
-          <button
-            type="button"
-            aria-label="Close Stooorna Ai"
-            onClick={onClose}
-            style={{
-              position: 'absolute', left: '50%', top: 'calc(max(12px, env(safe-area-inset-top)) + 4px)', transform: 'translateX(-50%)', zIndex: 6,
-              width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.07)', color: '#000',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0,
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3" strokeLinecap="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19" /></svg>
-          </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ position: 'relative' }}>
               {avatar ? (
