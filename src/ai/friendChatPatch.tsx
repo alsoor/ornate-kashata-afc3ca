@@ -29,7 +29,7 @@ import { encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeS
 const LocationPickerSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationPickerSheet })));
 const LocationViewSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationViewSheet })));
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.6.1';
+export const FRIEND_CHAT_PATCH_VERSION = '1.7.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -235,6 +235,36 @@ const previewOf = (t: string): string => {
   return t;
 };
 
+/** SEND-SOUND: soft "pop" like WhatsApp when a message is sent; long-press on "+" mutes / unmutes it (saved on this device) */
+const MUTE_KEY = 'stooorna_friend_chat_send_sound_muted_v1';
+const isSoundMuted = (): boolean => { try { return localStorage.getItem(MUTE_KEY) === '1'; } catch { return false; } };
+const setSoundMuted = (v: boolean) => { try { if (v) localStorage.setItem(MUTE_KEY, '1'); else localStorage.removeItem(MUTE_KEY); } catch { /* */ } };
+let audioCtx: AudioContext | null = null;
+function playSendSound(force = false) {
+  if (!force && isSoundMuted()) return;
+  try {
+    const AC = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return;
+    if (!audioCtx) audioCtx = new AC();
+    const ctx = audioCtx as AudioContext;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t0 = ctx.currentTime;
+    const tone = (f0: number, f1: number, start: number, dur: number, vol: number) => {
+      const o = ctx.createOscillator(); const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f0, t0 + start);
+      o.frequency.exponentialRampToValueAtTime(f1, t0 + start + dur);
+      g.gain.setValueAtTime(0.0001, t0 + start);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + start + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + start + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t0 + start); o.stop(t0 + start + dur + 0.02);
+    };
+    tone(620, 980, 0, 0.09, 0.22);
+    tone(980, 1240, 0.07, 0.12, 0.16);
+  } catch { /* */ }
+}
+
 const hhmm = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 /** REACTIONS: emoji bubble opened by long-press on the friend's message */
@@ -310,6 +340,7 @@ function FriendChatPatch() {
   const recentsRef = useRef(recents); recentsRef.current = recents;
   const friendsRef = useRef(friends); friendsRef.current = friends;
   const typingSent = useRef(0);
+  const lpDone = useRef(0); // SEND-SOUND: time of the last long-press on "+"
   const [picker, setPicker] = useState<string | null>(null);
   const [reactions, setReactions] = useState<Record<string, string>>({});
   const pressTimer = useRef(0);
@@ -475,6 +506,7 @@ function FriendChatPatch() {
     const cid = retryId || `c_${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
     const msg: ChatMsg = { id: cid, clientId: cid, from: me.id, to: p.id, text: t, ts: Date.now(), status: 'sending' };
     setChat(c => ({ peerId: p.id, list: merge(c.peerId === p.id ? c.list : [], [msg]) }));
+    if (!retryId) playSendSound(); // SEND-SOUND
     try {
       const r = await adapter().send(me, p.id, t, cid);
       setChat(c => ({ ...c, list: c.list.map(x => (x.clientId === cid ? { ...x, ...(r || {}), clientId: cid, status: 'sent' as const } : x)) }));
@@ -603,6 +635,7 @@ function FriendChatPatch() {
       const btn = t.closest('button') as HTMLElement | null;
       if (!btn || !sheet.inner.contains(btn)) return;
       const label = btn.getAttribute('aria-label');
+      if (label === 'Attach' && Date.now() - lpDone.current < 700) { e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation(); return; } // SEND-SOUND: the click that ends a long-press does nothing
       if (label === 'Send') { e.preventDefault(); e.stopPropagation(); takeInput(); }
       else if (label === 'Attach') { // FRIEND-CHAT-MEDIA: "+" opens the Photo / Location menu
         e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
@@ -631,11 +664,44 @@ function FriendChatPatch() {
       typingSent.current = now;
       void adapter().typing(m, pr.id);
     };
+    /* SEND-SOUND: long-press (0.6s) on "+" inside a chat => mute / unmute the send sound; the button turns orange for 1s when muted */
+    let lpTimer = 0; let lpBtn: HTMLElement | null = null; let lpXY = { x: 0, y: 0 };
+    const attachBtn = (t: EventTarget | null): HTMLElement | null => {
+      const b = (t as HTMLElement | null)?.closest?.('button') as HTMLElement | null;
+      return b && sheet.inner.contains(b) && b.getAttribute('aria-label') === 'Attach' ? b : null;
+    };
+    const lpCancel = () => { if (lpTimer) { window.clearTimeout(lpTimer); lpTimer = 0; } };
+    const onDown = (e: PointerEvent) => {
+      if (modeRef.current !== 'chat' || !peerRef.current) return;
+      const b = attachBtn(e.target); if (!b) return;
+      lpCancel(); lpBtn = b; lpXY = { x: e.clientX, y: e.clientY };
+      lpTimer = window.setTimeout(() => {
+        lpTimer = 0; lpDone.current = Date.now();
+        try { navigator.vibrate?.(20); } catch { /* */ }
+        const nowMuted = !isSoundMuted();
+        setSoundMuted(nowMuted);
+        const el = lpBtn;
+        if (el) {
+          const prevBg = el.style.getPropertyValue('background'); const prevPri = el.style.getPropertyPriority('background');
+          el.style.setProperty('background', nowMuted ? '#f97316' : '#22c55e', 'important');
+          window.setTimeout(() => { if (prevBg) el.style.setProperty('background', prevBg, prevPri); else el.style.removeProperty('background'); }, 1000);
+        }
+        if (!nowMuted) playSendSound(true);
+        flash(nowMuted ? 'تم إيقاف صوت الإرسال' : 'تم تشغيل صوت الإرسال');
+      }, 600);
+    };
+    const onMove = (e: PointerEvent) => { if (lpTimer && Math.hypot(e.clientX - lpXY.x, e.clientY - lpXY.y) > 14) lpCancel(); };
+    const onCtx = (e: Event) => { if (modeRef.current === 'chat' && attachBtn(e.target)) e.preventDefault(); };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerup', lpCancel, true);
+    document.addEventListener('pointercancel', lpCancel, true);
+    document.addEventListener('contextmenu', onCtx, true);
     document.addEventListener('input', onInput, true);
     document.addEventListener('click', onClick, true);
     document.addEventListener('submit', onSubmit, true);
     document.addEventListener('keydown', onKey, true);
-    return () => { document.removeEventListener('input', onInput, true); document.removeEventListener('click', onClick, true); document.removeEventListener('submit', onSubmit, true); document.removeEventListener('keydown', onKey, true); };
+    return () => { lpCancel(); document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('pointermove', onMove, true); document.removeEventListener('pointerup', lpCancel, true); document.removeEventListener('pointercancel', lpCancel, true); document.removeEventListener('contextmenu', onCtx, true); document.removeEventListener('input', onInput, true); document.removeEventListener('click', onClick, true); document.removeEventListener('submit', onSubmit, true); document.removeEventListener('keydown', onKey, true); };
   }, [sheet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!sheet) return null;
