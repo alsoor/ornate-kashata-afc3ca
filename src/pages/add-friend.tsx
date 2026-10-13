@@ -21355,13 +21355,12 @@ export function PublicLiveCommentsPanel({
             title="Saved Messages"
             onClick={(e) => {
               e.stopPropagation();
-              if (!myId) return;
-              setSavedOpen(true);
+              // DISABLED: tapping the avatar no longer opens Saved Messages (button kept, only the action removed)
             }}
             style={{
               flexShrink: 0, padding: 0, border: 'none', background: 'transparent', position: 'relative',
               width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', // TEMPLATES-SHARE-PATCH-6 (ring centered on avatar)
-              cursor: myId ? 'pointer' : 'default', borderRadius: '50%',
+              cursor: 'default', borderRadius: '50%',
               WebkitTapHighlightColor: 'transparent',
             }}
           >
