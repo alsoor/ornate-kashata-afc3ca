@@ -21,10 +21,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown } from 'lucide-react';
+import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X } from 'lucide-react';
 import { loadDashboard } from './appAssistant';
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.2.0';
+export const FRIEND_CHAT_PATCH_VERSION = '1.3.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -168,6 +168,16 @@ const saveCache = (me: string, peer: string, list: ChatMsg[]) => {
   try { localStorage.setItem(cacheKey(me, peer), JSON.stringify(list.slice(-150))); } catch { /* */ }
 };
 
+/* CHAT-LIST: conversations you entered stay as rectangles on the chat page; "delete" clears them from your side */
+interface Recent extends Friend { ts: number }
+const recentKey = (me: string) => `stooorna_friend_chat_recent_v1_${me}`;
+const loadRecents = (me: string): Recent[] => {
+  try { const v = JSON.parse(localStorage.getItem(recentKey(me)) || '[]'); return Array.isArray(v) ? v.filter((x: any) => x && x.id && x.name) : []; } catch { return []; }
+};
+const saveRecents = (me: string, l: Recent[]) => { try { localStorage.setItem(recentKey(me), JSON.stringify(l.slice(0, 100))); } catch { /* */ } };
+const clearKey = (me: string, peer: string) => `stooorna_friend_chat_clear_v1_${me}_${peer}`;
+const getClearedAt = (me: string, peer: string): number => { try { return Number(localStorage.getItem(clearKey(me, peer)) || 0) || 0; } catch { return 0; } };
+
 function merge(prev: ChatMsg[], inc: ChatMsg[]): ChatMsg[] {
   const map = new Map<string, ChatMsg>();
   [...prev, ...inc].forEach(m => { const k = m.id.startsWith('db-') ? m.id : (m.clientId || m.id); map.set(k, { ...(map.get(k) || {}), ...m } as ChatMsg); });
@@ -230,6 +240,10 @@ function FriendChatPatch() {
   const sheetRef = useRef(sheet); sheetRef.current = sheet;
   const unreadRef = useRef(unread); unreadRef.current = unread;
   const autoPick = useRef(false);
+  const [recents, setRecents] = useState<Recent[]>([]);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const selectModeRef = useRef(selectMode); selectModeRef.current = selectMode;
 
   /* 1) find the sheet whenever it opens / closes */
   useEffect(() => {
@@ -251,9 +265,12 @@ function FriendChatPatch() {
 
   /* 2) sheet closed => back to normal; sheet opened => read user */
   useEffect(() => {
-    if (!sheet) { setMode('ai'); setPeer(null); setListOpen(false); setFriends(null); setUnread({}); setMe(null); return; }
+    if (!sheet) { setMode('ai'); setPeer(null); setListOpen(false); setFriends(null); setUnread({}); setMe(null); setSelectMode(false); setSelected([]); setRecents([]); return; }
     setMe(findUser(sheet.btn));
   }, [sheet]);
+
+  /* 2b) load the list of conversations you entered before */
+  useEffect(() => { setRecents(me ? loadRecents(me.id) : []); }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* 3) unread counts (drives the chat-icon avatar for the receiver) */
   useEffect(() => {
@@ -286,12 +303,12 @@ function FriendChatPatch() {
   useEffect(() => {
     if (mode !== 'chat' || !peer || !me) return;
     let alive = true;
-    setChat({ peerId: peer.id, list: loadCache(me.id, peer.id) });
+    setChat({ peerId: peer.id, list: loadCache(me.id, peer.id).filter(m => m.ts > getClearedAt(me.id, peer.id)) });
     const pull = async () => {
       try {
         const inc = await adapter().fetchMessages(me, peer.id);
         if (!alive) return;
-        setChat(c => (c.peerId === peer.id ? { peerId: c.peerId, list: merge(c.list, inc) } : c));
+        setChat(c => (c.peerId === peer.id ? { peerId: c.peerId, list: merge(c.list, inc.filter(m => m.ts > getClearedAt(me.id, peer.id))) } : c));
         if (inc.some(m => m.from === peer.id && !m.read)) {
           void adapter().markRead(me, peer.id);
           setUnread(u => { const n = { ...u }; delete n[peer.id]; return n; });
@@ -363,7 +380,13 @@ function FriendChatPatch() {
     setPeer(null); setListOpen(false); setMode('chat');
   };
   const backToAi = () => { setMode('ai'); setPeer(null); setListOpen(false); autoPick.current = false; };
-  const navRef = useRef({ enterChat, backToAi }); navRef.current = { enterChat, backToAi };
+  /* back arrow: select mode -> normal list ; open chat -> chat list ; list -> Stooorna Ai page */
+  const goBack = () => {
+    if (selectModeRef.current) { setSelectMode(false); setSelected([]); return; }
+    if (peerRef.current) { setPeer(null); setListOpen(false); return; }
+    backToAi();
+  };
+  const navRef = useRef({ enterChat, backToAi, goBack }); navRef.current = { enterChat, backToAi, goBack };
 
   /* 8) capture handlers: avatar tap + keep Send/Voice/Attach away from the Ai while chatting */
   useEffect(() => {
@@ -386,7 +409,7 @@ function FriendChatPatch() {
       if (!t) return;
       if (sheet.avatarWrap.contains(t)) {
         e.preventDefault(); e.stopPropagation();
-        if (modeRef.current === 'chat') navRef.current.backToAi(); else navRef.current.enterChat();
+        if (modeRef.current === 'chat') navRef.current.goBack(); else navRef.current.enterChat();
         return;
       }
       if (modeRef.current !== 'chat') return;
@@ -418,7 +441,39 @@ function FriendChatPatch() {
   const openUnread = mode === 'chat' ? Object.fromEntries(Object.entries(unread).filter(([k]) => k !== peer?.id)) : unread;
   const totalUnread = Object.values(openUnread).reduce((a, b) => a + b, 0);
   const showIcon = mode === 'chat' || totalUnread > 0;
-  const openPeer = (f: Friend) => { setPeer(f); setListOpen(false); };
+  const openPeer = (f: Friend) => {
+    setPeer({ id: f.id, name: f.name, avatar: f.avatar ?? null }); setListOpen(false); setSelectMode(false); setSelected([]);
+    if (me) {
+      const next: Recent[] = [{ id: f.id, name: f.name, avatar: f.avatar ?? null, ts: Date.now() }, ...recents.filter(r => r.id !== f.id)];
+      setRecents(next); saveRecents(me.id, next);
+    }
+  };
+  const toggleSel = (id: string) => setSelected(a => (a.includes(id) ? a.filter(x => x !== id) : [...a, id]));
+  const listRows = (() => {
+    if (!me) return [] as Array<Recent & { last: ChatMsg | null }>;
+    const map = new Map<string, Recent>();
+    recents.forEach(r => map.set(r.id, r));
+    (friends || []).forEach(f => { if ((unread[f.id] || 0) > 0 && !map.has(f.id)) map.set(f.id, { ...f, ts: Date.now() }); });
+    return [...map.values()].map(r => {
+      const cleared = getClearedAt(me.id, r.id);
+      const msgs = loadCache(me.id, r.id).filter(m => m.ts > cleared);
+      const last = msgs.length ? msgs[msgs.length - 1] : null;
+      return { ...r, last, ts: last ? last.ts : r.ts };
+    }).sort((a, b) => b.ts - a.ts);
+  })();
+  /** delete whole conversations from your side (no server change): hides everything up to now, removes the rectangle */
+  const deleteChats = async (ids: string[]) => {
+    if (!me || !ids.length) return;
+    if (!window.confirm(`Delete ${ids.length > 1 ? ids.length + ' chats' : 'this chat'}? It will be cleared from your side only.`)) return;
+    for (const id of ids) {
+      let latest = Date.now();
+      try { const msgs = await adapter().fetchMessages(me, id); msgs.forEach(m => { if (m.ts > latest) latest = m.ts; }); } catch { /* */ } // opening = marks incoming as read
+      try { localStorage.setItem(clearKey(me.id, id), String(latest)); localStorage.removeItem(cacheKey(me.id, id)); } catch { /* */ }
+    }
+    setRecents(prev => { const next = prev.filter(r => !ids.includes(r.id)); saveRecents(me.id, next); return next; });
+    setUnread(u => { const n = { ...u }; ids.forEach(id => { delete n[id]; }); return n; });
+    setSelected([]); setSelectMode(false);
+  };
   const myId = me?.id || '';
   const sorted = [...(friends || [])].sort((a, b) => (unread[b.id] || 0) - (unread[a.id] || 0));
 
@@ -452,8 +507,35 @@ function FriendChatPatch() {
         sheet.avatarWrap,
       )}
 
+      {/* top-right button (where the History button was): select chats -> delete whole conversations from outside */}
+      {mode === 'chat' && !peer && createPortal(
+        <div
+          data-sfc-portal="1"
+          style={{ position: 'absolute', right: 12, top: 0, bottom: 0, display: 'flex', alignItems: 'center', gap: 8, zIndex: 7, pointerEvents: 'none' }}
+        >
+          {selectMode ? (
+            <>
+              <button
+                type="button" disabled={selected.length === 0} onClick={() => void deleteChats(selected)}
+                style={{ pointerEvents: 'auto', border: 'none', cursor: selected.length ? 'pointer' : 'default', background: selected.length ? '#ef4444' : '#d1d5db', color: '#fff', borderRadius: 999, padding: '9px 16px', fontWeight: 800, fontSize: 14 }}
+              >{selected.length ? `Delete (${selected.length})` : 'Delete'}</button>
+              <button
+                type="button" aria-label="Cancel selection" onClick={() => { setSelectMode(false); setSelected([]); }}
+                style={{ pointerEvents: 'auto', width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#0a0a0a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+              ><X size={18} /></button>
+            </>
+          ) : listRows.length > 0 && (
+            <button
+              type="button" aria-label="Select chats" onClick={() => setSelectMode(true)}
+              style={{ pointerEvents: 'auto', width: 40, height: 40, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#0a0a0a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.25)' }}
+            ><ListChecks size={19} /></button>
+          )}
+        </div>,
+        sheet.header,
+      )}
+
       {/* the button in the header (same place as the Stooorna Ai badge): "choose a friend" -> becomes the friend's name */}
-      {mode === 'chat' && createPortal(
+      {mode === 'chat' && !selectMode && createPortal(
         <div
           data-sfc-portal="1"
           style={{
@@ -489,11 +571,46 @@ function FriendChatPatch() {
             padding: '16px 14px', gap: 8,
           }}
         >
-          {!peer && (
+          {!peer && listRows.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', color: '#6b7280', fontSize: 15, padding: '0 24px' }}>
               اضغط على الزر بالأعلى واختر الصديق الذي تريد مراسلته
             </div>
           )}
+          {!peer && listRows.map(r => {
+            const sel = selected.includes(r.id);
+            const un = unread[r.id] || 0;
+            return (
+              <div
+                key={r.id} role="button"
+                onClick={() => (selectMode ? toggleSel(r.id) : openPeer(r))}
+                style={{
+                  flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 16, cursor: 'pointer',
+                  border: `1px solid ${sel ? DARK_GREEN : 'rgba(0,0,0,0.14)'}`, background: sel ? 'rgba(10,31,26,0.07)' : '#fff',
+                }}
+              >
+                {selectMode && (
+                  <span style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${DARK_GREEN}`, background: sel ? DARK_GREEN : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    {sel && <Check size={14} color="#fff" strokeWidth={3} />}
+                  </span>
+                )}
+                {r.avatar
+                  ? <img src={r.avatar} alt="" style={{ ...circle, objectFit: 'cover' }} />
+                  : <span style={{ ...circle, background: DARK_GREEN, color: '#fff' }}>{(r.name[0] || '?').toUpperCase()}</span>}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 15, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                  <div dir="auto" style={{ fontSize: 13, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                    {r.last ? `${r.last.from === myId ? 'You: ' : ''}${r.last.text}` : 'Tap to chat'}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                  {r.last && <span style={{ fontSize: 11, color: '#9ca3af' }}>{hhmm(r.last.ts)}</span>}
+                  {un > 0 && (
+                    <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10, background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>{un}</span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
           {peer && chat.peerId === peer.id && chat.list.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', color: '#6b7280', fontSize: 15 }}>
               ابدأ المحادثة مع <b style={{ color: '#111' }}>{peer.name}</b>
