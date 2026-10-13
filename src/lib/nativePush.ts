@@ -5,13 +5,33 @@ import { PushNotifications } from '@capacitor/push-notifications';
 const API_BASE = '';
 
 let started = false;
+let lastToken = '';
+
+async function uploadToken(token: string): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/api/push/fcm-token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ token, platform: Capacitor.getPlatform() }),
+    });
+  } catch (e) {
+    console.warn('fcm token upload failed', e);
+  }
+}
 
 /**
- * Call once AFTER the user is logged in (e.g. from RootLayout.tsx).
+ * Call after the user is logged in (RootLayout.tsx does this).
  * Does nothing on the web, so it will not clash with the existing Web Push.
+ * Safe to call again after another user logs in on the same phone: the saved token is re-sent
+ * so it is attached to the new account.
  */
 export async function initNativePush(): Promise<void> {
-  if (started || !Capacitor.isNativePlatform()) return;
+  if (!Capacitor.isNativePlatform()) return;
+  if (started) {
+    if (lastToken) await uploadToken(lastToken);
+    return;
+  }
   started = true;
 
   try {
@@ -25,19 +45,8 @@ export async function initNativePush(): Promise<void> {
     }
 
     await PushNotifications.addListener('registration', async (token) => {
-      try {
-        await fetch(`${API_BASE}/api/push/fcm-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            token: token.value,
-            platform: Capacitor.getPlatform(),
-          }),
-        });
-      } catch (e) {
-        console.warn('fcm token upload failed', e);
-      }
+      lastToken = token.value;
+      await uploadToken(token.value);
     });
 
     await PushNotifications.addListener('registrationError', (err) => {

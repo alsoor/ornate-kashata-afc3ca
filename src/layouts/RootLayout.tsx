@@ -20,6 +20,7 @@ import Website from '@/layouts/Website';
 import LiveKindPicker from '@/components/LiveKindPicker';
 import UserAvatar from '@/components/UserAvatar';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { initNativePush } from '@/lib/nativePush'; // FCM-PUSH
 import { useSession } from '@/lib/auth/auth-client';
 import { useNotificationCounts } from '@/hooks/useNotificationCounts';
 import { playNotificationSound } from '@/lib/notificationSound';
@@ -5713,6 +5714,13 @@ export default function RootLayout({
       window.removeEventListener('keydown', enablePush);
     };
   }, [session?.user?.id, subscribe]);
+
+  // FCM-PUSH: native Android (Capacitor) push. Registers this phone's token for the logged-in user so
+  // notifications arrive even when the app is closed. Does nothing in a normal browser.
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    void initNativePush();
+  }, [session?.user?.id]);
 
   // حذف تلقائي لمحادثات الدعم المنتهية: بعد 10 دقائق من "تم إنهاء المهمة" تُفرَّغ المحادثة
   // بالكامل (عند الدعم وعند المستخدم) حتى لو نافذة الدعم مقفولة — RootLayout شغّال دايماً.
