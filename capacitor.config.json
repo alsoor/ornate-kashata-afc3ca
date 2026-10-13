@@ -4,10 +4,11 @@
   "webDir": "dist/client",
   "backgroundColor": "#060E0E",
   "server": {
-    "url": "https://stooorna.com",
+    "url": "https://ornate-kashata-afc3ca-production.up.railway.app",
     "androidScheme": "https",
     "cleartext": false,
     "allowNavigation": [
+      "ornate-kashata-afc3ca-production.up.railway.app",
       "stooorna.com",
       "*.stooorna.com",
       "polar.sh",
