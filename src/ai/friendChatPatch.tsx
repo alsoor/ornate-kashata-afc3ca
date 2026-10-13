@@ -21,10 +21,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X } from 'lucide-react';
+import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X, Image as ImageIcon, MapPin } from 'lucide-react';
 import { loadDashboard } from './appAssistant';
+// FRIEND-CHAT-MEDIA: نفس نظام شات المحفوظات بالضبط (اللوكيشن + إرسال الصور) — نفس المكونات ونفس التشفير
+import { LocationChatCard } from '@/components/LocationPickerPatch';
+import { encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeSavedMediaLink, prepareSavedMediaWithin } from '@/lib/savedMediaPatch';
+const LocationPickerSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationPickerSheet })));
+const LocationViewSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationViewSheet })));
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.5.1';
+export const FRIEND_CHAT_PATCH_VERSION = '1.6.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -222,6 +227,14 @@ function merge(prev: ChatMsg[], inc: ChatMsg[]): ChatMsg[] {
   return out.sort((a, b) => a.ts - b.ts).slice(-300);
 }
 
+/** FRIEND-CHAT-MEDIA: short text shown in the chat list for a location / photo message */
+const previewOf = (t: string): string => {
+  if (decodeSavedLocation(t)) return '📍 Location';
+  const dl = decodeSavedMediaLink(t);
+  if (dl) return dl.kind === 'video' ? '🎬 Video' : '📷 Photo';
+  return t;
+};
+
 const hhmm = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 /** REACTIONS: emoji bubble opened by long-press on the friend's message */
@@ -302,6 +315,14 @@ function FriendChatPatch() {
   const pressTimer = useRef(0);
   const pickerAt = useRef(0);
   const pressXY = useRef({ x: 0, y: 0, t: 0 });
+  // FRIEND-CHAT-MEDIA: "+" menu (Photo / Location), location picker, viewers
+  const [plusOpen, setPlusOpen] = useState(false);
+  const [locPickerOpen, setLocPickerOpen] = useState(false);
+  const [locView, setLocView] = useState<{ lat: number; lng: number; label: string; name?: string | null; avatar?: string | null } | null>(null);
+  const [imgView, setImgView] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const photoRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!sheet || mode !== 'chat' || !peer) { setPlusOpen(false); setLocPickerOpen(false); setLocView(null); setImgView(null); } }, [sheet, mode, peer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* 1) find the sheet whenever it opens / closes */
   useEffect(() => {
@@ -463,6 +484,83 @@ function FriendChatPatch() {
   }, [me]);
   const sendRef = useRef(sendText); sendRef.current = sendText;
 
+  /* FRIEND-CHAT-MEDIA ─ location: same encoding as the Saved Messages chat, travels as the message text */
+  const sendPickedLocation = (lat: number, lng: number, label: string) => {
+    setLocPickerOpen(false);
+    void sendRef.current(encodeSavedLocation(lat, lng, label || `${lat.toFixed(5)}, ${lng.toFixed(5)}`));
+  };
+
+  /* FRIEND-CHAT-MEDIA ─ keep the app alive while the system file picker is open (same idea as stooornaHoldForFilePicker) */
+  const holdFilePicker = () => {
+    try {
+      const w: any = window;
+      const extend = (ms: number) => { const u = Date.now() + ms; if (!w.__stooornaMediaHoldUntil || w.__stooornaMediaHoldUntil < u) w.__stooornaMediaHoldUntil = u; };
+      extend(60000);
+      document.body.dataset.stooornaFilePicking = '1';
+      let left = false; let done = false;
+      const onLeave = () => { left = true; };
+      const release = () => {
+        if (done) return; done = true;
+        window.removeEventListener('blur', onLeave); window.removeEventListener('focus', onBack); document.removeEventListener('visibilitychange', onVis);
+        extend(8000);
+        window.setTimeout(() => { delete document.body.dataset.stooornaFilePicking; }, 8000);
+      };
+      const onBack = () => { if (left) release(); };
+      const onVis = () => { if (document.visibilityState === 'hidden') onLeave(); else onBack(); };
+      window.addEventListener('blur', onLeave); window.addEventListener('focus', onBack); document.addEventListener('visibilitychange', onVis);
+      window.setTimeout(release, 10 * 60 * 1000);
+    } catch { /* */ }
+  };
+
+  /* FRIEND-CHAT-MEDIA ─ photo upload: the same storage routes the live / saved chat uses (never stories) */
+  const uploadPhoto = async (file: File): Promise<string | null> => {
+    const uid = String(me?.id || '');
+    const pick = (d: any): string | null => {
+      for (const u of [d?.url, d?.mediaUrl, d?.fileUrl, d?.path, d?.publicUrl, d?.src, d?.data?.url, d?.data?.mediaUrl, d?.result?.url, d?.file?.url, d?.media?.url]) {
+        if (typeof u === 'string' && u.trim().length > 2 && !/^(blob:|data:)/i.test(u.trim())) return u.trim();
+      }
+      return null;
+    };
+    const eps = ['/api/chat-images', '/api/live-chat/media', '/api/live-chat/upload', '/api/live-chat/image', '/api/upload', '/api/media', '/api/files/upload', '/api/posts/media'];
+    for (const ep of eps) {
+      try {
+        const fd = new FormData();
+        fd.append('file', file, file.name || `friend-chat-image-${Date.now()}.jpg`);
+        fd.append('userId', uid);
+        ['kind', 'type', 'mediaType'].forEach(k => fd.append(k, 'image'));
+        fd.append('destination', 'live-chat'); fd.append('scope', 'live-chat'); fd.append('channel', 'live-chat');
+        fd.append('noStory', '1'); fd.append('createStory', 'false'); fd.append('story', '0'); fd.append('skipStory', '1');
+        const ctrl = new AbortController(); const tm = window.setTimeout(() => ctrl.abort(), 30000);
+        const r = await fetch(ep, { method: 'POST', credentials: 'include', body: fd, signal: ctrl.signal });
+        window.clearTimeout(tm);
+        if (!r.ok) continue;
+        const loc = r.headers.get('location');
+        if (loc && /^(https?:\/\/|\/)/i.test(loc)) return loc;
+        const d = await r.json().catch(() => null);
+        const u = d ? pick(d) : null;
+        if (u) return u;
+      } catch { /* next endpoint */ }
+    }
+    return null;
+  };
+
+  const onPickPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    const target = peerRef.current;
+    if (!file || !target) return;
+    if (!/^image\//i.test(file.type || 'image/jpeg')) { flash('اختر صورة فقط'); return; }
+    setBusy(true); flash('جاري المعاينة…');
+    try {
+      const prep = await prepareSavedMediaWithin(file, 'image', async (f: File) => await uploadPhoto(f), 40000);
+      if (prep.timedOut) { flash('انتهت المهلة (40 ثانية)، حاول مرة ثانية'); return; }
+      if (!prep.url || String(prep.url).startsWith('blob:')) { flash('تعذر رفع الصورة، حاول مرة ثانية'); return; }
+      if (peerRef.current?.id !== target.id) { flash('تم تغيير المحادثة، لم تُرسل الصورة'); return; }
+      await sendRef.current(encodeSavedMediaLink(String(prep.url), 'image'));
+    } catch { flash('تعذر إرسال الصورة'); }
+    finally { setBusy(false); }
+  };
+
   /* navigation: avatar -> chat page ; back arrow (same spot) -> Stooorna Ai page */
   const enterChat = () => {
     autoPick.current = Object.keys(unreadRef.current).length > 0;
@@ -506,7 +604,11 @@ function FriendChatPatch() {
       if (!btn || !sheet.inner.contains(btn)) return;
       const label = btn.getAttribute('aria-label');
       if (label === 'Send') { e.preventDefault(); e.stopPropagation(); takeInput(); }
-      else if (label === 'Voice' || label === 'Attach') { e.preventDefault(); e.stopPropagation(); flash('النص فقط متاح في شات الأصدقاء حالياً'); }
+      else if (label === 'Attach') { // FRIEND-CHAT-MEDIA: "+" opens the Photo / Location menu
+        e.preventDefault(); e.stopPropagation();
+        if (!peerRef.current) flash('النص فقط متاح في شات الأصدقاء حالياً'); else setPlusOpen(v => !v); // خارج الشات (قائمة المحادثات): الرسالة فقط — داخل الشات: قائمة الصور واللوكيشن
+      }
+      else if (label === 'Voice') { e.preventDefault(); e.stopPropagation(); flash('النص فقط متاح في شات الأصدقاء حالياً'); }
     };
     const onSubmit = (e: Event) => {
       if (modeRef.current !== 'chat') return;
@@ -759,7 +861,7 @@ function FriendChatPatch() {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 15, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
                   <div dir="auto" style={{ fontSize: 13, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
-                    {r.last ? `${r.last.from === myId ? 'You: ' : ''}${r.last.text}` : 'Tap to chat'}
+                    {r.last ? `${r.last.from === myId ? 'You: ' : ''}${previewOf(r.last.text)}` : 'Tap to chat'}
                   </div>
                   {seenText(presence[r.id]) && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
@@ -784,6 +886,9 @@ function FriendChatPatch() {
           )}
           {peer && (chat.peerId === peer.id ? chat.list : []).map(m => {
             const mine = m.from === myId;
+            const loc = decodeSavedLocation(m.text); // FRIEND-CHAT-MEDIA
+            const med = loc ? null : decodeSavedMediaLink(m.text); // FRIEND-CHAT-MEDIA
+            const media = !!loc || !!med;
             return (
               <div key={m.clientId || m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
                 <div style={{ position: 'relative', maxWidth: '100%', marginBottom: reactionOf(m) ? 12 : 0 }}>
@@ -793,12 +898,26 @@ function FriendChatPatch() {
                   onClick={() => { if (m.status === 'failed') void sendRef.current(m.text, m.clientId); }}
                   style={{
                     background: mine ? DARK_GREEN : '#f1f1ef', color: mine ? '#fff' : '#111',
-                    padding: '9px 13px', borderRadius: 18, borderBottomRightRadius: mine ? 6 : 18, borderBottomLeftRadius: mine ? 18 : 6,
+                    padding: media ? 4 : '9px 13px', overflow: media ? 'hidden' : undefined, minWidth: loc ? 230 : undefined, borderRadius: 18, borderBottomRightRadius: mine ? 6 : 18, borderBottomLeftRadius: mine ? 18 : 6,
                     fontSize: 15, lineHeight: '21px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     opacity: m.status === 'sending' ? 0.7 : 1, cursor: m.status === 'failed' ? 'pointer' : 'default',
                     ...(mine ? {} : { userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' } as React.CSSProperties),
                   }}
-                >{m.text}</div>
+                >{loc ? (
+                  <LocationChatCard
+                    lat={loc.lat} lng={loc.lng}
+                    time={hhmm(m.ts)}
+                    onOpen={() => setLocView({ lat: loc.lat, lng: loc.lng, label: /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(String(loc.label || '').trim()) ? '' : String(loc.label || ''), name: mine ? (me?.username || me?.name) : peer.name, avatar: mine ? (me?.avatarUrl || me?.image) : peer.avatar })}
+                  />
+                ) : med && med.kind !== 'video' ? (
+                  <img
+                    src={med.url} alt="" draggable={false}
+                    onClick={e => { e.stopPropagation(); setImgView(med.url); }}
+                    style={{ display: 'block', width: '100%', maxWidth: 240, maxHeight: 280, objectFit: 'cover', borderRadius: 14, cursor: 'pointer' }}
+                  />
+                ) : med ? (
+                  <video src={med.url} controls playsInline preload="metadata" style={{ display: 'block', width: '100%', maxWidth: 240, maxHeight: 280, borderRadius: 14, background: '#000' }} />
+                ) : m.text}</div>
                 {reactionOf(m) && (
                   <span style={{
                     position: 'absolute', bottom: -12, ...(mine ? { left: 6 } : { right: 6 }), background: '#fff', border: '1px solid rgba(0,0,0,0.1)',
@@ -877,6 +996,72 @@ function FriendChatPatch() {
           </div>
         </>,
         sheet.inner,
+      )}
+
+      {/* FRIEND-CHAT-MEDIA: hidden photo input (opened from the "+" menu) */}
+      <input ref={photoRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
+
+      {/* FRIEND-CHAT-MEDIA: "+" menu → Photo / Location (same look as the Saved Messages menu) */}
+      {mode === 'chat' && peer && plusOpen && createPortal(
+        <>
+          <div role="presentation" onClick={() => setPlusOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 47, background: 'transparent' }} />
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'absolute', left: 14, bottom: rect.bottom + 8, zIndex: 48, display: 'flex', flexDirection: 'column', gap: 6, padding: 8,
+              borderRadius: 16, background: '#fff', border: '1px solid #e5e7eb', boxShadow: '0 12px 28px rgba(0,0,0,0.14)', animation: 'sfcPop 0.15s ease-out',
+            }}
+          >
+            {([
+              { key: 'photo', label: 'Photo', icon: <ImageIcon size={18} strokeWidth={2.2} />, run: () => { holdFilePicker(); photoRef.current?.click(); } },
+              { key: 'location', label: 'Location', icon: <MapPin size={18} strokeWidth={2.2} />, run: () => setLocPickerOpen(true) },
+            ] as { key: string; label: string; icon: React.ReactNode; run: () => void }[]).map(it => (
+              <button
+                key={it.key} type="button" disabled={busy}
+                onClick={() => { setPlusOpen(false); it.run(); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 12, border: 'none', background: '#f7f7f8',
+                  color: '#111', fontWeight: 700, fontSize: '0.86rem', cursor: busy ? 'wait' : 'pointer', minWidth: 160, textAlign: 'left', opacity: busy ? 0.6 : 1,
+                }}
+              >
+                <span style={{ width: 28, height: 28, borderRadius: 8, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0b3a82' }}>{it.icon}</span>
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </>,
+        sheet.inner,
+      )}
+
+      {/* FRIEND-CHAT-MEDIA: location picker (map + send selected location) / location viewer / full-screen photo */}
+      {locPickerOpen && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2147483000 }}>
+          <React.Suspense fallback={null}>
+            <LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendPickedLocation} />
+          </React.Suspense>
+        </div>,
+        document.body,
+      )}
+      {locView && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2147483000 }}>
+          <React.Suspense fallback={null}>
+            <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={locView.name} senderAvatar={locView.avatar} onClose={() => setLocView(null)} />
+          </React.Suspense>
+        </div>,
+        document.body,
+      )}
+      {imgView && createPortal(
+        <div
+          role="presentation" onClick={() => setImgView(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 2147483000, background: 'rgba(0,0,0,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <img src={imgView} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+          <button
+            type="button" aria-label="Close" onClick={() => setImgView(null)}
+            style={{ position: 'absolute', top: 'max(14px, env(safe-area-inset-top))', right: 14, width: 40, height: 40, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.18)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          ><X size={20} /></button>
+        </div>,
+        document.body,
       )}
     </>
   );
