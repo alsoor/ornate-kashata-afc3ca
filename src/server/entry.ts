@@ -27,6 +27,7 @@ import { registerAdsStoreRoutes } from "./ads-store.js"; // ADS-STORE-PATCH (MyS
 import { registerAiIconRoutes } from "./ai-icon-patch.js"; // AI-ICON-PATCH (owner switch: hide Stooorna Ai icon)
 import { registerImageProxyRoutes } from "./image-proxy-patch.js"; // IMAGE-PROXY-PATCH (save photos from the Ai chat)
 import { registerAiFreeRoutes } from "./ai-free-routes.js"; // AI-FREE (free chat / search / image / file routes for Stooorna Ai)
+import { registerFriendChatRoutes } from "./friend-chat-routes.js"; // FRIEND-CHAT-ROUTES (dedicated table, no hidden marker)
 import { createLiveBoxRouter } from "./liveBox.server.js"; // TREASURE-BOX
 
 // <api-imports>
@@ -1295,6 +1296,24 @@ registerTemplatesRoutes(app, {
 registerTemplatesShareRoutes(app, { dataDir: join(ASSETS_DIR, "_private", "templates-share"), getUser: (req) => session.user(req) as any }); // TEMPLATES-SHARE-PATCH
 registerAiIconRoutes(app, { pool: templatesPool, dataDir: join(ASSETS_DIR, "_private", "ai-icon"), getUser: (req) => session.user(req) as any, isAdmin: (u) => session.isAdmin(u as any) }); // AI-ICON-PATCH
 registerAiCreditsRoutes(app, { pool: templatesPool, getUser: (req) => session.user(req) as any, isAdmin: (u) => session.isAdmin(u as any) }); // AI-CREDITS: 30 P welcome, 5 P per published photo / video
+// ── FRIEND-CHAT-ROUTES: شات الأصدقاء بجدول خاص (friend_chat_messages) — مستقل تماماً عن /api/messages القديم ──
+registerFriendChatRoutes(app, {
+  pool: templatesPool,
+  getUser: (req) => session.user(req),
+  isFriend: async (req, meId, peerId) => {
+    let body: any = null;
+    const fake: any = {
+      statusCode: 200, headersSent: false,
+      setHeader() { return fake; }, set() { return fake; }, header() { return fake; }, type() { return fake; },
+      status(c: number) { fake.statusCode = c; return fake; },
+      json(x: unknown) { body = x; return fake; }, send(x: unknown) { body = x; return fake; }, end() { return fake; },
+    };
+    await (friends_get_5 as any)(req, fake);
+    const accepted: Array<{ friendId?: string }> = Array.isArray(body?.accepted) ? body.accepted : [];
+    return accepted.some((f) => String(f?.friendId || "") === peerId);
+  },
+  push: (toId, fromName, text) => sendFcmToUser({ userId: toId, title: fromName, body: text, url: "/", type: "message" as any }),
+});
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
 const needUser = async (req: Request, res: Response) => {

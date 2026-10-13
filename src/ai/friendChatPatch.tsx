@@ -21,10 +21,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { MessageCircle, Check, CheckCheck, AlertCircle, Bot } from 'lucide-react';
+import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown } from 'lucide-react';
 import { loadDashboard } from './appAssistant';
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.0.0';
+export const FRIEND_CHAT_PATCH_VERSION = '1.2.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -85,7 +85,7 @@ const toFriend = (o: any): Friend | null => {
 };
 const toMsg = (o: any): ChatMsg => ({
   id: typeof o.id === 'number' ? `db-${o.id}` : String(o.id ?? o._id ?? `${o.from ?? o.senderId}_${o.ts ?? o.createdAt}`),
-  clientId: o.clientId ? String(o.clientId) : undefined,
+  ...(o.clientId ? { clientId: String(o.clientId) } : {}),
   from: String(o.from ?? o.senderId ?? o.fromId),
   to: o.to ?? o.receiverId ?? o.toId,
   text: o.type && o.type !== 'text' && !o.text ? '📎 وسائط' : String(o.text ?? o.body ?? o.content ?? o.message ?? ''),
@@ -106,6 +106,9 @@ function findFriends(o: any, depth = 0): Friend[] | null {
   }
   return null;
 }
+
+/** DEDICATED-TABLE: this chat now lives in its own server table (friend_chat_messages) via /api/friend-chat/*.
+ *  No hidden marker is used any more, and the old /api/messages is never read or written by this screen. */
 
 const restAdapter: Adapter = {
   async listFriends(me) {
@@ -134,31 +137,30 @@ const restAdapter: Adapter = {
     } catch { return []; }
   },
   async fetchMessages(me, peerId) {
-    const d = await local(`/api/messages?with=${encodeURIComponent(peerId)}`);
+    const d = await local(`/api/friend-chat/messages?with=${encodeURIComponent(peerId)}`);
     return (Array.isArray(d) ? d : d?.messages || []).map(toMsg);
   },
   async send(me, peerId, text, clientId) {
-    const d = await local('/api/messages', { method: 'POST', body: JSON.stringify({ receiverId: peerId, body: text }) });
-    // only return the server id: the optimistic copy keeps from/text/ts
-    return typeof d?.id === 'number' ? { id: `db-${d.id}` } : undefined;
+    const d = await local('/api/friend-chat/messages', { method: 'POST', body: JSON.stringify({ receiverId: peerId, body: text, clientId }) });
+    return typeof d?.id === 'number' ? { id: `db-${d.id}`, ...(typeof d?.ts === 'number' ? { ts: d.ts } : {}) } : undefined;
   },
-  async unread(me) {
+  async unread() {
     try {
-      const d = await local('/api/messages/unread');
-      const o = d?.bySender || {};
+      const d = await local('/api/friend-chat/unread');
+      const by: Record<string, number> = d?.bySender || {};
       const out: Record<string, number> = {};
-      Object.keys(o).forEach(k => { const n = Number(o[k]); if (n > 0) out[k] = n; });
+      Object.keys(by).forEach(k => { const n = Number(by[k] || 0); if (n > 0) out[k] = n; });
       return out;
     } catch { return {}; }
   },
-  async markRead() { /* GET /api/messages?with=... already marks incoming messages as read */ },
+  async markRead() { /* GET /api/friend-chat/messages?with=... already marks incoming messages as read */ },
 };
 
 const adapter = (): Adapter => ({ ...restAdapter, ...((window as any).__STOOORNA_FRIEND_CHAT__ || {}) });
 
 /* ───────────────────────── Helpers ───────────────────────── */
 const DARK_GREEN = '#0a1f1a';
-const cacheKey = (me: string, peer: string) => `stooorna_friend_chat_v1_${me}_${peer}`;
+const cacheKey = (me: string, peer: string) => `stooorna_friend_chat_v3_${me}_${peer}`;
 const loadCache = (me: string, peer: string): ChatMsg[] => {
   try { const v = JSON.parse(localStorage.getItem(cacheKey(me, peer)) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
 };
@@ -168,7 +170,7 @@ const saveCache = (me: string, peer: string, list: ChatMsg[]) => {
 
 function merge(prev: ChatMsg[], inc: ChatMsg[]): ChatMsg[] {
   const map = new Map<string, ChatMsg>();
-  [...prev, ...inc].forEach(m => { const k = m.clientId || m.id; map.set(k, { ...(map.get(k) || {}), ...m } as ChatMsg); });
+  [...prev, ...inc].forEach(m => { const k = m.id.startsWith('db-') ? m.id : (m.clientId || m.id); map.set(k, { ...(map.get(k) || {}), ...m } as ChatMsg); });
   const all = [...map.values()];
   // pending local copy + same message coming back from the server without clientId => keep the server one
   const out = all.filter(m => {
@@ -220,11 +222,14 @@ function FriendChatPatch() {
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [chat, setChat] = useState<{ peerId: string; list: ChatMsg[] }>({ peerId: '', list: [] });
   const [rect, setRect] = useState({ top: 58, bottom: 90 });
+  const [pillLeft, setPillLeft] = useState(64);
   const [toast, setToast] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const modeRef = useRef(mode); modeRef.current = mode;
   const peerRef = useRef(peer); peerRef.current = peer;
   const sheetRef = useRef(sheet); sheetRef.current = sheet;
+  const unreadRef = useRef(unread); unreadRef.current = unread;
+  const autoPick = useRef(false);
 
   /* 1) find the sheet whenever it opens / closes */
   useEffect(() => {
@@ -260,13 +265,22 @@ function FriendChatPatch() {
     return () => { alive = false; window.clearInterval(t); };
   }, [sheet, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* 4) friends list loads when the list opens */
+  /* 4) friends list loads when the chat page / picker opens */
+  const chatOpen = mode === 'chat';
   useEffect(() => {
-    if (!listOpen || !me) return;
+    if ((!listOpen && !chatOpen) || !me) return;
     let alive = true;
     void adapter().listFriends(me).then(l => { if (alive) setFriends(l); }).catch(() => { if (alive) setFriends([]); });
     return () => { alive = false; };
-  }, [listOpen, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [listOpen, chatOpen, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* 4b) came in through the new-message icon: jump straight to the friend who wrote */
+  useEffect(() => {
+    if (mode !== 'chat' || peer || !autoPick.current || !friends) return;
+    autoPick.current = false;
+    const top = [...friends].filter(f => (unread[f.id] || 0) > 0).sort((a, b) => (unread[b.id] || 0) - (unread[a.id] || 0))[0];
+    if (top) setPeer(top);
+  }, [mode, peer, friends, unread]);
 
   /* 5) messages of the open chat: cache first, then poll */
   useEffect(() => {
@@ -302,6 +316,10 @@ function FriendChatPatch() {
       const top = sheet.header.getBoundingClientRect().bottom - ir.top;
       const bottom = sheet.form ? ir.bottom - sheet.form.getBoundingClientRect().top : 90;
       setRect(p => (Math.abs(p.top - top) < 0.5 && Math.abs(p.bottom - bottom) < 0.5 ? p : { top, bottom }));
+      const badge = Array.from(sheet.header.children).find(c => c !== sheet.header.firstElementChild && !c.hasAttribute('data-sfc-portal')) as HTMLElement | undefined;
+      const bl = badge ? badge.getBoundingClientRect() : null;
+      const left = bl && bl.width > 0 ? bl.left - sheet.header.getBoundingClientRect().left : 64;
+      setPillLeft(l => (Math.abs(l - left) < 0.5 ? l : Math.max(48, left)));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -339,6 +357,14 @@ function FriendChatPatch() {
   }, [me]);
   const sendRef = useRef(sendText); sendRef.current = sendText;
 
+  /* navigation: avatar -> chat page ; back arrow (same spot) -> Stooorna Ai page */
+  const enterChat = () => {
+    autoPick.current = Object.keys(unreadRef.current).length > 0;
+    setPeer(null); setListOpen(false); setMode('chat');
+  };
+  const backToAi = () => { setMode('ai'); setPeer(null); setListOpen(false); autoPick.current = false; };
+  const navRef = useRef({ enterChat, backToAi }); navRef.current = { enterChat, backToAi };
+
   /* 8) capture handlers: avatar tap + keep Send/Voice/Attach away from the Ai while chatting */
   useEffect(() => {
     if (!sheet) return;
@@ -351,14 +377,16 @@ function FriendChatPatch() {
       const ta = sheet.inner.querySelector('textarea') as HTMLTextAreaElement | null;
       if (!ta) return;
       const v = ta.value;
-      if (v.trim()) { clearTextarea(ta); void sendRef.current(v); }
+      if (!v.trim()) return;
+      if (!peerRef.current) { flash('اختر صديقاً من الزر بالأعلى أولاً'); return; }
+      clearTextarea(ta); void sendRef.current(v);
     };
     const onClick = (e: Event) => {
       const t = e.target as HTMLElement | null;
       if (!t) return;
       if (sheet.avatarWrap.contains(t)) {
         e.preventDefault(); e.stopPropagation();
-        setListOpen(v => !v);
+        if (modeRef.current === 'chat') navRef.current.backToAi(); else navRef.current.enterChat();
         return;
       }
       if (modeRef.current !== 'chat') return;
@@ -373,17 +401,24 @@ function FriendChatPatch() {
       if (!(e.target as HTMLElement)?.closest?.('form') || !sheet.inner.contains(e.target as Node)) return;
       e.preventDefault(); e.stopPropagation(); takeInput();
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (modeRef.current !== 'chat' || e.key !== 'Enter' || e.shiftKey || (e as any).isComposing) return;
+      const t = e.target as HTMLElement | null;
+      if (!t || t.tagName !== 'TEXTAREA' || !sheet.inner.contains(t)) return;
+      e.preventDefault(); e.stopPropagation(); takeInput();
+    };
     document.addEventListener('click', onClick, true);
     document.addEventListener('submit', onSubmit, true);
-    return () => { document.removeEventListener('click', onClick, true); document.removeEventListener('submit', onSubmit, true); };
-  }, [sheet]);
+    document.addEventListener('keydown', onKey, true);
+    return () => { document.removeEventListener('click', onClick, true); document.removeEventListener('submit', onSubmit, true); document.removeEventListener('keydown', onKey, true); };
+  }, [sheet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!sheet) return null;
 
-  const totalUnread = Object.values(unread).reduce((a, b) => a + b, 0);
-  const showChatIcon = totalUnread > 0 || mode === 'chat';
-  const openPeer = (f: Friend) => { setPeer(f); setMode('chat'); setListOpen(false); };
-  const backToAi = () => { setMode('ai'); setPeer(null); setListOpen(false); };
+  const openUnread = mode === 'chat' ? Object.fromEntries(Object.entries(unread).filter(([k]) => k !== peer?.id)) : unread;
+  const totalUnread = Object.values(openUnread).reduce((a, b) => a + b, 0);
+  const showIcon = mode === 'chat' || totalUnread > 0;
+  const openPeer = (f: Friend) => { setPeer(f); setListOpen(false); };
   const myId = me?.id || '';
   const sorted = [...(friends || [])].sort((a, b) => (unread[b.id] || 0) - (unread[a.id] || 0));
 
@@ -391,12 +426,13 @@ function FriendChatPatch() {
     <>
       <style>{`
         [data-sfc="chat"] > :not(:first-child) { visibility: hidden !important; pointer-events: none !important; }
+        [data-sfc="chat"] > [data-sfc-portal] { visibility: visible !important; pointer-events: auto !important; }
         [data-sfc-av] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
         @keyframes sfcPop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
       `}</style>
 
-      {/* avatar -> chat-icon circle (new messages, or while chatting) */}
-      {showChatIcon && createPortal(
+      {/* avatar circle: back arrow while on the chat page / chat icon when a new message arrived */}
+      {showIcon && createPortal(
         <div
           aria-hidden="true"
           style={{
@@ -404,7 +440,7 @@ function FriendChatPatch() {
             display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
           }}
         >
-          <MessageCircle size={19} strokeWidth={2.3} />
+          {mode === 'chat' ? <ArrowLeft size={21} strokeWidth={2.4} /> : <MessageCircle size={19} strokeWidth={2.3} />}
           {totalUnread > 0 && (
             <span style={{
               position: 'absolute', top: -5, right: -5, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9,
@@ -416,22 +452,36 @@ function FriendChatPatch() {
         sheet.avatarWrap,
       )}
 
-      {/* friend name in the freed header space */}
-      {mode === 'chat' && peer && createPortal(
-        <div style={{
-          position: 'absolute', left: 64, right: 16, top: 0, bottom: 0, display: 'flex', alignItems: 'center',
-          gap: 10, pointerEvents: 'none', zIndex: 6,
-        }}>
-          {peer.avatar
-            ? <img src={peer.avatar} alt="" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover' }} />
-            : <div style={{ width: 30, height: 30, borderRadius: '50%', background: '#e5e7eb', color: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>{(peer.name[0] || '?').toUpperCase()}</div>}
-          <span style={{ fontWeight: 800, fontSize: 15, color: '#111', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{peer.name}</span>
+      {/* the button in the header (same place as the Stooorna Ai badge): "choose a friend" -> becomes the friend's name */}
+      {mode === 'chat' && createPortal(
+        <div
+          data-sfc-portal="1"
+          style={{
+            position: 'absolute', left: pillLeft, right: 12, top: 0, bottom: 0, display: 'flex', alignItems: 'center',
+            zIndex: 6, pointerEvents: 'none',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setListOpen(v => !v)}
+            style={{
+              pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 8, maxWidth: '100%', border: 'none', cursor: 'pointer',
+              background: '#0a0a0a', color: '#fff', borderRadius: 999, padding: peer ? '7px 14px 7px 8px' : '12px 18px',
+              fontWeight: 800, fontSize: 15, boxShadow: '0 4px 12px rgba(0,0,0,0.25)', WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            {peer && (peer.avatar
+              ? <img src={peer.avatar} alt="" style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+              : <span style={{ width: 30, height: 30, borderRadius: '50%', background: '#e5e7eb', color: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{(peer.name[0] || '?').toUpperCase()}</span>)}
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{peer ? peer.name : 'اختر صديقاً'}</span>
+            <ChevronDown size={16} style={{ flexShrink: 0, opacity: 0.8 }} />
+          </button>
         </div>,
         sheet.header,
       )}
 
-      {/* chat panel (replaces the Ai messages area, keeps the same input bar) */}
-      {mode === 'chat' && peer && createPortal(
+      {/* chat page (replaces the Ai messages area, keeps the same input bar) */}
+      {mode === 'chat' && createPortal(
         <div
           style={{
             position: 'absolute', left: 0, right: 0, top: rect.top, bottom: rect.bottom, zIndex: 10,
@@ -439,12 +489,17 @@ function FriendChatPatch() {
             padding: '16px 14px', gap: 8,
           }}
         >
-          {chat.peerId === peer.id && chat.list.length === 0 && (
+          {!peer && (
+            <div style={{ margin: 'auto', textAlign: 'center', color: '#6b7280', fontSize: 15, padding: '0 24px' }}>
+              اضغط على الزر بالأعلى واختر الصديق الذي تريد مراسلته
+            </div>
+          )}
+          {peer && chat.peerId === peer.id && chat.list.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', color: '#6b7280', fontSize: 15 }}>
               ابدأ المحادثة مع <b style={{ color: '#111' }}>{peer.name}</b>
             </div>
           )}
-          {(chat.peerId === peer.id ? chat.list : []).map(m => {
+          {peer && (chat.peerId === peer.id ? chat.list : []).map(m => {
             const mine = m.from === myId;
             return (
               <div key={m.clientId || m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
@@ -476,8 +531,8 @@ function FriendChatPatch() {
         sheet.inner,
       )}
 
-      {/* friends list (opens under the avatar) */}
-      {listOpen && createPortal(
+      {/* friends picker (opens under the header button) */}
+      {mode === 'chat' && listOpen && createPortal(
         <>
           <div role="presentation" onClick={() => setListOpen(false)} style={{ position: 'absolute', inset: 0, zIndex: 44, background: 'rgba(0,0,0,0.25)' }} />
           <div
@@ -490,18 +545,11 @@ function FriendChatPatch() {
           >
             <p style={{ margin: '4px 8px 8px', fontWeight: 800, fontSize: 14, color: '#222' }}>الأصدقاء</p>
 
-            {mode === 'chat' && (
-              <button type="button" onClick={backToAi} style={rowStyle}>
-                <span style={{ ...circle, background: '#0a0a0a', color: '#fff' }}><Bot size={18} /></span>
-                <span style={nameStyle}>Stooorna Ai</span>
-              </button>
-            )}
-
             {friends === null && <p style={emptyStyle}>…</p>}
             {friends !== null && friends.length === 0 && <p style={emptyStyle}>ما عندك أصدقاء مضافين</p>}
 
             {sorted.map(f => (
-              <button key={f.id} type="button" onClick={() => openPeer(f)} style={{ ...rowStyle, background: peer?.id === f.id && mode === 'chat' ? 'rgba(0,0,0,0.06)' : 'transparent' }}>
+              <button key={f.id} type="button" onClick={() => openPeer(f)} style={{ ...rowStyle, background: peer?.id === f.id ? 'rgba(0,0,0,0.06)' : 'transparent' }}>
                 {f.avatar
                   ? <img src={f.avatar} alt="" style={{ ...circle, objectFit: 'cover' }} />
                   : <span style={{ ...circle, background: DARK_GREEN, color: '#fff' }}>{(f.name[0] || '?').toUpperCase()}</span>}
@@ -536,6 +584,10 @@ export function installFriendChatPatch() {
   const w: any = window;
   if (w.__STOOORNA_FRIEND_CHAT_PATCH__) return;
   w.__STOOORNA_FRIEND_CHAT_PATCH__ = FRIEND_CHAT_PATCH_VERSION;
+  // NEW-CHAT: drop the cached old chats (v1/v2 + seen counters) so nothing old is tied to this screen
+  try {
+    Object.keys(localStorage).filter(k => k.startsWith('stooorna_friend_chat_v1_') || k.startsWith('stooorna_friend_chat_v2_') || k.startsWith('stooorna_friend_chat_seen_')).forEach(k => localStorage.removeItem(k));
+  } catch { /* */ }
   const mount = () => {
     const host = document.createElement('div');
     host.id = 'stooorna-friend-chat-patch';
