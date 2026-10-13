@@ -29,7 +29,33 @@ import { encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeS
 const LocationPickerSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationPickerSheet })));
 const LocationViewSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationViewSheet })));
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.7.0';
+export const FRIEND_CHAT_PATCH_VERSION = '1.7.1';
+
+/**
+ * LOCATION-FREEZE-FIX: full-screen layer that lives on document.body (outside the Ai sheet).
+ * The Ai sheet (modal dialog / drag-to-close / scroll-lock) was swallowing every touch that happened outside of it,
+ * so the map picker / viewer looked frozen: no drag, no tap, no way to close.
+ *  - pointer-events:auto  => works even when the page behind has body{pointer-events:none}
+ *  - native listeners stop the events from bubbling to document-level handlers of the sheet (outside-click, drag, scroll lock)
+ *  - Escape closes the layer
+ */
+function ModalLayer({ children, onEsc }: { children: React.ReactNode; onEsc?: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const stop = (e: Event) => { e.stopPropagation(); };
+    const evs = ['pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'touchstart', 'touchmove', 'touchend', 'wheel', 'focusin', 'keydown'];
+    evs.forEach(n => el.addEventListener(n, stop, { passive: true } as AddEventListenerOptions));
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onEsc?.(); };
+    el.addEventListener('keydown', onKey);
+    return () => { evs.forEach(n => el.removeEventListener(n, stop)); el.removeEventListener('keydown', onKey); };
+  }, [onEsc]);
+  return (
+    <div ref={ref} data-sfc-layer="1" style={{ position: 'fixed', inset: 0, zIndex: 2147483000, pointerEvents: 'auto', touchAction: 'auto', overscrollBehavior: 'contain' }}>
+      {children}
+    </div>
+  );
+}
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -1101,25 +1127,25 @@ function FriendChatPatch() {
 
       {/* FRIEND-CHAT-MEDIA: location picker (map + send selected location) / location viewer / full-screen photo */}
       {locPickerOpen && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2147483000 }}>
+        <ModalLayer onEsc={() => setLocPickerOpen(false)}>
           <React.Suspense fallback={null}>
             <LocationPickerSheet onClose={() => setLocPickerOpen(false)} onSend={sendPickedLocation} />
           </React.Suspense>
-        </div>,
+        </ModalLayer>,
         document.body,
       )}
       {locView && createPortal(
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2147483000 }}>
+        <ModalLayer onEsc={() => setLocView(null)}>
           <React.Suspense fallback={null}>
             <LocationViewSheet lat={locView.lat} lng={locView.lng} label={locView.label} senderName={locView.name} senderAvatar={locView.avatar} onClose={() => setLocView(null)} />
           </React.Suspense>
-        </div>,
+        </ModalLayer>,
         document.body,
       )}
       {imgView && createPortal(
         <div
           role="presentation" onClick={() => setImgView(null)}
-          style={{ position: 'fixed', inset: 0, zIndex: 2147483000, background: 'rgba(0,0,0,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          style={{ position: 'fixed', inset: 0, zIndex: 2147483000, pointerEvents: 'auto', background: 'rgba(0,0,0,0.94)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           <img src={imgView} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
           <button
