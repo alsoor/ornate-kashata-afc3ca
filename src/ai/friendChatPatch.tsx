@@ -29,7 +29,7 @@ import { encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeS
 const LocationPickerSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationPickerSheet })));
 const LocationViewSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationViewSheet })));
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.6.0';
+export const FRIEND_CHAT_PATCH_VERSION = '1.6.1';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -605,7 +605,7 @@ function FriendChatPatch() {
       const label = btn.getAttribute('aria-label');
       if (label === 'Send') { e.preventDefault(); e.stopPropagation(); takeInput(); }
       else if (label === 'Attach') { // FRIEND-CHAT-MEDIA: "+" opens the Photo / Location menu
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         if (!peerRef.current) flash('النص فقط متاح في شات الأصدقاء حالياً'); else setPlusOpen(v => !v); // خارج الشات (قائمة المحادثات): الرسالة فقط — داخل الشات: قائمة الصور واللوكيشن
       }
       else if (label === 'Voice') { e.preventDefault(); e.stopPropagation(); flash('النص فقط متاح في شات الأصدقاء حالياً'); }
