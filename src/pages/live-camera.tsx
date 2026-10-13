@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom'; // PROFILE-TAP-PATCH
 import HostProfileSheet from './HostProfileSheet';
 import { useNavigate, useSearchParams } from 'react-router';
+import { useBackLeave } from '@/lib/hardwareBack'; // HARDWARE-BACK-PATCH
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -864,6 +865,7 @@ export default function LiveCameraPage() {
   }, [livePageClosing, leaveRoom]);
 
   const minimizeLive = useCallback(() => setMinimized(true), []);
+  useBackLeave(() => { void leaveRoom({ skipNavigate: true }); }, () => !!leftRef.current); // HARDWARE-BACK-PATCH: phone back button leaves the live cleanly
   useEffect(() => { if (joined) setLeaving(false); }, [joined]); // re-joined (e.g. duet move) -> chest is allowed again
 
   // Host ended broadcast elsewhere — eject listeners still on this page
