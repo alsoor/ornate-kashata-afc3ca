@@ -24,14 +24,16 @@ import { createRoot } from 'react-dom/client';
 import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X } from 'lucide-react';
 import { loadDashboard } from './appAssistant';
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.3.0';
+export const FRIEND_CHAT_PATCH_VERSION = '1.5.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
 interface Friend { id: string; name: string; avatar?: string | null }
+/** PRESENCE: online / last seen / typing of a friend */
+interface Presence { online?: boolean; lastSeen?: number | null; typing?: boolean }
 interface ChatMsg {
   id: string; clientId?: string; from: string; to?: string; text: string; ts: number;
-  status?: 'sending' | 'sent' | 'failed'; read?: boolean;
+  status?: 'sending' | 'sent' | 'failed'; read?: boolean; reaction?: string;
 }
 interface Adapter {
   listFriends(me: Me): Promise<Friend[]>;
@@ -39,6 +41,9 @@ interface Adapter {
   send(me: Me, peerId: string, text: string, clientId: string): Promise<Partial<ChatMsg> | void>;
   unread(me: Me): Promise<Record<string, number>>;
   markRead(me: Me, peerId: string): Promise<void>;
+  presence(me: Me, peerId: string): Promise<Presence>;
+  typing(me: Me, peerId: string): Promise<void>;
+  react(me: Me, peerId: string, messageId: string, emoji: string): Promise<void>;
 }
 
 /* ───────────────────────── ADAPTER (الجزء المرتبط بالسيرفر) ───────────────────────── */
@@ -91,6 +96,7 @@ const toMsg = (o: any): ChatMsg => ({
   text: o.type && o.type !== 'text' && !o.text ? '📎 وسائط' : String(o.text ?? o.body ?? o.content ?? o.message ?? ''),
   ts: asTs(o.ts ?? o.createdAt ?? o.timestamp),
   read: !!(o.read ?? o.readAt),
+  ...(o.reaction ? { reaction: String(o.reaction) } : {}),
   status: 'sent',
 });
 
@@ -154,6 +160,32 @@ const restAdapter: Adapter = {
     } catch { return {}; }
   },
   async markRead() { /* GET /api/friend-chat/messages?with=... already marks incoming messages as read */ },
+  /** PRESENCE: GET /api/friend-chat/presence?with=<id> -> { online, lastSeen, typing | typingAt }; falls back to the fields on /api/friends */
+  async presence(_me, peerId) {
+    try {
+      const d = await local(`/api/friend-chat/presence?with=${encodeURIComponent(peerId)}`);
+      const typing = !!d?.typing || (d?.typingAt ? Date.now() - asTs(d.typingAt) < 6000 : false);
+      return { online: !!d?.online, lastSeen: d?.lastSeen ? asTs(d.lastSeen) : null, typing };
+    } catch { /* fall through */ }
+    try {
+      const d = await local('/api/friends');
+      const arr: any[] = Array.isArray(d) ? d : d?.accepted || d?.friends || [];
+      const o = arr.find(x => String(x?.friendId ?? x?.userId ?? x?.id) === peerId);
+      if (o) {
+        const ls = o.lastSeen ?? o.lastSeenAt ?? o.last_seen ?? o.lastActiveAt ?? o.lastActive ?? null;
+        return { online: !!(o.online ?? o.isOnline), lastSeen: ls ? asTs(ls) : null };
+      }
+    } catch { /* */ }
+    return {};
+  },
+  /** PRESENCE: POST /api/friend-chat/typing { receiverId } while the user is typing (throttled) */
+  async typing(_me, peerId) {
+    try { await local('/api/friend-chat/typing', { method: 'POST', body: JSON.stringify({ receiverId: peerId }) }); } catch { /* */ }
+  },
+  /** REACTIONS: POST /api/friend-chat/react { receiverId, messageId, emoji } (emoji '' = remove). Best effort: the reaction is always kept on this device. */
+  async react(_me, peerId, messageId, emoji) {
+    try { await local('/api/friend-chat/react', { method: 'POST', body: JSON.stringify({ receiverId: peerId, messageId: messageId.replace(/^db-/, ''), emoji }) }); } catch { /* */ }
+  },
 };
 
 const adapter = (): Adapter => ({ ...restAdapter, ...((window as any).__STOOORNA_FRIEND_CHAT__ || {}) });
@@ -191,6 +223,22 @@ function merge(prev: ChatMsg[], inc: ChatMsg[]): ChatMsg[] {
 }
 
 const hhmm = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+/** REACTIONS: emoji bubble opened by long-press on the friend's message */
+const REACTIONS = ['❤️', '😂', '😍', '😮', '😢', '😡', '👍', '👎', '🙏', '🔥', '🎉', '😘'];
+const reactKey = (me: string, peer: string) => `stooorna_friend_chat_react_v1_${me}_${peer}`;
+
+/** PRESENCE: text under the friend's name / inside the chat rectangle */
+function seenText(p?: Presence): string {
+  if (!p) return '';
+  if (p.online) return 'Online';
+  if (!p.lastSeen) return '';
+  const d = new Date(p.lastSeen); const now = new Date();
+  const y = new Date(now.getTime() - 864e5);
+  if (d.toDateString() === now.toDateString()) return `Last seen today at ${hhmm(p.lastSeen)}`;
+  if (d.toDateString() === y.toDateString()) return `Last seen yesterday at ${hhmm(p.lastSeen)}`;
+  return `Last seen ${d.toLocaleDateString()} ${hhmm(p.lastSeen)}`;
+}
 
 /** current user: read straight from the Sheet's own props (no change to the Sheet). */
 function findUser(el: Element): Me | null {
@@ -244,6 +292,15 @@ function FriendChatPatch() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const selectModeRef = useRef(selectMode); selectModeRef.current = selectMode;
+  const [presence, setPresence] = useState<Record<string, Presence>>({});
+  const meRef = useRef(me); meRef.current = me;
+  const recentsRef = useRef(recents); recentsRef.current = recents;
+  const friendsRef = useRef(friends); friendsRef.current = friends;
+  const typingSent = useRef(0);
+  const [picker, setPicker] = useState<string | null>(null);
+  const [reactions, setReactions] = useState<Record<string, string>>({});
+  const pressTimer = useRef(0);
+  const pickerAt = useRef(0);
 
   /* 1) find the sheet whenever it opens / closes */
   useEffect(() => {
@@ -356,6 +413,37 @@ function FriendChatPatch() {
     return () => { sheet.header.removeAttribute('data-sfc'); };
   }, [sheet, mode]);
 
+  /* 5b) presence (last seen / typing): fast poll for the open chat, slow poll for the list rectangles */
+  useEffect(() => {
+    if (mode !== 'chat' || !me || !sheet) return;
+    let alive = true;
+    const tick = async () => {
+      const p = peerRef.current;
+      const ids = p
+        ? [p.id]
+        : Array.from(new Set([
+            ...recentsRef.current.map(r => r.id),
+            ...(friendsRef.current || []).filter(f => (unreadRef.current[f.id] || 0) > 0).map(f => f.id),
+          ]));
+      const res = await Promise.all(ids.map(id =>
+        adapter().presence(me, id).then((x): [string, Presence] => [id, x || {}]).catch((): [string, Presence] => [id, {}])));
+      if (alive) setPresence(prev => { const n = { ...prev }; res.forEach(([id, x]) => { n[id] = x; }); return n; });
+    };
+    void tick();
+    const t = window.setInterval(tick, peer ? 3000 : 15000);
+    return () => { alive = false; window.clearInterval(t); };
+  }, [mode, peer?.id, me?.id, sheet, recents.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* 5c) reactions of the open chat (kept on this device) */
+  useEffect(() => {
+    setPicker(null);
+    if (!me || !peer) { setReactions({}); return; }
+    try {
+      const v = JSON.parse(localStorage.getItem(reactKey(me.id, peer.id)) || '{}');
+      setReactions(v && typeof v === 'object' ? v : {});
+    } catch { setReactions({}); }
+  }, [me?.id, peer?.id, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /* ── sending ── */
   const flash = (m: string) => { setToast(m); window.setTimeout(() => setToast(''), 2500); };
 
@@ -430,10 +518,21 @@ function FriendChatPatch() {
       if (!t || t.tagName !== 'TEXTAREA' || !sheet.inner.contains(t)) return;
       e.preventDefault(); e.stopPropagation(); takeInput();
     };
+    const onInput = (e: Event) => {
+      const m = meRef.current; const pr = peerRef.current;
+      if (modeRef.current !== 'chat' || !pr || !m) return;
+      const t = e.target as HTMLTextAreaElement | null;
+      if (!t || t.tagName !== 'TEXTAREA' || !sheet.inner.contains(t) || !t.value.trim()) return;
+      const now = Date.now();
+      if (now - typingSent.current < 2500) return;
+      typingSent.current = now;
+      void adapter().typing(m, pr.id);
+    };
+    document.addEventListener('input', onInput, true);
     document.addEventListener('click', onClick, true);
     document.addEventListener('submit', onSubmit, true);
     document.addEventListener('keydown', onKey, true);
-    return () => { document.removeEventListener('click', onClick, true); document.removeEventListener('submit', onSubmit, true); document.removeEventListener('keydown', onKey, true); };
+    return () => { document.removeEventListener('input', onInput, true); document.removeEventListener('click', onClick, true); document.removeEventListener('submit', onSubmit, true); document.removeEventListener('keydown', onKey, true); };
   }, [sheet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!sheet) return null;
@@ -447,6 +546,32 @@ function FriendChatPatch() {
       const next: Recent[] = [{ id: f.id, name: f.name, avatar: f.avatar ?? null, ts: Date.now() }, ...recents.filter(r => r.id !== f.id)];
       setRecents(next); saveRecents(me.id, next);
     }
+  };
+  /* REACTIONS: long-press (0.45s) on the friend's message -> emoji bubble in the middle -> pick -> sticks on the message */
+  const reactionOf = (m: ChatMsg): string => (reactions[m.id] !== undefined ? reactions[m.id] : m.reaction || '');
+  const clearPress = () => { if (pressTimer.current) { window.clearTimeout(pressTimer.current); pressTimer.current = 0; } };
+  const pressProps = (id: string) => ({
+    onPointerDown: () => {
+      clearPress();
+      pressTimer.current = window.setTimeout(() => {
+        pressTimer.current = 0; pickerAt.current = Date.now();
+        try { navigator.vibrate?.(15); } catch { /* */ }
+        setPicker(id);
+      }, 450);
+    },
+    onPointerUp: clearPress, onPointerLeave: clearPress, onPointerCancel: clearPress,
+    onContextMenu: (e: React.SyntheticEvent) => e.preventDefault(),
+  });
+  const pickerMsg = picker ? chat.list.find(x => x.id === picker) : undefined;
+  const pickReaction = (emoji: string) => {
+    const id = picker;
+    if (!id || !me || !peer) return;
+    const same = !!pickerMsg && reactionOf(pickerMsg) === emoji;
+    const next = { ...reactions, [id]: same ? '' : emoji };
+    setReactions(next);
+    try { localStorage.setItem(reactKey(me.id, peer.id), JSON.stringify(next)); } catch { /* */ }
+    setPicker(null);
+    void adapter().react(me, peer.id, id, same ? '' : emoji);
   };
   const toggleSel = (id: string) => setSelected(a => (a.includes(id) ? a.filter(x => x !== id) : [...a, id]));
   const listRows = (() => {
@@ -483,6 +608,7 @@ function FriendChatPatch() {
         [data-sfc="chat"] > :not(:first-child) { visibility: hidden !important; pointer-events: none !important; }
         [data-sfc="chat"] > [data-sfc-portal] { visibility: visible !important; pointer-events: auto !important; }
         [data-sfc-av] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        @keyframes sfcPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
         @keyframes sfcPop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
       `}</style>
 
@@ -562,6 +688,29 @@ function FriendChatPatch() {
         sheet.header,
       )}
 
+      {/* PRESENCE: small white tag under the friend's name (red line) */}
+      {mode === 'chat' && peer && seenText(presence[peer.id]) && createPortal(
+        <div
+          data-sfc-portal="1"
+          style={{
+            position: 'absolute', left: pillLeft + 22, bottom: 3, zIndex: 8, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 5,
+            background: '#fff', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 999, padding: '2px 9px', fontSize: 11, lineHeight: '14px', color: '#6b7280',
+          }}
+        >
+          {presence[peer.id]?.online && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />}
+          <span>{seenText(presence[peer.id])}</span>
+        </div>,
+        sheet.header,
+      )}
+
+      {/* PRESENCE: "Type..." above the input box (orange line) while the friend is typing */}
+      {mode === 'chat' && peer && presence[peer.id]?.typing && createPortal(
+        <div style={{ position: 'absolute', left: 18, bottom: rect.bottom + 6, zIndex: 11, pointerEvents: 'none', fontSize: 13, fontWeight: 700, color: '#16a34a', animation: 'sfcPulse 1.2s ease-in-out infinite' }}>
+          Type...
+        </div>,
+        sheet.inner,
+      )}
+
       {/* chat page (replaces the Ai messages area, keeps the same input bar) */}
       {mode === 'chat' && createPortal(
         <div
@@ -601,6 +750,12 @@ function FriendChatPatch() {
                   <div dir="auto" style={{ fontSize: 13, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
                     {r.last ? `${r.last.from === myId ? 'You: ' : ''}${r.last.text}` : 'Tap to chat'}
                   </div>
+                  {seenText(presence[r.id]) && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                      {presence[r.id]?.online && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', flexShrink: 0 }} />}
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{seenText(presence[r.id])}</span>
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                   {r.last && <span style={{ fontSize: 11, color: '#9ca3af' }}>{hhmm(r.last.ts)}</span>}
@@ -620,16 +775,26 @@ function FriendChatPatch() {
             const mine = m.from === myId;
             return (
               <div key={m.clientId || m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
+                <div style={{ position: 'relative', maxWidth: '100%', marginBottom: reactionOf(m) ? 12 : 0 }}>
                 <div
                   dir="auto"
+                  {...(mine ? {} : pressProps(m.id))}
                   onClick={() => { if (m.status === 'failed') void sendRef.current(m.text, m.clientId); }}
                   style={{
                     background: mine ? DARK_GREEN : '#f1f1ef', color: mine ? '#fff' : '#111',
                     padding: '9px 13px', borderRadius: 18, borderBottomRightRadius: mine ? 6 : 18, borderBottomLeftRadius: mine ? 18 : 6,
                     fontSize: 15, lineHeight: '21px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     opacity: m.status === 'sending' ? 0.7 : 1, cursor: m.status === 'failed' ? 'pointer' : 'default',
+                    ...(mine ? {} : { userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } as React.CSSProperties),
                   }}
                 >{m.text}</div>
+                {reactionOf(m) && (
+                  <span style={{
+                    position: 'absolute', bottom: -12, ...(mine ? { left: 6 } : { right: 6 }), background: '#fff', border: '1px solid rgba(0,0,0,0.1)',
+                    borderRadius: 999, padding: '1px 6px', fontSize: 15, lineHeight: '20px', boxShadow: '0 2px 6px rgba(0,0,0,0.15)',
+                  }}>{reactionOf(m)}</span>
+                )}
+                </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 11, color: m.status === 'failed' ? '#ef4444' : '#9ca3af' }}>
                   <span>{hhmm(m.ts)}</span>
                   {mine && (m.status === 'failed'
@@ -644,6 +809,28 @@ function FriendChatPatch() {
           {toast && (
             <div style={{ position: 'sticky', bottom: 0, alignSelf: 'center', background: 'rgba(0,0,0,0.78)', color: '#fff', padding: '7px 14px', borderRadius: 999, fontSize: 12.5 }}>{toast}</div>
           )}
+        </div>,
+        sheet.inner,
+      )}
+
+      {/* REACTIONS: emoji bubble in the middle of the page */}
+      {mode === 'chat' && peer && picker && createPortal(
+        <div
+          role="presentation"
+          onClick={() => { if (Date.now() - pickerAt.current > 350) setPicker(null); }}
+          style={{ position: 'absolute', inset: 0, zIndex: 46, background: 'rgba(0,0,0,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'sfcPop 0.15s ease-out' }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 28, padding: '14px 12px', boxShadow: '0 12px 36px rgba(0,0,0,0.3)', display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 4, width: 'min(320px, calc(100% - 40px))' }}
+          >
+            {REACTIONS.map(em => (
+              <button
+                key={em} type="button" onClick={() => pickReaction(em)}
+                style={{ border: 'none', background: pickerMsg && reactionOf(pickerMsg) === em ? 'rgba(0,0,0,0.09)' : 'transparent', borderRadius: 14, fontSize: 28, height: 46, lineHeight: '46px', padding: 0, cursor: 'pointer' }}
+              >{em}</button>
+            ))}
+          </div>
         </div>,
         sheet.inner,
       )}
