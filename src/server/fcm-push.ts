@@ -7,10 +7,6 @@
  *
  * Railway variable required:  FIREBASE_SERVICE_ACCOUNT  = the Firebase service-account key,
  * either as the raw JSON or as a single-line base64 of that JSON.
- *
- * DEEP-LINK: every message carries data.url (path + query). Tapping the system
- * notification opens the app; the client reads data.url / the launch URL and
- * navigates straight to the place (call, chat, live, post, invite, …).
  */
 import type { Express, Request, Response } from 'express';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
@@ -67,21 +63,25 @@ function ensureFirebase(): boolean {
   }
 }
 
+async function sessionUser(req: Request) {
+  const auth = getAuth();
+  const session = await auth.api.getSession({ headers: new Headers(req.headers as Record<string, string>) });
+  return session?.user as (undefined | { id: string; name?: string; username?: string });
+}
+
 export function registerFcmRoutes(app: Express) {
-  // Register / refresh the device token for the logged-in user.
   app.post('/api/push/fcm-token', async (req: Request, res: Response) => {
     try {
-      const session = await getAuth().api.getSession({ headers: req.headers as any });
-      const user = session?.user;
-      if (!user?.id) return res.status(401).json({ error: 'unauthorized' });
-      const token = String((req.body as any)?.token || '').trim();
-      if (!token || token.length < 20) return res.status(400).json({ error: 'token required' });
-      const platform = String((req.body as any)?.platform || 'android').slice(0, 20);
-      const username = String((user as any).username || (user as any).name || '').slice(0, 255);
+      const user = await sessionUser(req);
+      if (!user) return res.status(401).json({ error: 'Unauthorized' });
+      const token = String((req.body || {}).token || '').trim();
+      const platform = String((req.body || {}).platform || 'android').slice(0, 20);
+      if (!token || token.length > 255) return res.status(400).json({ error: 'Invalid token' });
+      const username = String(user.username || user.name || '').replace(/^@/, '').toLowerCase() || null;
       await client().execute(
         `INSERT INTO fcm_tokens (user_id, username, token, platform) VALUES (?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), username = VALUES(username), platform = VALUES(platform), updated_at = CURRENT_TIMESTAMP`,
-        [String(user.id), username, token, platform],
+         ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), username = VALUES(username), platform = VALUES(platform)`,
+        [user.id, username, token, platform],
       );
       res.json({ ok: true });
     } catch (e) {
@@ -92,12 +92,10 @@ export function registerFcmRoutes(app: Express) {
   // Call on logout so the device stops receiving this user's notifications.
   app.delete('/api/push/fcm-token', async (req: Request, res: Response) => {
     try {
-      const session = await getAuth().api.getSession({ headers: req.headers as any });
-      const user = session?.user;
-      if (!user?.id) return res.status(401).json({ error: 'unauthorized' });
-      const token = String((req.body as any)?.token || (req.query as any)?.token || '').trim();
+      const user = await sessionUser(req);
+      if (!user) return res.status(401).json({ error: 'Unauthorized' });
+      const token = String((req.body || {}).token || req.query.token || '').trim();
       if (token) await client().execute('DELETE FROM fcm_tokens WHERE token = ? AND user_id = ?', [token, user.id]);
-      else await client().execute('DELETE FROM fcm_tokens WHERE user_id = ?', [user.id]);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -113,57 +111,6 @@ export type FcmMessage = {
   url?: string;
   type?: string;
 };
-
-/** Normalize a deep-link path so the client can always open it. */
-function normalizeDeepUrl(raw?: string): string {
-  const u = String(raw || '/').trim() || '/';
-  if (/^https?:\/\//i.test(u)) {
-    try {
-      const parsed = new URL(u);
-      return parsed.pathname + parsed.search + parsed.hash;
-    } catch {
-      return '/';
-    }
-  }
-  return u.startsWith('/') ? u : `/${u}`;
-}
-
-/** Build FCM data + notification options so a tap opens data.url on every platform. */
-function buildPayload(m: { title: string; body: string; url?: string; type?: string }, opts?: { ttlMs?: number; priority?: 'high' | 'normal' }) {
-  const url = normalizeDeepUrl(m.url);
-  const type = String(m.type || '');
-  // FCM data values MUST be strings.
-  const data: Record<string, string> = {
-    url,
-    type,
-    // Duplicate under common aliases so Capacitor / older clients still find the path.
-    click_action: url,
-    link: url,
-  };
-  const title = m.title || 'Stooorna';
-  const body = (m.body || '').slice(0, 180);
-  return {
-    notification: { title, body },
-    data,
-    android: {
-      priority: (opts?.priority || 'high') as 'high',
-      ttl: opts?.ttlMs ?? 24 * 60 * 60 * 1000,
-      notification: {
-        channelId: 'default',
-        // Bring the app to the foreground on tap; Capacitor receives the data payload.
-        clickAction: 'FCM_PLUGIN_ACTIVITY',
-        sound: 'default',
-        defaultSound: true,
-        priority: 'high' as const,
-      },
-    },
-    // Web / PWA: open the same deep link when the notification is clicked.
-    webpush: {
-      fcmOptions: { link: url },
-      notification: { title, body, data: { url, type } },
-    },
-  };
-}
 
 /** Fire-and-forget safe: never throws. */
 export async function sendFcmToUser(m: FcmMessage): Promise<void> {
@@ -186,17 +133,18 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
     }
 
     const isCall = m.type === 'call';
-    const payload = buildPayload(m, {
-      ttlMs: isCall ? 30_000 : 24 * 60 * 60 * 1000,
-      priority: 'high',
-    });
-
     const resp = await getMessaging().sendEachForMulticast({
       tokens,
-      ...payload,
+      notification: { title: m.title || 'Stooorna', body: (m.body || '').slice(0, 180) },
+      data: { url: m.url || '/', type: m.type || '' },
+      android: {
+        priority: 'high',
+        ttl: isCall ? 30_000 : 24 * 60 * 60 * 1000,
+        notification: { channelId: 'default' },
+      },
     });
 
-    console.log(`[fcm] sent ${resp.successCount}/${tokens.length} to ${uid || uname} url=${payload.data.url}`);
+    console.log(`[fcm] sent ${resp.successCount}/${tokens.length} to ${uid || uname}`);
     resp.responses.forEach((r) => {
       if (r.error) console.warn('[fcm] failed:', r.error.code, r.error.message);
     });
@@ -241,12 +189,17 @@ export async function sendFcmToAll(m: FcmBroadcast): Promise<void> {
     const tokens: string[] = list.map((r) => String(r.token)).filter(Boolean);
     if (!tokens.length) return;
 
-    const payload = buildPayload(m, { ttlMs: 10 * 60 * 1000, priority: 'high' });
     const resp = await getMessaging().sendEachForMulticast({
       tokens,
-      ...payload,
+      notification: { title: m.title || 'Stooorna', body: (m.body || '').slice(0, 180) },
+      data: { url: m.url || '/', type: m.type || '' },
+      android: {
+        priority: 'high',
+        ttl: 10 * 60 * 1000,
+        notification: { channelId: 'default' },
+      },
     });
-    console.log(`[fcm] broadcast ${m.type || ''} sent ${resp.successCount}/${tokens.length} url=${payload.data.url}`);
+    console.log(`[fcm] broadcast ${m.type || ''} sent ${resp.successCount}/${tokens.length}`);
 
     const dead: string[] = [];
     resp.responses.forEach((r, i) => {

@@ -424,19 +424,11 @@ const callInvitePush: RequestHandler = (req, _res, next) => {
       callPushSeen.set(key, now);
       for (const [k, t] of callPushSeen) if (now - t > 120_000) callPushSeen.delete(k);
       const who = String(b.hostName || (u as any).name || (u as any).username || "Someone").slice(0, 60);
-      const fromId = String((u as any).id || b.fromUserId || b.hostId || "").trim();
-      const callQs = new URLSearchParams({
-        incomingCall: "1",
-        channel: String(b.channel || ""),
-        video: b.video ? "1" : "0",
-        from: who,
-      });
-      if (fromId) callQs.set("fromId", fromId);
       await sendFcmToUser({
         userId: toId,
         title: who,
         body: b.video ? "Incoming video call" : "Incoming call",
-        url: `/?${callQs.toString()}`,
+        url: `/?incomingCall=1&channel=${encodeURIComponent(String(b.channel || ""))}&video=${b.video ? "1" : "0"}&from=${encodeURIComponent(who)}`,
         type: "call",
       });
     } catch (e) {
@@ -1320,12 +1312,7 @@ registerFriendChatRoutes(app, {
     const accepted: Array<{ friendId?: string }> = Array.isArray(body?.accepted) ? body.accepted : [];
     return accepted.some((f) => String(f?.friendId || "") === peerId);
   },
-  push: (toId: string, fromName: string, text: string, fromId?: string) => {
-    const qs = new URLSearchParams({ openChat: "1" });
-    if (fromName) qs.set("peerName", fromName);
-    if (fromId) qs.set("peerId", String(fromId));
-    void sendFcmToUser({ userId: toId, title: fromName || "Stooorna", body: text || "New message", url: `/?${qs.toString()}`, type: "message" });
-  },
+  push: (toId, fromName, text) => sendFcmToUser({ userId: toId, title: fromName, body: text, url: `/?openChat=1&peerName=${encodeURIComponent(fromName || "")}`, type: "message" as any }),
 });
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });

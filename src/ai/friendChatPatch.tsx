@@ -762,40 +762,6 @@ function FriendChatPatch() {
       setRecents(next); saveRecents(me.id, next);
     }
   };
-
-  /* DEEP-LINK: external notification tap → open this peer inside the AI sheet friend-chat */
-  useEffect(() => {
-    const openFromNotif = (e: Event) => {
-      const d = (e as CustomEvent).detail as { friendId?: string; peerId?: string; peerName?: string; peerAvatar?: string | null } | undefined;
-      const id = String(d?.friendId || d?.peerId || '').trim();
-      const name = String(d?.peerName || '').trim();
-      if (!id && !name) return;
-      // Switch sheet into chat mode and select the peer
-      setMode('chat');
-      if (id) {
-        openPeer({ id, name: name || 'Friend', avatar: d?.peerAvatar ?? null });
-        return;
-      }
-      // Resolve by name once friends list is available
-      void (async () => {
-        const list = friends || (me ? await adapter().listFriends(me).catch(() => []) : []);
-        const hit = list.find(f =>
-          f.name.toLowerCase() === name.toLowerCase()
-          || f.name.toLowerCase() === name.replace(/^@/, '').toLowerCase()
-        );
-        if (hit) openPeer(hit);
-        else if (name) openPeer({ id: name, name, avatar: null });
-      })();
-    };
-    window.addEventListener('stooorna:open-private-chat', openFromNotif as EventListener);
-    window.addEventListener('stooorna:open-friend-chat', openFromNotif as EventListener);
-    return () => {
-      window.removeEventListener('stooorna:open-private-chat', openFromNotif as EventListener);
-      window.removeEventListener('stooorna:open-friend-chat', openFromNotif as EventListener);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me?.id, friends, recents]);
-
   /* REACTIONS: long-press (0.45s) on the friend's message -> emoji bubble in the middle -> pick -> sticks on the message */
   const reactionOf = (m: ChatMsg): string => (reactions[m.id] !== undefined ? reactions[m.id] : m.reaction || '');
   const clearPress = () => { if (pressTimer.current) { window.clearTimeout(pressTimer.current); pressTimer.current = 0; } };
