@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "587146411120",
+    "project_id": "stooorna-27b4e",
+    "storage_bucket": "stooorna-27b4e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:587146411120:android:461304a0a098a37073c8b5",
+        "android_client_info": {
+          "package_name": "com.stooorna.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZGbREQeZ2BBMvb9CFfZU4U9CeHEnYDM0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
