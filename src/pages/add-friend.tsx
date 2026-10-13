@@ -23748,6 +23748,58 @@ export default function AddFriendPage() {
   const navigate = useNavigate();
   const routeLocation = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // ── DEEP-LINK FROM EXTERNAL NOTIFICATION ──
+  // When the user taps a push notification outside the app, the FCM data.url
+  // brings them here with query params. We open the exact place and then clean the URL.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    let handled = false;
+
+    // Incoming call
+    if (sp.get("incomingCall") === "1") {
+      const channel = sp.get("channel") || "";
+      const from = sp.get("from") || "Someone";
+      if (channel) {
+        try {
+          window.dispatchEvent(new CustomEvent("stooorna:incoming-call-ui", {
+            detail: { ringing: true, channel, hostName: from, video: sp.get("video") === "1", at: Date.now() }
+          }));
+        } catch { /* ignore */ }
+        handled = true;
+      }
+    }
+
+    // Open private chat (approximate — opens friends list / last chat if peer id known)
+    if (sp.get("openChat") === "1") {
+      try {
+        window.dispatchEvent(new CustomEvent("stooorna:open-private-chat", {
+          detail: { peerName: sp.get("peerName") || "" }
+        }));
+      } catch { /* ignore */ }
+      handled = true;
+    }
+
+    // Open general / public chat
+    if (sp.get("openGeneralChat") === "1") {
+      try { openGeneralChat(); } catch { /* ignore */ }
+      handled = true;
+    }
+
+    // Live / invite already handled by router if path is /live or /live-camera
+    // (the server now sends those full paths)
+
+    if (handled) {
+      // Clean the query so it doesn't re-trigger
+      const clean = new URLSearchParams(sp);
+      ["incomingCall", "channel", "video", "from", "openChat", "peerName", "openGeneralChat"].forEach(k => clean.delete(k));
+      const qs = clean.toString();
+      const newUrl = window.location.pathname + (qs ? "?" + qs : "") + window.location.hash;
+      try { window.history.replaceState({}, "", newUrl); } catch { /* ignore */ }
+      setSearchParams(clean, { replace: true });
+    }
+  }, [searchParams]);
+
   const { user, isPending } = useSession();
   // GPS-ALL-USERS-PATCH: while I am online with the map toggle ON, my last place stays fresh for everybody
   useLiveGpsBackgroundPublisher({ id: user?.id ?? null, name: user?.name ?? null, username: (user as any)?.username ?? null, avatarUrl: (user as any)?.avatarUrl ?? (user as any)?.image ?? null });
@@ -27301,6 +27353,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, [friendChatListOpen, user?.id]);
   const [, setFriendChatReactMsgId] = useState<string | null>(null);
   const [friendChatPeer, setFriendChatPeer] = useState<Friend | null>(null);
+
+  // Deep-link: open private chat when notification is tapped
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent).detail as { peerName?: string; peerId?: string } | undefined;
+      // If we have a peerId we could look it up; for now open the friends list tab so the user sees the chat
+      try {
+        const sp = new URLSearchParams(window.location.search);
+        if (!sp.has("tab")) {
+          sp.set("tab", "friends");
+          window.history.replaceState({}, "", window.location.pathname + "?" + sp.toString());
+        }
+      } catch { /* ignore */ }
+      // Optionally scroll or highlight; the friends list will show unread
+    };
+    window.addEventListener("stooorna:open-private-chat", onOpen as EventListener);
+    return () => window.removeEventListener("stooorna:open-private-chat", onOpen as EventListener);
+  }, []);
+
   const [friendChatTypingTick, setFriendChatTypingTick] = useState(0);
 
   const [, setFriendChatMsgs] = useState<ShareThreadMsg[]>([]);

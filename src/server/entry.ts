@@ -428,7 +428,7 @@ const callInvitePush: RequestHandler = (req, _res, next) => {
         userId: toId,
         title: who,
         body: b.video ? "Incoming video call" : "Incoming call",
-        url: "/",
+        url: `/?incomingCall=1&channel=${encodeURIComponent(String(b.channel || ""))}&video=${b.video ? "1" : "0"}&from=${encodeURIComponent(who)}`,
         type: "call",
       });
     } catch (e) {
@@ -949,7 +949,7 @@ app.post("/api/live-presence", (req, res) => {
         exceptUsername: row.hostUsername || "",
         title: row.hostName || row.hostUsername || "Stooorna",
         body: kind === "camera" ? "Is live now (video)" : "Is live now (voice)",
-        url: "/",
+        url: `/${kind === "camera" ? "live-camera" : "live"}?hostId=${encodeURIComponent(hostId)}&hostName=${encodeURIComponent(row.hostName || "")}&hostUsername=${encodeURIComponent(row.hostUsername || "")}`,
         type: "live",
       });
     }
@@ -1312,7 +1312,7 @@ registerFriendChatRoutes(app, {
     const accepted: Array<{ friendId?: string }> = Array.isArray(body?.accepted) ? body.accepted : [];
     return accepted.some((f) => String(f?.friendId || "") === peerId);
   },
-  push: (toId, fromName, text) => sendFcmToUser({ userId: toId, title: fromName, body: text, url: "/", type: "message" as any }),
+  push: (toId, fromName, text) => sendFcmToUser({ userId: toId, title: fromName, body: text, url: `/?openChat=1&peerName=${encodeURIComponent(fromName || "")}`, type: "message" as any }),
 });
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
@@ -2164,7 +2164,7 @@ app.post("/api/voice-invite", guarded(async (req, res) => {
       userId: toId,
       title: row.hostName || row.fromName || "Stooorna",
       body: inviteKind === "camera" ? "Invited you to join a live video" : "Invited you to join a live voice room",
-      url: "/",
+      url: `/${inviteKind === "camera" ? "live-camera" : "live"}?hostId=${encodeURIComponent(hostId)}&hostName=${encodeURIComponent(row.hostName || "")}&hostUsername=${encodeURIComponent(row.hostUsername || "")}`,
       type: "invite",
     });
     return res.json({ ok: true, id, at: now });
@@ -2310,7 +2310,7 @@ const publicVoiceJoinPush: RequestHandler = (req, _res, next) => {
       for (const f of accepted.slice(0, 200)) {
         const fid = String(f?.friendId || "").trim();
         if (!fid || fid === me) continue;
-        await sendFcmToUser({ userId: fid, title: who, body: "Joined the public voice live", url: "/", type: "live" });
+        await sendFcmToUser({ userId: fid, title: who, body: "Joined the public voice live", url: "/live", type: "live" });
       }
     } catch (e) {
       console.error("[fcm] public voice push failed:", e);
