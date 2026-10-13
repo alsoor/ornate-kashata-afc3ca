@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Express, Request, Response } from "express";
 import { extractMentions } from "./mentions.js";
+import { sendFcmToUser } from "./fcm-push.js"; // FCM-PUSH
 
 export type AppNotice = {
   id: string;
@@ -83,6 +84,15 @@ export function pushNotification(row: Omit<AppNotice, "id" | "at" | "read"> & { 
   };
   mem().push(n);
   save();
+  // FCM-PUSH: also deliver as a real phone notification (works when the app is closed)
+  void sendFcmToUser({
+    userId: n.toUserId,
+    username: n.toUsername,
+    title: n.title,
+    body: n.body,
+    url: n.href,
+    type: n.type,
+  });
   return n;
 }
 

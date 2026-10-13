@@ -18,6 +18,7 @@ import { registerTemplatesShareRoutes } from "./templates-share-patch.js"; // TE
 import { registerAiCreditsRoutes } from "./ai-credits-routes.js"; // AI-CREDITS
 import { registerChatImageRoutes, saveChatImage } from "./chat-images.js";
 import { registerNotificationRoutes, notifyMentionsFromText } from "./notifications.js";
+import { migrateFcm, registerFcmRoutes } from "./fcm-push.js"; // FCM-PUSH
 import { registerSavedRoomRoutes } from "./saved-room-patch.js";
 import { registerForgotPasswordRoutes, registerLiveIconRoutes } from "./forgot-password-patch.js"; // FORGOT-PASSWORD-PATCH
 import { registerAdsRoutes } from "./ads-patch.js"; // ADS-PATCH
@@ -580,6 +581,7 @@ app.post("/api/live-chat/voice", (req, res) => {
 });
 registerChatImageRoutes(app);
 registerNotificationRoutes(app);
+registerFcmRoutes(app); // FCM-PUSH
 registerSavedRoomRoutes(app);
 app.post("/api/live-chat/media", (req, res) => {
   const body = (req.body || {}) as any;
@@ -2444,6 +2446,7 @@ app.get("/api/push/generate-vapid", (_req, res) => {
 		await addBanIpRoomAdmin();
 		await addUserPrivacyIsPrivate();
 		await migratePush();
+		await migrateFcm(); // FCM-PUSH
 		await addSecretChats();
 		await addFileVideoType();
 		await addPostShareType();
