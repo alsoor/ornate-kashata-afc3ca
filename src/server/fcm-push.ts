@@ -5,7 +5,8 @@
  * - registerFcmRoutes()   POST/DELETE /api/push/fcm-token  (logged-in users only)
  * - sendFcmToUser()       sends a notification to every device of a user
  *
- * Railway variable required:  FIREBASE_SERVICE_ACCOUNT  = full JSON of the Firebase service-account key
+ * Railway variable required:  FIREBASE_SERVICE_ACCOUNT  = the Firebase service-account key,
+ * either as the raw JSON or as a single-line base64 of that JSON.
  */
 import type { Express, Request, Response } from 'express';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
@@ -45,11 +46,13 @@ let fcmReady: boolean | null = null;
 function ensureFirebase(): boolean {
   if (fcmReady !== null) return fcmReady;
   try {
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
+    let raw = (process.env.FIREBASE_SERVICE_ACCOUNT || '').trim();
     if (!raw) {
       console.warn('[fcm] FIREBASE_SERVICE_ACCOUNT is not set - native push disabled');
       return (fcmReady = false);
     }
+    // Accept either raw JSON or a single-line base64 of the JSON.
+    if (!raw.startsWith('{')) raw = Buffer.from(raw, 'base64').toString('utf8').trim();
     const sa = JSON.parse(raw);
     if (typeof sa.private_key === 'string') sa.private_key = sa.private_key.replace(/\\n/g, '\n');
     if (!getApps().length) initializeApp({ credential: cert(sa) });
