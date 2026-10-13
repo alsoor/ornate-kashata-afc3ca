@@ -10714,6 +10714,13 @@ export interface FriendStoryProfileProps {
   zBase?: number;
 }
 type PostBellMode = 'all' | 'relevant' | 'off';
+// Last known friends list: lets a profile open straight in the right state (no "add friend" flash) while the fresh list loads.
+let friendsStateCache: { accepted: Set<string>; outgoing: Set<string> } | null = null;
+function friendStateFromCache(id: string): 'none' | 'pending' | 'accepted' {
+  if (friendsStateCache?.accepted.has(String(id))) return 'accepted';
+  if (friendsStateCache?.outgoing.has(String(id))) return 'pending';
+  return 'none';
+}
 export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false, riseFromBottom = false, hideLiveButton = false, zBase }: FriendStoryProfileProps) {
   const navigate = useNavigate();
   // Layering (all relative to Z): backdrop = Z, panel = Z+1, followers list = Z+60, nested profile = Z+200, media lightbox = Z+300
@@ -10724,7 +10731,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [profile, setProfile] = useState<MiniProfileData | null>(null);
   const [, setLoading] = useState(true);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
-  const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>('none');
+  const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>(() => friendStateFromCache(authorId));
+  // false until we really know whether this person is a friend — until then the add-friend / private-lock UI stays hidden
+  const [friendStateReady, setFriendStateReady] = useState<boolean>(() => friendsStateCache !== null);
   const [visitorCountry, setVisitorCountry] = useState('');
   // ── Post-notification bell (per profile): off by default, saved on the server ──
   const [bellMode, setBellMode] = useState<PostBellMode>('off');
@@ -10805,15 +10814,22 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
     async function loadFriendState() {
       try {
         const response = await fetch('/api/friends', { credentials: 'include' });
-        if (!response.ok) return;
+        if (!response.ok) { if (!cancelled) setFriendStateReady(true); return; }
         const data = await response.json();
         if (cancelled) return;
+        friendsStateCache = {
+          accepted: new Set<string>((data.accepted ?? []).map((f: Friend) => String(f.friendId))),
+          outgoing: new Set<string>((data.outgoing ?? []).map((q: { addresseeId?: string; userId?: string }) => String(q.addresseeId ?? q.userId))),
+        };
         if ((data.accepted ?? []).some((friend: Friend) => friend.friendId === authorId)) {
           setFriendState('accepted');
         } else if ((data.outgoing ?? []).some((request: { addresseeId?: string; userId?: string }) => (request.addresseeId ?? request.userId) === authorId)) {
           setFriendState('pending');
+        } else {
+          setFriendState('none');
         }
-      } catch { /* keep default */ }
+        setFriendStateReady(true);
+      } catch { if (!cancelled) setFriendStateReady(true); }
     }
     loadFriendState();
     return () => { cancelled = true; };
@@ -10829,7 +10845,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         credentials: 'include',
         body: JSON.stringify({ addresseeId: authorId }),
       });
-      if (response.ok) setFriendState('pending');
+      if (response.ok) { setFriendState('pending'); friendsStateCache = null; }
     } finally {
       setFriendLoading(false);
     }
@@ -10840,7 +10856,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
     setFriendLoading(true);
     try {
       const response = await fetch(`/api/friends/${authorId}`, { method: 'DELETE', credentials: 'include' });
-      if (response.ok) setFriendState('none');
+      if (response.ok) { setFriendState('none'); friendsStateCache = null; }
     } finally {
       setFriendLoading(false);
       setFriendMenuOpen(false);
@@ -10945,7 +10961,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const coverUrl = profile?.coverUrl ?? null;
   const pinnedTrack = pinnedTrackFromProfile(profile);
   // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
-  const isHiddenPrivate = !isCompanyProfile && !!profile?.isPrivate && friendState !== 'accepted';
+  const isHiddenPrivate = !isCompanyProfile && friendStateReady && !!profile?.isPrivate && friendState !== 'accepted';
 
   const sheetShell = sheetMode ? (
     <motion.div
@@ -11130,7 +11146,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
 
           {/* Friend state + live broadcast */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-            {user?.id && String(user.id) !== String(authorId) && (
+            {user?.id && friendStateReady && String(user.id) !== String(authorId) && (
               friendState === 'accepted' ? (
                 <span aria-label="friend" title="friend" style={{ width: 34, height: 34, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <Check size={20} strokeWidth={3} color="#22c55e" />
@@ -11248,7 +11264,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
           )}
 
           {/* Post-notification bell — under the three dots */}
-          {!!user?.id && String(user.id) !== String(authorId) && !isHiddenPrivate && (
+          {!!user?.id && friendStateReady && String(user.id) !== String(authorId) && !isHiddenPrivate && (
             <motion.button
               whileTap={{ scale: 0.88 }}
               type="button"
