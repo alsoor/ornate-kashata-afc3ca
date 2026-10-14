@@ -5722,6 +5722,24 @@ export default function RootLayout({
     void initNativePush();
   }, [session?.user?.id]);
 
+  // PUSH-OPEN-PUBLIC-CHAT: tapping a public-chat notification (url /?chat=1&msg=<id> or /?openPublicChat=1)
+  // opens the PUBLIC chat directly, using the same event the app already uses (stooorna:open-public-chat).
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const sp = new URLSearchParams(location.search || '');
+    if (sp.get('chat') !== '1' && sp.get('openPublicChat') !== '1') return;
+    const msg = sp.get('msg') || '';
+    if (msg) { try { sessionStorage.setItem('stooorna_flash_msg', msg); } catch { /* ignore */ } }
+    const fire = () => { try { window.dispatchEvent(new CustomEvent('stooorna:open-public-chat')); } catch { /* ignore */ } };
+    fire();
+    window.setTimeout(fire, 900); // cold start: second try once the chat host is mounted (not cleared: the URL clean-up below re-runs this effect)
+    const clean = new URLSearchParams(sp);
+    ['chat', 'openPublicChat', 'msg'].forEach(k => clean.delete(k));
+    const qs = clean.toString();
+    navigate(location.pathname + (qs ? '?' + qs : '') + (location.hash || ''), { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, location.search]);
+
   // حذف تلقائي لمحادثات الدعم المنتهية: بعد 10 دقائق من "تم إنهاء المهمة" تُفرَّغ المحادثة
   // بالكامل (عند الدعم وعند المستخدم) حتى لو نافذة الدعم مقفولة — RootLayout شغّال دايماً.
   useEffect(() => {
