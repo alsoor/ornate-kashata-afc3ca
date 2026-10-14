@@ -1,26 +1,44 @@
 /**
- * Native push tap handler (Capacitor / Android).
- * When the user taps a notification outside the app, the FCM data.url is passed to onUrl,
- * which navigates straight to the target place (call, chat, post, invite, live).
- * Uses the Capacitor global, so it is a no-op in a normal browser and needs no extra import.
+ * Native push helpers (Capacitor / Android).
+ *  - installPushTapHandler:     the user tapped a notification outside the app -> onUrl(data.url)
+ *  - installPushReceiveHandler: a notification arrived while the app is open   -> onNotif({ title, body, data })
+ * Uses the Capacitor global, so both are a no-op in a normal browser and need no extra import.
+ * If the plugin is not ready yet it retries for a few seconds.
  */
-type TapHandler = (url: string) => void;
+type Remover = () => void;
 
-export function installPushTapHandler(onUrl: TapHandler): () => void {
+function withPlugin(attach: (plugin: any) => Promise<{ remove?: () => void } | undefined> | { remove?: () => void } | undefined): Remover {
   let removed = false;
-  let handle: { remove?: () => void } | null = null;
-  try {
-    const cap = (window as any).Capacitor;
-    const plugin = cap?.Plugins?.PushNotifications;
-    if (!plugin?.addListener) return () => {};
-    const res = plugin.addListener('pushNotificationActionPerformed', (ev: any) => {
-      try {
-        const data = ev?.notification?.data || {};
-        const url = String(data.url || '').trim();
-        if (url && url.startsWith('/')) onUrl(url);
-      } catch { /* ignore */ }
-    });
-    Promise.resolve(res).then((h: any) => { handle = h; if (removed) { try { h?.remove?.(); } catch { /* ignore */ } } });
-  } catch { /* ignore */ }
-  return () => { removed = true; try { handle?.remove?.(); } catch { /* ignore */ } };
+  let handle: { remove?: () => void } | undefined;
+  let tries = 0;
+  let timer = 0;
+  const run = () => {
+    if (removed) return;
+    try {
+      const cap = (window as any).Capacitor;
+      const plugin = cap?.Plugins?.PushNotifications || (cap?.registerPlugin ? cap.registerPlugin('PushNotifications') : null);
+      if (plugin?.addListener) {
+        Promise.resolve(attach(plugin)).then((h) => { handle = h; if (removed) { try { h?.remove?.(); } catch { /* ignore */ } } }).catch(() => {});
+        return;
+      }
+    } catch { /* ignore */ }
+    if (++tries < 15) timer = window.setTimeout(run, 1000);
+  };
+  run();
+  return () => { removed = true; if (timer) window.clearTimeout(timer); try { handle?.remove?.(); } catch { /* ignore */ } };
+}
+
+export function installPushTapHandler(onUrl: (url: string) => void): Remover {
+  return withPlugin((plugin) => plugin.addListener('pushNotificationActionPerformed', (ev: any) => {
+    try {
+      const url = String(ev?.notification?.data?.url || '').trim();
+      if (url && url.startsWith('/')) onUrl(url);
+    } catch { /* ignore */ }
+  }));
+}
+
+export function installPushReceiveHandler(onNotif: (n: { title?: string; body?: string; data?: Record<string, any> }) => void): Remover {
+  return withPlugin((plugin) => plugin.addListener('pushNotificationReceived', (n: any) => {
+    try { onNotif({ title: n?.title, body: n?.body, data: n?.data || {} }); } catch { /* ignore */ }
+  }));
 }

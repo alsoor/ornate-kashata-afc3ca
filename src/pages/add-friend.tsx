@@ -2,7 +2,6 @@ import { add_friend } from 'virtual:content';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import React from 'react';
-import { installPushTapHandler } from '@/native-push-tap'; // PUSH-TAP
 import { StooornaAiIcon, StooornaAiSheet, AiInfoPanel, AiPlanDialog, getCredits, openGeneralChat, loadDashboard, AI_POST_COST } from '@/ai';
 import { hasFreePass } from '@/ai/aiCredits'; // DOCK-SHORTCUTS: owner free pass → "Active" badge
 import { useAiIconVisible } from '@/lib/aiIconPatch';
@@ -23805,15 +23804,14 @@ export default function AddFriendPage() {
 
     // Open private chat (approximate — opens friends list / last chat if peer id known)
     if (sp.get("openChat") === "1") {
-      const dlPeerName = sp.get("peerName") || "";
-      const dlPeerId = sp.get("peerId") || "";
-      window.setTimeout(() => {
-        try {
-          window.dispatchEvent(new CustomEvent("stooorna:open-private-chat", {
-            detail: { peerName: dlPeerName, peerId: dlPeerId }
-          }));
-        } catch { /* ignore */ }
-      }, 400);
+      try {
+        window.dispatchEvent(new CustomEvent("stooorna:open-private-chat", {
+          detail: { peerName: sp.get("peerName") || "", peerId: sp.get("peerId") || "" }
+        }));
+        window.dispatchEvent(new CustomEvent("stooorna:friend-chat-open", {
+          detail: { peerName: sp.get("peerName") || "", peerId: sp.get("peerId") || "" }
+        }));
+      } catch { /* ignore */ }
       handled = true;
     }
 
@@ -23845,9 +23843,6 @@ export default function AddFriendPage() {
       setSearchParams(clean, { replace: true });
     }
   }, [searchParams]);
-
-  // PUSH-TAP: tapping a notification from outside the app goes straight to its target
-  useEffect(() => installPushTapHandler((url) => { navigate(url); }), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { user, isPending } = useSession();
   // GPS-ALL-USERS-PATCH: while I am online with the map toggle ON, my last place stays fresh for everybody
@@ -27440,19 +27435,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         }
       } catch { /* ignore */ }
       // Optionally scroll or highlight; the friends list will show unread
-      void (async () => {
-        try {
-          const r = await fetch('/api/friends', { credentials: 'include' });
-          if (!r.ok) return;
-          const j = await r.json();
-          const list: Friend[] = j.accepted ?? [];
-          const wantId = String(d?.peerId || '');
-          const wantName = String(d?.peerName || '').trim().toLowerCase();
-          const hit = list.find(f => wantId && String(f.friendId) === wantId)
-            || (wantName ? list.find(f => [f.name, f.username].some(v => String(v || '').trim().toLowerCase() === wantName)) : undefined);
-          if (hit) setFriendChatPeer(hit); else setFriendChatListOpen(true);
-        } catch { /* ignore */ }
-      })();
     };
     window.addEventListener("stooorna:open-private-chat", onOpen as EventListener);
     return () => window.removeEventListener("stooorna:open-private-chat", onOpen as EventListener);

@@ -25,6 +25,8 @@ import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, 
 import { loadDashboard } from './appAssistant';
 // FRIEND-VOICE-LIVE: بث صوتي مباشر على المايك الأحمر داخل شات الصديق (ملف مستقل)
 import FriendVoiceLive, { FRIEND_VOICE_TAP_EVENT } from './FriendVoiceLive';
+import { installPushTapHandler, installPushReceiveHandler } from '@/native-push-tap'; // PUSH-TAP
+import { useSession } from '@/lib/auth/auth-client'; // PUSH-TAP
 // FRIEND-CHAT-MEDIA: نفس نظام شات المحفوظات بالضبط (اللوكيشن + إرسال الصور) — نفس المكونات ونفس التشفير
 import { LocationChatCard } from '@/components/LocationPickerPatch';
 import { encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeSavedMediaLink, prepareSavedMediaWithin } from '@/lib/savedMediaPatch';
@@ -423,6 +425,21 @@ function FriendChatPatch() {
   const sheetRef = useRef(sheet); sheetRef.current = sheet;
   const unreadRef = useRef(unread); unreadRef.current = unread;
   const autoPick = useRef(false);
+  // PUSH-TAP: live list previews + open a chat from a notification
+  const [, setPvTick] = useState(0);
+  const [reqTick, setReqTick] = useState(0);
+  const openReq = useRef<{ id: string; name: string; at: number } | null>(null);
+  useEffect(() => {
+    const onPv = () => setPvTick(n => n + 1);
+    const onOpen = (e: Event) => {
+      const dt = (e as CustomEvent).detail || {};
+      openReq.current = { id: String(dt.peerId || ''), name: String(dt.peerName || ''), at: Date.now() };
+      setReqTick(n => n + 1);
+    };
+    window.addEventListener(PREVIEW_EVENT, onPv);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => { window.removeEventListener(PREVIEW_EVENT, onPv); window.removeEventListener(OPEN_EVENT, onOpen); };
+  }, []);
   const [recents, setRecents] = useState<Recent[]>([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -431,6 +448,28 @@ function FriendChatPatch() {
   const meRef = useRef(me); meRef.current = me;
   const recentsRef = useRef(recents); recentsRef.current = recents;
   const friendsRef = useRef(friends); friendsRef.current = friends;
+  // PUSH-TAP: tells the in-app banner which chat is on screen ('*' = the chat list)
+  useEffect(() => { (window as any).__sfcOpenPeer = sheet && mode === 'chat' ? (peer ? peer.id : '*') : ''; }, [sheet, mode, peer?.id]);
+  // PUSH-TAP: a notification asked to open a chat -> switch to the chat page and pick that person
+  useEffect(() => {
+    const rq = openReq.current;
+    if (!rq) return;
+    if (Date.now() - rq.at > 15000) { openReq.current = null; return; }
+    if (!sheet || !me) { const tm = window.setTimeout(() => setReqTick(n => n + 1), 600); return () => window.clearTimeout(tm); }
+    if (mode !== 'chat') { setMode('chat'); return; }
+    if (!friends) return;
+    const nm = rq.name.trim().toLowerCase();
+    const pool: Friend[] = [...friends, ...recents.map(r => ({ id: r.id, name: r.name, avatar: r.avatar ?? null }))];
+    let hit: Friend | undefined = rq.id ? pool.find(f => f.id === rq.id) : undefined;
+    if (!hit && nm) hit = pool.find(f => f.name.trim().toLowerCase() === nm);
+    if (!hit) hit = [...friends].filter(f => (unread[f.id] || 0) > 0).sort((a, b) => (unread[b.id] || 0) - (unread[a.id] || 0))[0];
+    openReq.current = null;
+    if (hit) {
+      const h = hit;
+      setPeer({ id: h.id, name: h.name, avatar: h.avatar ?? null }); setListOpen(false); setSelectMode(false); setSelected([]);
+      setRecents(prev => { const next: Recent[] = [{ id: h.id, name: h.name, avatar: h.avatar ?? null, ts: Date.now() }, ...prev.filter(r => r.id !== h.id)]; saveRecents(me.id, next); return next; });
+    }
+  }, [reqTick, sheet, me?.id, mode, friends, unread, recents.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const typingSent = useRef(0);
   const lpDone = useRef(0); // SEND-SOUND: time of the last long-press on "+"
   const [picker, setPicker] = useState<string | null>(null);
@@ -486,8 +525,9 @@ function FriendChatPatch() {
     let alive = true;
     const tick = async () => { const u = await adapter().unread(me).catch(() => ({})); if (alive) setUnread(u); };
     void tick();
-    const t = window.setInterval(tick, 6000);
-    return () => { alive = false; window.clearInterval(t); };
+    const t = window.setInterval(tick, 2500);
+    window.addEventListener(REFRESH_EVENT, tick);
+    return () => { alive = false; window.clearInterval(t); window.removeEventListener(REFRESH_EVENT, tick); };
   }, [sheet, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* 4) friends list loads when the chat page / picker opens */
@@ -952,7 +992,9 @@ function FriendChatPatch() {
     return [...map.values()].map(r => {
       const cleared = getClearedAt(me.id, r.id);
       const msgs = loadCache(me.id, r.id).filter(m => m.ts > cleared);
-      const last = msgs.length ? msgs[msgs.length - 1] : null;
+      let last: ChatMsg | null = msgs.length ? msgs[msgs.length - 1] : null;
+      const pv = (unread[r.id] || 0) > 0 ? readPreview(me.id, r.id) : null; // PUSH-TAP: unread text shows without opening the chat
+      if (pv && (!last || pv.ts > last.ts)) last = { id: `pv_${pv.ts}`, from: r.id, text: pv.text, ts: pv.ts, status: 'sent' };
       return { ...r, last, ts: last ? last.ts : r.ts };
     }).sort((a, b) => b.ts - a.ts);
   })();
@@ -1424,6 +1466,150 @@ const nameStyle: React.CSSProperties = { flex: 1, fontSize: 15, fontWeight: 700,
 const emptyStyle: React.CSSProperties = { margin: '10px 8px', color: '#6b7280', fontSize: 13.5, textAlign: 'center' };
 
 /* ───────────────────────── Install ───────────────────────── */
+/* ───────────────────────── PUSH-TAP: live list previews, open-from-notification, in-app banner ───────────────────────── */
+const REFRESH_EVENT = 'stooorna:friend-chat-refresh';
+const PREVIEW_EVENT = 'stooorna:friend-chat-preview';
+const OPEN_EVENT = 'stooorna:friend-chat-open';
+const previewKey = (me: string) => `stooorna_friend_chat_preview_v1_${me}`;
+const readPreviews = (me: string): Record<string, { text: string; ts: number }> => {
+  try { const v = JSON.parse(localStorage.getItem(previewKey(me)) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+};
+const readPreview = (me: string, peer: string): { text: string; ts: number } | null => readPreviews(me)[peer] || null;
+const writePreview = (me: string, peer: string, text: string) => {
+  try { const all = readPreviews(me); all[peer] = { text: String(text).slice(0, 200), ts: Date.now() }; localStorage.setItem(previewKey(me), JSON.stringify(all)); } catch { /* */ }
+};
+
+function openAiSheet() {
+  try { if (scanSheet()) return; } catch { /* */ }
+  void import('@/ai').then((m: any) => { try { m.openGeneralChat?.(); } catch { /* */ } }).catch(() => {});
+}
+
+/** a notification was tapped outside the app: go to the exact place */
+function routePushUrl(url: string) {
+  try {
+    const u = new URL(url, window.location.origin);
+    const sp = u.searchParams;
+    if (sp.get('openChat') === '1') {
+      window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { peerId: sp.get('peerId') || '', peerName: sp.get('peerName') || '' } }));
+      return;
+    }
+    if (sp.get('openGeneralChat') === '1') { openAiSheet(); return; }
+    window.history.pushState({}, '', u.pathname + u.search + u.hash);
+    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+  } catch { /* */ }
+}
+
+function FriendChatNotifier() {
+  const { user } = useSession() as any;
+  const meId = user?.id ? String(user.id) : '';
+  const meRef = useRef<Me | null>(null); meRef.current = user?.id ? { ...user, id: String(user.id) } : null;
+  const [banner, setBanner] = useState<{ id: string; name: string; text: string; avatar?: string | null } | null>(null);
+  const prevRef = useRef<Record<string, number> | null>(null);
+  const namesRef = useRef<{ at: number; map: Record<string, Friend> }>({ at: 0, map: {} });
+  const pushRef = useRef<Record<string, { text: string; at: number }>>({});
+  const timerRef = useRef(0);
+
+  const loadNames = async (me: Me) => {
+    if (Date.now() - namesRef.current.at < 60000 && Object.keys(namesRef.current.map).length) return namesRef.current.map;
+    const map: Record<string, Friend> = {};
+    loadRecents(me.id).forEach(r => { map[r.id] = { id: r.id, name: r.name, avatar: r.avatar ?? null }; });
+    try { (await adapter().listFriends(me)).forEach(f => { map[f.id] = f; }); } catch { /* */ }
+    namesRef.current = { at: Date.now(), map };
+    return map;
+  };
+
+  /* global: tap on a notification from outside the app, and notifications received while the app is open */
+  useEffect(() => {
+    const offTap = installPushTapHandler(routePushUrl);
+    const offRecv = installPushReceiveHandler((n) => {
+      const type = String(n?.data?.type || '');
+      if (type && type !== 'message') return;
+      const title = String(n?.title || '').trim().toLowerCase();
+      const body = String(n?.body || '');
+      if (title) pushRef.current[title] = { text: body, at: Date.now() };
+      const me = meRef.current;
+      if (me && title && body) {
+        const hit = Object.values(namesRef.current.map).find(f => f.name.trim().toLowerCase() === title);
+        if (hit) { writePreview(me.id, hit.id, body); window.dispatchEvent(new CustomEvent(PREVIEW_EVENT)); }
+      }
+      window.dispatchEvent(new CustomEvent(REFRESH_EVENT));
+    });
+    const onOpen = () => openAiSheet();
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => { offTap(); offRecv(); window.removeEventListener(OPEN_EVENT, onOpen); };
+  }, []);
+
+  /* watch unread counts: new message => update the list preview now + show the in-app banner */
+  useEffect(() => {
+    prevRef.current = null;
+    if (!meId) return;
+    let alive = true;
+    const tick = async () => {
+      const me = meRef.current;
+      if (!me || document.visibilityState === 'hidden') return;
+      let u: Record<string, number> = {};
+      try { u = await adapter().unread(me); } catch { return; }
+      if (!alive) return;
+      const prev = prevRef.current; prevRef.current = u;
+      if (!prev) return;
+      const fresh = Object.keys(u).filter(k => (u[k] || 0) > (prev[k] || 0));
+      if (!fresh.length) return;
+      const names = await loadNames(me);
+      if (!alive) return;
+      const id = fresh[0];
+      const name = names[id]?.name || 'New message';
+      const pushed = pushRef.current[name.trim().toLowerCase()];
+      const text = pushed && Date.now() - pushed.at < 20000 && pushed.text ? pushed.text : 'New message';
+      writePreview(me.id, id, text);
+      window.dispatchEvent(new CustomEvent(PREVIEW_EVENT));
+      const open = String((window as any).__sfcOpenPeer || '');
+      if (open === '*' || fresh.includes(open)) return; // that chat (or the chat list) is already on screen
+      setBanner({ id, name, text: previewOf(text), avatar: names[id]?.avatar ?? null });
+      window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => setBanner(null), 7000);
+    };
+    void tick();
+    const t = window.setInterval(tick, 3000);
+    const onVis = () => { void tick(); };
+    window.addEventListener(REFRESH_EVENT, onVis);
+    document.addEventListener('visibilitychange', onVis);
+    return () => { alive = false; window.clearInterval(t); window.removeEventListener(REFRESH_EVENT, onVis); document.removeEventListener('visibilitychange', onVis); window.clearTimeout(timerRef.current); };
+  }, [meId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!banner) return null;
+  const go = () => {
+    const b = banner; setBanner(null);
+    window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { peerId: b.id, peerName: b.name } }));
+  };
+  return createPortal(
+    <>
+      <style>{`@keyframes sfcBannerIn { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }`}</style>
+      <div
+        role="button" dir="auto" onClick={go}
+        style={{
+          position: 'fixed', top: 'max(10px, env(safe-area-inset-top))', left: 10, right: 10, zIndex: 2147483600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 16, background: 'rgba(10,31,26,0.97)', color: '#fff',
+          boxShadow: '0 10px 30px rgba(0,0,0,0.35)', border: '1px solid rgba(34,197,94,0.5)', animation: 'sfcBannerIn 220ms ease-out',
+        }}
+      >
+        <span style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>
+          {banner.avatar ? <img src={banner.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (banner.name.trim().charAt(0).toUpperCase() || '?')}
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: 'block', fontWeight: 800, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{banner.name}</span>
+          <span style={{ display: 'block', fontSize: 13, opacity: 0.85, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{banner.text}</span>
+        </span>
+        <button
+          type="button" aria-label="Dismiss"
+          onClick={(e) => { e.stopPropagation(); setBanner(null); }}
+          style={{ border: 'none', background: 'rgba(255,255,255,0.14)', color: '#fff', width: 28, height: 28, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+        ><X size={15} /></button>
+      </div>
+    </>,
+    document.body,
+  );
+}
+
 export function installFriendChatPatch() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   const w: any = window;
@@ -1437,7 +1623,7 @@ export function installFriendChatPatch() {
     const host = document.createElement('div');
     host.id = 'stooorna-friend-chat-patch';
     document.body.appendChild(host);
-    createRoot(host).render(<FriendChatPatch />);
+    createRoot(host).render(<><FriendChatPatch /><FriendChatNotifier /></>);
   };
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount, { once: true });
 }
