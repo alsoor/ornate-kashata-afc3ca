@@ -66,5 +66,17 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>نحتاج الكاميرا للبث والصور</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>نحتاج المايك للمكالمات والبث الصوتي</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>نحتاج الصور لإرسالها في المحادثات</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>نحتاج الموقع لمشاركة موقعك المباشر</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>UIBackgroundModes</key>
+	<array><string>remote-notification</string></array>
 </dict>
 </plist>
