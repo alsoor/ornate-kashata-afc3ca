@@ -1,0 +1,36 @@
+name: Build unsigned IPA
+on: workflow_dispatch
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+      - run: npx cap sync ios
+
+      - name: Archive (unsigned)
+        run: |
+          xcodebuild -project ios/App/App.xcodeproj -scheme App \
+            -configuration Release -sdk iphoneos \
+            -archivePath $RUNNER_TEMP/App.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            archive
+
+      - name: Package IPA
+        run: |
+          mkdir -p $RUNNER_TEMP/Payload
+          cp -r $RUNNER_TEMP/App.xcarchive/Products/Applications/App.app $RUNNER_TEMP/Payload/
+          cd $RUNNER_TEMP && zip -qr Stooorna.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Stooorna-ipa
+          path: ${{ runner.temp }}/Stooorna.ipa
