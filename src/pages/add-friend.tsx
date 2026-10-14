@@ -15770,8 +15770,8 @@ function TplQuickPostCard() {
       setChatRows(loadPublicLiveComments());
       setSel({ postId: id, u: d.u ? String(d.u) : undefined, kind: d.kind, from: d.from });
     };
-    window.addEventListener('stooorna:tpl-open-friend', f);
-    return () => window.removeEventListener('stooorna:tpl-open-friend', f);
+    window.addEventListener('stooorna:tpl-open-friend-quick', f); // TPL-POST-TO-CHAT: small card kept; the tile tap now opens the full post (TplFullPostHost)
+    return () => window.removeEventListener('stooorna:tpl-open-friend-quick', f);
   }, []);
   useEffect(() => {
     if (!sel) return;
@@ -15891,12 +15891,91 @@ function TplQuickPostCard() {
   );
 }
 
+// TPL-POST-TO-CHAT: tapping the shared post in the Stooorna Ai chat opens the REAL full post page (all buttons: like / comments / favorite / share / delete),
+// sliding up over the chat; X (or back) slides it down and you stay in the same chat.
+// The post page and its comment / share sheets portal themselves to <body> with z-indexes that can sit under the Ai sheet,
+// so while it is open every fixed layer added to <body> is lifted above the sheet (order between them is kept).
+function TplFullPostHost() {
+  const { user } = useSession() as any;
+  const myId = user?.id ? String(user.id) : '';
+  const myName: string | null = user?.name ?? null;
+  const myUsername: string | null = user?.username ?? null;
+  const myAvatar: string | null = user?.avatarUrl || user?.image || null;
+  const [sel, setSel] = useState<{ postId: string; u?: string; kind?: string; from?: string } | null>(null);
+  const obsRef = useRef<MutationObserver | null>(null);
+  const nodesRef = useRef<Set<HTMLElement>>(new Set());
+  const mainRef = useRef<HTMLElement | null>(null);
+  const zRef = useRef(0);
+  const closingRef = useRef(false);
+  const stopRef = useRef<((e: Event) => void) | null>(null);
+  const EVS = ['pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'touchstart', 'touchmove', 'touchend', 'wheel', 'focusin', 'keydown'];
+  const stopObs = () => {
+    try { obsRef.current?.disconnect(); } catch { /* */ }
+    obsRef.current = null;
+    if (stopRef.current) { const h = stopRef.current; EVS.forEach(n => document.body.removeEventListener(n, h)); stopRef.current = null; }
+    nodesRef.current.clear(); mainRef.current = null; zRef.current = 0;
+  };
+  const startObs = () => {
+    stopObs();
+    const lift = (n: Node) => {
+      if (!(n instanceof HTMLElement) || n.parentElement !== document.body) return;
+      try {
+        if (getComputedStyle(n).position !== 'fixed') return;
+        n.style.zIndex = String(2147483300 + (++zRef.current));
+        nodesRef.current.add(n);
+        if (!mainRef.current || !mainRef.current.isConnected) {
+          const first = !mainRef.current;
+          mainRef.current = n;
+          if (first) { try { n.animate([{ transform: 'translateY(100%)' }, { transform: 'translateY(0)' }], { duration: 300, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }); } catch { /* */ } }
+        }
+      } catch { /* */ }
+    };
+    const obs = new MutationObserver(list => list.forEach(r => r.addedNodes.forEach(lift)));
+    obs.observe(document.body, { childList: true });
+    obsRef.current = obs;
+    const stop = (e: Event) => { const t = e.target as Node; nodesRef.current.forEach(n => { if (n.contains(t)) e.stopPropagation(); }); };
+    stopRef.current = stop;
+    EVS.forEach(n => document.body.addEventListener(n, stop, { passive: true } as AddEventListenerOptions));
+  };
+  const closeAnimated = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    let done = false;
+    const fin = () => { if (done) return; done = true; stopObs(); setSel(null); closingRef.current = false; };
+    const n = mainRef.current;
+    try {
+      if (n && n.isConnected) {
+        const a = n.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(100%)' }], { duration: 240, easing: 'cubic-bezier(0.4, 0, 0.9, 0.6)', fill: 'forwards' });
+        a.onfinish = fin; window.setTimeout(fin, 420);
+        return;
+      }
+    } catch { /* */ }
+    fin();
+  };
+  const closeRef = useRef(closeAnimated); closeRef.current = closeAnimated;
+  useBackClose(!!sel, () => closeRef.current());
+  useEffect(() => {
+    const f = (e: Event) => {
+      const d = (e as CustomEvent).detail || {}; const id = String(d.postId || '');
+      if (!id) return;
+      closingRef.current = false;
+      startObs();
+      setSel({ postId: id, u: d.u ? String(d.u) : undefined, kind: d.kind, from: d.from });
+    };
+    window.addEventListener('stooorna:tpl-open-friend', f);
+    return () => { window.removeEventListener('stooorna:tpl-open-friend', f); stopObs(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  if (!sel) return null;
+  return <TplSharedFeedHost key={sel.postId} postId={sel.postId} fallback={sel} myId={myId} myName={myName} myUsername={myUsername} myAvatar={myAvatar} onClose={() => closeRef.current()} />;
+}
+
 function mountTplQuickPostCard() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   const w = window as any;
   if (w.__STOOORNA_TPL_QUICK__) return;
   w.__STOOORNA_TPL_QUICK__ = true;
-  const go = () => { const h = document.createElement('div'); h.id = 'stooorna-tpl-quick-card'; document.body.appendChild(h); createTplQuickRoot(h).render(<TplQuickPostCard />); };
+  const go = () => { const h = document.createElement('div'); h.id = 'stooorna-tpl-quick-card'; document.body.appendChild(h); createTplQuickRoot(h).render(<><TplQuickPostCard /><TplFullPostHost /></>); };
   if (document.body) go(); else document.addEventListener('DOMContentLoaded', go, { once: true });
 }
 if (typeof window !== 'undefined') window.setTimeout(mountTplQuickPostCard, 0);
