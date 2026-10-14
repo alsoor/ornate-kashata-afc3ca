@@ -7,7 +7,7 @@ import { sendFcmToUser } from "./fcm-push.js"; // FCM-PUSH
 
 export type AppNotice = {
   id: string;
-  type: "call" | "mention" | "invite";
+  type: "call" | "mention" | "invite" | "tplcomment"; // TPL-COMMENT-NOTIFY
   toUserId: string;
   toUsername: string;
   fromUserId: string;
@@ -18,6 +18,8 @@ export type AppNotice = {
   room: string;
   messageId: string;
   href: string;
+  image?: string;      // TPL-COMMENT-NOTIFY: thumbnail of the commented post
+  mediaKind?: string;  // TPL-COMMENT-NOTIFY: "image" | "video"
   at: number;
   read: boolean;
 };
@@ -79,6 +81,8 @@ export function pushNotification(row: Omit<AppNotice, "id" | "at" | "read"> & { 
     room: String(row.room || ""),
     messageId: String(row.messageId || ""),
     href: String(row.href || "/"),
+    image: String((row as any).image || ""),            // TPL-COMMENT-NOTIFY
+    mediaKind: String((row as any).mediaKind || ""),    // TPL-COMMENT-NOTIFY
     at: Date.now(),
     read: false,
   };
@@ -92,6 +96,7 @@ export function pushNotification(row: Omit<AppNotice, "id" | "at" | "read"> & { 
     body: n.body,
     url: n.href,
     type: n.type,
+    image: n.type === "tplcomment" && n.mediaKind === "image" ? n.image : undefined, // TPL-COMMENT-NOTIFY (photo preview in the phone notification)
   });
   return n;
 }
@@ -138,6 +143,29 @@ export function registerNotificationRoutes(app: Express) {
   });
   app.post("/api/notifications", (req: Request, res: Response) => {
     const body = (req.body || {}) as any;
+    // TPL-COMMENT-NOTIFY: someone commented on a Templates photo/video -> notify ONLY the post owner (in-app + phone push)
+    if (body.type === "tplcomment") {
+      const toUserId = String(body.toUserId || "");
+      const toUsername = String(body.toUsername || "").replace(/^@/, "");
+      if (!toUserId && !toUsername) { res.status(400).json({ ok: false, error: "no recipient" }); return; }
+      const n = pushNotification({
+        type: "tplcomment",
+        toUserId,
+        toUsername,
+        fromUserId: String(body.fromUserId || ""),
+        fromName: String(body.fromName || ""),
+        fromAvatar: String(body.fromAvatar || ""),
+        title: String(body.title || "New comment"),
+        body: String(body.body || body.text || ""),
+        room: String(body.room || "templates"),
+        messageId: String(body.messageId || ""),
+        href: String(body.href || "/"),
+        image: String(body.image || ""),
+        mediaKind: String(body.mediaKind || ""),
+      } as any);
+      res.json({ ok: true, notifications: [n] });
+      return;
+    }
     const type = body.type === "call" || body.type === "invite" ? body.type : "mention";
     const names: string[] = Array.isArray(body.usernames) ? body.usernames.map(String) : extractMentions(String(body.text || body.body || ""));
     const created = (names.length ? names : [String(body.toUsername || "")]).filter(Boolean).map(username => pushNotification({

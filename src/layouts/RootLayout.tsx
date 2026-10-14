@@ -5740,6 +5740,36 @@ export default function RootLayout({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.id, location.search]);
 
+  // PUSH-OPEN-TPL-COMMENT: phone push "X commented on your photo/video" (url /?tplPost=<id>&tplCmt=<id>)
+  // -> opens Templates -> that post's comments -> light-blue flash on the comment (handled inside PublicLiveCommentsPanel).
+  const tplPushHandledRef = useRef('');
+  useEffect(() => {
+    if (!session?.user?.id) return;
+    const sp = new URLSearchParams(location.search || '');
+    const postId = sp.get('tplPost') || '';
+    if (!postId) return;
+    const commentId = sp.get('tplCmt') || '';
+    const key = postId + ':' + commentId;
+    if (tplPushHandledRef.current === key) return;
+    tplPushHandledRef.current = key;
+    const fire = () => {
+      try {
+        (window as any).__stooornaPendingTplCmt = { postId, commentId, t: Date.now() };
+        window.dispatchEvent(new CustomEvent('stooorna:open-tpl-comment', { detail: { postId, commentId } }));
+      } catch { /* ignore */ }
+    };
+    fire();
+    // cold start: the chat/Templates panel may not be mounted yet -> retry while the request is still pending
+    [1200, 3000].forEach(ms => window.setTimeout(() => { if ((window as any).__stooornaPendingTplCmt) fire(); }, ms));
+    try {
+      const clean = new URLSearchParams(sp);
+      clean.delete('tplPost'); clean.delete('tplCmt');
+      const qs = clean.toString();
+      window.history.replaceState(window.history.state, '', location.pathname + (qs ? '?' + qs : '') + (location.hash || ''));
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.id, location.search]);
+
   // حذف تلقائي لمحادثات الدعم المنتهية: بعد 10 دقائق من "تم إنهاء المهمة" تُفرَّغ المحادثة
   // بالكامل (عند الدعم وعند المستخدم) حتى لو نافذة الدعم مقفولة — RootLayout شغّال دايماً.
   useEffect(() => {

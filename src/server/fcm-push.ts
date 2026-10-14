@@ -110,7 +110,17 @@ export type FcmMessage = {
   body: string;
   url?: string;
   type?: string;
+  image?: string; // TPL-COMMENT-NOTIFY: optional picture shown inside the phone notification
 };
+
+/** TPL-COMMENT-NOTIFY: FCM needs an absolute https image url. */
+function fcmImage(u?: string): string | undefined {
+  const s = String(u || '').trim();
+  if (!s || s.startsWith('data:') || s.startsWith('blob:')) return undefined;
+  if (/^https:\/\//i.test(s)) return s;
+  if (s.startsWith('/')) return `${(process.env.PUBLIC_BASE_URL || 'https://stooorna.com').replace(/\/+$/, '')}${s}`;
+  return undefined;
+}
 
 /** Fire-and-forget safe: never throws. */
 export async function sendFcmToUser(m: FcmMessage): Promise<void> {
@@ -133,14 +143,15 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
     }
 
     const isCall = m.type === 'call';
+    const img = fcmImage(m.image); // TPL-COMMENT-NOTIFY
     const resp = await getMessaging().sendEachForMulticast({
       tokens,
-      notification: { title: m.title || 'Stooorna', body: (m.body || '').slice(0, 180) },
+      notification: { title: m.title || 'Stooorna', body: (m.body || '').slice(0, 180), ...(img ? { imageUrl: img } : {}) },
       data: { url: m.url || '/', type: m.type || '' },
       android: {
         priority: 'high',
         ttl: isCall ? 30_000 : 24 * 60 * 60 * 1000,
-        notification: { channelId: 'default' },
+        notification: { channelId: 'default', ...(img ? { imageUrl: img } : {}) },
       },
     });
 

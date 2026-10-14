@@ -15688,6 +15688,7 @@ function TplSharedFeedHost({ postId, fallback, myId, myName, myUsername, myAvata
       markTemplatePending(row.id);
       commit([...rowsRef.current, row]);
       void postTemplateRow(row as any);
+      notifyTplCommentOwner(rowsRef.current.find(r => r.id === parentId), row, t, { id: myId, name: myName, username: myUsername, avatarUrl: myAvatar }); // TPL-COMMENT-NOTIFY
     } else {
       commitChat([...chatRef.current, row]);
       void postLiveChatToServer(row);
@@ -17254,6 +17255,43 @@ const parseMediaComment = (text: string): { parentId: string; body: string } | n
   const m = MEDIA_CMT_RE.exec(String(text || ''));
   return m ? { parentId: m[1], body: m[2] } : null;
 };
+
+// ═══════════════ TPL-COMMENT-NOTIFY — comment on a Templates photo/video → notice to the post owner ═══════════════
+/** Opens Templates → that post's comments sheet → light-blue flash on the exact comment (used by the in-app toast, the system notification and the phone push). */
+function openTplComment(postId: string, commentId: string) {
+  try {
+    (window as any).__stooornaPendingTplCmt = { postId, commentId, t: Date.now() };
+    window.dispatchEvent(new CustomEvent('stooorna:open-tpl-comment', { detail: { postId, commentId } }));
+  } catch { /* */ }
+}
+function tplNoticeExtra(n: any): { image?: string; mediaKind?: string; postId?: string; commentId?: string } {
+  if (!n || n.type !== 'tplcomment') return {};
+  let postId = ''; let commentId = '';
+  try { const q = new URLSearchParams(String(n.href || '').split('?')[1] || ''); postId = q.get('tplPost') || ''; commentId = q.get('tplCmt') || ''; } catch { /* */ }
+  return { image: n.image || undefined, mediaKind: n.mediaKind || undefined, postId, commentId: commentId || String(n.messageId || '') };
+}
+function notifyTplCommentOwner(post: PublicLiveComment | null | undefined, row: PublicLiveComment, body: string, me: { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null }) {
+  try {
+    if (!post || !post.userId || !me.id || String(post.userId) === String(me.id)) return;
+    const url = String(post.imageUrl || '');
+    const isVideo = VIDEO_EXT_RE.test(url) || liveBaseText(post.text) === LIVE_VIDEO_CAPTION;
+    const who = me.username ? `@${String(me.username).replace(/^@/, '')}` : (me.name || 'Someone');
+    void fetch('/api/notifications', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'tplcomment',
+        toUserId: String(post.userId), toUsername: String(post.username || '').replace(/^@/, ''),
+        fromUserId: me.id, fromName: who, fromAvatar: me.avatarUrl || '',
+        title: `${who} commented on your ${isVideo ? 'video' : 'photo'}`,
+        body: `💬 ${body}`.slice(0, 180),
+        room: 'templates', messageId: row.id,
+        href: `/?tplPost=${encodeURIComponent(post.id)}&tplCmt=${encodeURIComponent(row.id)}`,
+        image: url && !/^(blob:|data:)/i.test(url) ? url : '',
+        mediaKind: isVideo ? 'video' : 'image',
+      }),
+    }).catch(() => {});
+  } catch { /* */ }
+}
 
 // ═══════════════ Live Chat — round video / voice recorder (Telegram-style) ═══════════════
 // A round video travels as a NORMAL live-chat row (no server change needed):
@@ -19081,7 +19119,8 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
 
 /** Comments of ONE public photo/video: white sheet that opens from the bottom upward (same look as the public chat).
  *  Composer = text + emoji + send, nothing else. Comments are live-chat rows "↩<postId>\u200b<body>" (same storage as before). */
-function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLikeComment, onSend, onClose }: {
+function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLikeComment, onSend, onClose, flashId }: {
+  flashId?: string | null; // TPL-COMMENT-NOTIFY
   post: PublicLiveComment;
   comments: PublicLiveComment[];
   myId: string;
@@ -19107,6 +19146,25 @@ function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLike
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight + 500;
   }, [thread.length]);
+  // TPL-COMMENT-NOTIFY: opened from a notification → scroll to that comment and flash it light blue (once)
+  const flashedRef = useRef('');
+  useEffect(() => {
+    if (!flashId || flashedRef.current === flashId) return;
+    let tries = 0;
+    const iv = window.setInterval(() => {
+      tries++;
+      const el = listRef.current?.querySelector(`[data-cmt-id="${CSS.escape(flashId)}"]`) as HTMLElement | null;
+      if (el) {
+        window.clearInterval(iv);
+        flashedRef.current = flashId;
+        window.setTimeout(() => {
+          try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch { /* */ }
+          try { el.animate([{ background: 'rgba(59,130,246,0)' }, { background: 'rgba(59,130,246,0.22)' }, { background: 'rgba(59,130,246,0)' }], { duration: 950, iterations: 3 }); } catch { /* */ }
+        }, 380);
+      } else if (tries > 40) window.clearInterval(iv);
+    }, 150);
+    return () => window.clearInterval(iv);
+  }, [flashId, thread.length]);
   useEffect(() => { const id = window.setInterval(() => setTick(v => v + 1), 30000); return () => window.clearInterval(id); }, []);
   useEffect(() => {
     const vv = typeof window !== 'undefined' ? window.visualViewport : null;
@@ -19166,7 +19224,7 @@ function LiveMediaCommentsSheet({ post, comments, myId, myAvatar, nameOf, onLike
           ) : thread.map(({ x, p }) => {
             const lk = myId ? x.likes.includes(myId) : false;
             return (
-              <div key={x.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 0' }}>
+              <div key={x.id} data-cmt-id={x.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 0' }}>
                 <div style={{ flexShrink: 0, display: 'flex' }}>
                   <UserAvatar name={x.name || x.username || '?'} avatarUrl={x.avatarUrl} size={36} style={{ border: 'none' }} />
                 </div>
@@ -19587,6 +19645,7 @@ export function PublicLiveCommentsPanel({
   const myId = String(user?.id || '');
   // stacked public media feed: which post's comments sheet is open + my favorites (kept on this device)
   const [commentsMediaId, setCommentsMediaId] = useState<string | null>(null);
+  const [tplFlashId, setTplFlashId] = useState<string | null>(null); // TPL-COMMENT-NOTIFY: comment to flash light blue
   const [feedStartId, setFeedStartId] = useState<string | null>(null); // big stacked feed opened from the small grid
   // Templates photo/video viewer open (big stacked feed or single viewer) → tell the page to hide the bottom dock bar
   const tplMediaViewing = !!feedStartId || !!openMediaId;
@@ -19649,6 +19708,31 @@ export function PublicLiveCommentsPanel({
   tplRowsRef.current = tplRows;
   const tplIdSet = useMemo(() => new Set(tplRows.map(r => r.id)), [tplRows]);
   const tplCommit = (next: PublicLiveComment[]) => { tplRowsRef.current = next; saveTemplatesCache(next as any); setTplRows(next); };
+  // TPL-COMMENT-NOTIFY: tapping a "commented on your photo/video" notice opens Templates → that post's comments → light-blue flash on the comment
+  useEffect(() => {
+    if (!myId) return;
+    const run = async (postId: string, commentId: string) => {
+      try { const list = (await syncTemplates(myId)) as PublicLiveComment[]; tplCommit(list); } catch { /* cached rows */ }
+      setTplFlashId(commentId || null);
+      dockSet(cur => (cur && cur.kind === 'templates' ? cur : { kind: 'templates', x: typeof window !== 'undefined' ? window.innerWidth / 2 : 180 }));
+      setCommentsMediaId(postId);
+    };
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent).detail || {};
+      if (d.handled) return;
+      const postId = String(d.postId || '');
+      if (!postId) return;
+      d.handled = true;
+      try { delete (window as any).__stooornaPendingTplCmt; } catch { /* */ }
+      void run(postId, String(d.commentId || ''));
+    };
+    window.addEventListener('stooorna:open-tpl-comment', onOpen);
+    try {
+      const p = (window as any).__stooornaPendingTplCmt;
+      if (p && Date.now() - Number(p.t || 0) < 60000) { delete (window as any).__stooornaPendingTplCmt; void run(String(p.postId || ''), String(p.commentId || '')); }
+    } catch { /* */ }
+    return () => window.removeEventListener('stooorna:open-tpl-comment', onOpen);
+  }, [myId]);
   // TPL-GRABBER-FRESH: tell the story page the time of the newest Templates post, so the grabber line can turn yellow
   useEffect(() => {
     let ts = 0;
@@ -20520,12 +20604,14 @@ export function PublicLiveCommentsPanel({
     markTemplatePending(row.id);
     tplCommit([...tplRowsRef.current, row]);
     void postTemplateRow(row as any);
+    notifyTplCommentOwner(galleryRows.find(r => r.id === parentId), row, t, { id: myId, name: myName, username: myUsername, avatarUrl: myAvatar }); // TPL-COMMENT-NOTIFY
   };
   const openMedia = openMediaId ? (mediaPosts.find(m => m.id === openMediaId) || null) : null;
   const commentsMedia = commentsMediaId ? (mediaPosts.find(m => m.id === commentsMediaId) || null) : null;
   const mediaCommentsSheet = commentsMedia ? (
     <LiveMediaCommentsSheet
       key={commentsMedia.id}
+      flashId={tplFlashId}
       post={commentsMedia}
       comments={galleryRows}
       myId={myId}
@@ -20533,7 +20619,7 @@ export function PublicLiveCommentsPanel({
       nameOf={displayName}
       onLikeComment={id => toggleLike(id)}
       onSend={body => sendMediaComment(commentsMedia.id, body)}
-      onClose={() => setCommentsMediaId(null)}
+      onClose={() => { setCommentsMediaId(null); setTplFlashId(null); }}
     />
   ) : null;
   const roundLocalNow = roundLocalGet(myId);
@@ -27134,7 +27220,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [incoming, setIncoming] = useState<IncomingRequest[]>([]);
   const [friends, setFriends] = useState<Friend[]>(() => (user?.id && headerListsCache.uid === String(user.id) ? headerListsCache.friends as Friend[] : []));
   const [mentionHits, setMentionHits] = useState<Array<{ id: string; username: string; name: string }>>([]);
-  const [noticeTop, setNoticeTop] = useState<{ id: string; title: string; body: string; messageId: string; kind?: string } | null>(null);
+  const [noticeTop, setNoticeTop] = useState<{ id: string; title: string; body: string; messageId: string; kind?: string; image?: string; mediaKind?: string; postId?: string; commentId?: string } | null>(null); // TPL-COMMENT-NOTIFY: + image/post/comment
   const [savedInvite, setSavedInvite] = useState<{ id: string; fromName: string; ownerId: string; fromAvatar?: string } | null>(null);
   const [kickedBox, setKickedBox] = useState(false);
   useEffect(() => {
@@ -27214,17 +27300,18 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           if (n.type === 'call' && document.visibilityState === 'hidden') {
             try { sessionStorage.setItem('stooorna_missed_call', JSON.stringify({ title: n.title || 'كان عندك اتصال', body: n.body || '' })); } catch { /* */ }
           }
-          setNoticeTop({ id: n.id, title: n.title || 'Stooorna', body: n.body || '', messageId: n.messageId || '', kind: n.type || '' });
+          setNoticeTop({ id: n.id, title: n.title || 'Stooorna', body: n.body || '', messageId: n.messageId || '', kind: n.type || '', ...tplNoticeExtra(n) });
           if (n.type !== 'call') playTplMessageTone(); // TEMPLATES-SHARE-PATCH-5
           if (n.type !== 'invite' && typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.visibilityState === 'hidden') {
             const sys = new Notification(n.title || 'Stooorna', { body: n.body || '', tag: n.id });
             sys.onclick = () => {
               try { window.focus(); } catch { /* */ }
+              if (n.type === 'tplcomment') { const x = tplNoticeExtra(n); openTplComment(String(x.postId || ''), String(x.commentId || '')); return; } // TPL-COMMENT-NOTIFY
               try { sessionStorage.setItem('stooorna_flash_msg', String(n.messageId || '')); } catch { /* */ }
               setChatOverlayOpen(true);
             };
           }
-          if (n.messageId) {
+          if (n.messageId && n.type !== 'tplcomment') {
             try { sessionStorage.setItem('stooorna_flash_msg', String(n.messageId)); } catch { /* */ }
           }
         }
@@ -29828,7 +29915,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
         )}
         {noticeTop && (
           <div style={{ position: 'fixed', top: 8, left: 12, right: 12, zIndex: 13000, background: '#111', color: '#fff', border: '1px solid #fff', borderRadius: 14, padding: '10px 12px', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-            <button type="button" onClick={() => { if (noticeTop.messageId) { try { sessionStorage.setItem('stooorna_flash_msg', noticeTop.messageId); } catch { /* */ } setChatOverlayOpen(true); } setNoticeTop(null); }} style={{ flex: 1, background: 'none', border: 'none', color: '#fff', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
+            {noticeTop.image ? (noticeTop.mediaKind === 'video'
+              ? <video src={`${noticeTop.image}#t=0.1`} muted playsInline preload="metadata" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flexShrink: 0, background: '#000' }} />
+              : <img src={noticeTop.image} alt="" style={{ width: 44, height: 44, borderRadius: 8, objectFit: 'cover', flexShrink: 0 }} />) : null}
+            <button type="button" onClick={() => { if (noticeTop.kind === 'tplcomment' && noticeTop.postId) { openTplComment(noticeTop.postId, noticeTop.commentId || ''); setNoticeTop(null); return; } if (noticeTop.messageId) { try { sessionStorage.setItem('stooorna_flash_msg', noticeTop.messageId); } catch { /* */ } setChatOverlayOpen(true); } setNoticeTop(null); }} style={{ flex: 1, background: 'none', border: 'none', color: '#fff', textAlign: 'left', padding: 0, cursor: 'pointer' }}>
               <b>{noticeTop.title}</b>
               <div style={{ fontSize: 12, opacity: 0.8 }}>{noticeTop.body}</div>
             </button>
