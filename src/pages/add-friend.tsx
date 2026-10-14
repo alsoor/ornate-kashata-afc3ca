@@ -27636,6 +27636,36 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [dockSettingsGray, setDockSettingsGray] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   useBackClose(aiOpen, () => setAiOpen(false)); // HARDWARE-BACK-PATCH
+  // AI-ICON-UNREAD: unread messages for the Stooorna Ai chat → the dock icon turns into a round blue chat bubble with the count.
+  // Source: /api/messages/unread (all unread direct messages). The Ai chat can also push its own number at any time:
+  //   window.dispatchEvent(new CustomEvent('stooorna:ai-unread', { detail: { count: 3 } }))  (then polling steps aside)
+  const [aiUnread, setAiUnread] = useState(0);
+  useEffect(() => {
+    if (!user?.id) { setAiUnread(0); return; }
+    let cancelled = false;
+    let fed = false;
+    const poll = async () => {
+      if (fed) return;
+      try {
+        const r = await fetch('/api/messages/unread', { credentials: 'include', cache: 'no-store' });
+        if (!r.ok || cancelled || fed) return;
+        const d = await r.json();
+        const by = (d && d.bySender) || {};
+        const total = typeof d?.total === 'number' ? d.total : Object.values(by).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
+        if (!cancelled) setAiUnread(Math.max(0, Math.floor(Number(total) || 0)));
+      } catch { /* offline — next tick */ }
+    };
+    const onFeed = (e: Event) => {
+      const c = Number((e as CustomEvent).detail?.count);
+      if (!Number.isFinite(c)) return;
+      fed = true;
+      setAiUnread(Math.max(0, Math.floor(c)));
+    };
+    window.addEventListener('stooorna:ai-unread', onFeed as EventListener);
+    void poll();
+    const iv = setVisibleInterval(poll, 6000);
+    return () => { cancelled = true; window.clearInterval(iv); window.removeEventListener('stooorna:ai-unread', onFeed as EventListener); };
+  }, [user?.id]);
   // PUSH-TAP: a notification tap opens the Stooorna Ai sheet (its friend chat), never the public live chat
   useEffect(() => {
     const onOpenAi = () => setAiOpen(true);
@@ -30111,6 +30141,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
                       <StooornaAiIcon
                         active={aiOpen}
+                        unread={aiOpen ? 0 : aiUnread} /* AI-ICON-UNREAD */
                         onClick={() => setAiOpen(v => !v)}
                         onLongPress={(el) => openDockShortcut('ai', el)} /* DOCK-SHORTCUTS */
                         size={44}
