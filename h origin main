@@ -1,0 +1,37 @@
+1cf1e86 09:06 Add missing Capacitor packages to fix build
+
+ package-lock.json | 10 [32m++++++++++[m
+ package.json      |  1 [32m+[m
+ 2 files changed, 11 insertions(+)
+29c6b91 09:01 fix: remove undefined setTextPostsPlusOpen causing crash
+
+ src/ai/friendChatPatch.tsx | 26 [32m+++++++++++++++++++++++[m[31m---[m
+ 1 file changed, 23 insertions(+), 3 deletions(-)
+6de6eee 08:45 fix: remove undefined setTextPostsPlusOpen causing crash
+
+ src/ai/friendChatPatch.tsx |  34 [32m+++++++[m
+ src/pages/add-friend.tsx   | 222 [32m++++++++++++++++++++++++++++++++++++[m[31m---------[m
+ src/server/entry.ts        |  17 [32m+++[m[31m-[m
+ src/server/fcm-push.ts     | 113 [32m++++++++++++++++[m[31m-------[m
+ 4 files changed, 310 insertions(+), 76 deletions(-)
+097bac6 08:18 fix: remove undefined setTextPostsPlusOpen causing crash
+
+ src/ai/friendChatPatch.tsx | 38 [32m++++++++++++++++++++++++++++++++[m[31m------[m
+ 1 file changed, 32 insertions(+), 6 deletions(-)
+d7ece5d 08:14 fix: remove undefined setTextPostsPlusOpen causing crash
+
+ src/pages/add-friend.tsx | 71 [32m++++++++++++++++++++++++++++++++++++++++++++++++[m
+ src/server/entry.ts      | 10 [32m+++[m[31m----[m
+ 2 files changed, 76 insertions(+), 5 deletions(-)
+cdbc68a 08:00 fix: remove undefined setTextPostsPlusOpen causing crash
+
+ src/ai/friendChatPatch.tsx | 70 [32m++++++++++++++++++++++++++++++++++++++++++++[m[31m--[m
+ 1 file changed, 68 insertions(+), 2 deletions(-)
+e0ec3bb 07:51 fix: remove undefined setTextPostsPlusOpen causing crash
+
+ src/ai/friendChatPatch.tsx | 4 [32m++[m[31m--[m
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+f02cda1 07:44 fix: remove undefined setTextPostsPlusOpen causing crash
+
+ src/pages/add-friend.tsx | 5 [32m++[m[31m---[m
+ 1 file changed, 2 insertions(+), 3 deletions(-)

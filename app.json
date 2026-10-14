@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "9710898e-6f36-4652-b11f-f0d606be74cf"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.stooorna.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}
