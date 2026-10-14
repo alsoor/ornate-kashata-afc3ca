@@ -9,7 +9,7 @@
  * What it does while active:
  *   1. Screenshot attempt (PrintScreen, Win+Shift+S, Cmd+Shift+3/4/5, Ctrl/Cmd+P, Ctrl/Cmd+S)
  *      -> media is hidden for 2 seconds and a centered popup shows:
- *         "You Cannot Take A Screen Shot Of The image 😊"  (disappears after 2 seconds)
+ *         "Cannot Take A Screen Shot"  (disappears after 2 seconds)
  *   2. Long-press / right-click "Save image" menu is blocked (browser and installed app),
  *      image dragging is blocked, text/callout selection on media is disabled,
  *      video download / picture-in-picture buttons are removed.
@@ -26,7 +26,7 @@
  * This patch blocks everything the web page itself is able to block.
  */
 
-const TOAST_TEXT = 'You Cannot Take A Screen Shot Of The image 😊';
+const TOAST_TEXT = 'Cannot Take A Screen Shot';
 const TOAST_MS = 2000;
 const NATIVE_BLOCK = false; // old optional privacy-screen plugin (always-secure, hides our popup) - replaced by ScreenShield below
 

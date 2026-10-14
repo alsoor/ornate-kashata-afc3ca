@@ -122,6 +122,25 @@ function fcmImage(u?: string): string | undefined {
   return undefined;
 }
 
+
+/** iOS (APNs through FCM): same notification, delivered to iPhone devices registered with platform "ios". */
+function apnsConfig(ttlMs: number, img?: string) {
+  return {
+    headers: {
+      'apns-priority': '10',
+      'apns-push-type': 'alert',
+      'apns-expiration': String(Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000)),
+    },
+    payload: {
+      aps: {
+        sound: 'default',
+        ...(img ? { 'mutable-content': 1 } : {}),
+      },
+    },
+    ...(img ? { fcmOptions: { imageUrl: img } } : {}),
+  };
+}
+
 /** Fire-and-forget safe: never throws. */
 export async function sendFcmToUser(m: FcmMessage): Promise<void> {
   try {
@@ -153,6 +172,7 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
         ttl: isCall ? 30_000 : 24 * 60 * 60 * 1000,
         notification: { channelId: 'default', ...(img ? { imageUrl: img } : {}) },
       },
+      apns: apnsConfig(isCall ? 30_000 : 24 * 60 * 60 * 1000, img), // IOS-PUSH
     });
 
     console.log(`[fcm] sent ${resp.successCount}/${tokens.length} to ${uid || uname}`);
@@ -209,6 +229,7 @@ export async function sendFcmToAll(m: FcmBroadcast): Promise<void> {
         ttl: 10 * 60 * 1000,
         notification: { channelId: 'default' },
       },
+      apns: apnsConfig(10 * 60 * 1000), // IOS-PUSH
     });
     console.log(`[fcm] broadcast ${m.type || ''} sent ${resp.successCount}/${tokens.length}`);
 
