@@ -20717,9 +20717,9 @@ export function PublicLiveCommentsPanel({
             onWheel={e => e.stopPropagation()}
             style={{
               // FULL PAGE (dark green-black accent line on top) over the Templates page, down to the dock
-              position: 'fixed', zIndex: 10085, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
+              position: 'fixed', zIndex: 10085, left: 0, right: 0, top: 'var(--stooorna-tpl-top, 0px)', bottom: 'var(--stooorna-bottom-bar-h, 96px)', /* TPL-PAGE-ON-GRABBER: Favorites sits at the same level as Templates, grabber line stays visible */
               display: 'flex', flexDirection: 'column',
-              padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 10px 0',
+              padding: '6px 10px 0',
               background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
               borderTop: '1.5px solid rgba(250,204,21,0.8)',
               pointerEvents: 'auto',
