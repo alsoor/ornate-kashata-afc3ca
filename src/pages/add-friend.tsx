@@ -1,6 +1,7 @@
 import { add_friend } from 'virtual:content';
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
+import { createRoot as createTplQuickRoot } from 'react-dom/client'; // TPL-POST-TO-CHAT
 import React from 'react';
 import { StooornaAiIcon, StooornaAiSheet, AiInfoPanel, AiPlanDialog, getCredits, openGeneralChat, loadDashboard, AI_POST_COST } from '@/ai';
 import { hasFreePass } from '@/ai/aiCredits'; // DOCK-SHORTCUTS: owner free pass → "Active" badge
@@ -15741,16 +15742,49 @@ function TplSharedFeedHost({ postId, fallback, myId, myName, myUsername, myAvata
   );
 }
 
-// TPL-POST-TO-CHAT: a Templates post sent to me in the Stooorna Ai chat — tapping the picture opens the real post (like / comment / favorite) above everything
-function TplFriendPostHost({ myId, myName, myUsername, myAvatar }: { myId: string; myName: string | null; myUsername: string | null; myAvatar: string | null }) {
+// TPL-POST-TO-CHAT: a Templates post sent to me in the Stooorna Ai chat — tapping the picture opens a SMALL rectangle:
+// like + comment on the real post (same stores / server calls / notifications as the Templates feed). Comment sent => the rectangle disappears.
+// It mounts itself once (own React root) so it works wherever the Stooorna Ai chat is opened, not only inside the live-chat panel.
+function TplQuickPostCard() {
+  const { user } = useSession() as any;
+  const myId = user?.id ? String(user.id) : '';
+  const myName: string | null = user?.name ?? null;
+  const myUsername: string | null = user?.username ?? null;
+  const myAvatar: string | null = user?.avatarUrl || user?.image || null;
   const [sel, setSel] = useState<{ postId: string; u?: string; kind?: string; from?: string } | null>(null);
+  const [rows, setRows] = useState<PublicLiveComment[]>([]);
+  const [chatRows, setChatRows] = useState<PublicLiveComment[]>([]);
+  const [synced, setSynced] = useState(false);
+  const [text, setText] = useState('');
+  const rowsRef = useRef<PublicLiveComment[]>([]); rowsRef.current = rows;
+  const chatRef = useRef<PublicLiveComment[]>([]); chatRef.current = chatRows;
   const wrapRef = useRef<HTMLDivElement | null>(null);
-  useBackClose(!!sel, () => setSel(null));
+  const close = () => { setSel(null); setText(''); setSynced(false); };
+  useBackClose(!!sel, close);
   useEffect(() => {
-    const f = (e: Event) => { const d = (e as CustomEvent).detail || {}; const id = String(d.postId || ''); if (id) setSel({ postId: id, u: d.u ? String(d.u) : undefined, kind: d.kind, from: d.from }); };
+    const f = (e: Event) => {
+      const d = (e as CustomEvent).detail || {}; const id = String(d.postId || '');
+      if (!id) return;
+      setText(''); setSynced(false);
+      setRows(loadTemplatesCache() as PublicLiveComment[]);
+      setChatRows(loadPublicLiveComments());
+      setSel({ postId: id, u: d.u ? String(d.u) : undefined, kind: d.kind, from: d.from });
+    };
     window.addEventListener('stooorna:tpl-open-friend', f);
     return () => window.removeEventListener('stooorna:tpl-open-friend', f);
   }, []);
+  useEffect(() => {
+    if (!sel) return;
+    let off = false;
+    const run = async () => {
+      try { const l = (await syncTemplates(myId)) as PublicLiveComment[]; if (!off && l) { rowsRef.current = l; setRows(l); } } catch { /* cached rows */ }
+      try { const c = await fetchLiveChatFromServer(); if (!off && c) { chatRef.current = c; setChatRows(c); } } catch { /* cached rows */ }
+      if (!off) setSynced(true);
+    };
+    void run();
+    const iv = window.setInterval(run, 5000);
+    return () => { off = true; window.clearInterval(iv); };
+  }, [sel, myId]);
   useEffect(() => {
     if (!sel) return;
     const el = wrapRef.current; if (!el) return;
@@ -15760,13 +15794,112 @@ function TplFriendPostHost({ myId, myName, myUsername, myAvatar }: { myId: strin
     return () => { evs.forEach(n => document.body.removeEventListener(n, stop)); };
   }, [sel]);
   if (!sel || typeof document === 'undefined') return null;
+  const tplIds = new Set(rows.map(r => r.id));
+  const post = rows.find(r => r.id === sel.postId) || chatRows.find(r => r.id === sel.postId) || null;
+  const inTpl = !!post && tplIds.has(post.id);
+  const likes = post ? post.likes : [];
+  const liked = !!myId && likes.includes(myId);
+  const thumb = String((post && post.imageUrl) || sel.u || '');
+  const isVideo = sel.kind === 'video' || VIDEO_EXT_RE.test(thumb);
+  const who = post ? (post.username ? `@${String(post.username).replace(/^@/, '')}` : (post.name || '')) : (sel.from ? `@${String(sel.from).replace(/^@/, '')}` : '');
+  const toggleLike = () => {
+    if (!myId || !post) return;
+    if (inTpl) {
+      const cur = rowsRef.current.find(r => r.id === post.id); if (!cur) return;
+      const has = cur.likes.includes(myId);
+      const next = rowsRef.current.map(r => (r.id === post.id ? { ...r, likes: has ? r.likes.filter(x => x !== myId) : [...r.likes, myId] } : r));
+      rowsRef.current = next; saveTemplatesCache(next as any); setRows(next);
+      void likeTemplateRow(post.id, !has);
+      return;
+    }
+    const cur = chatRef.current.find(r => r.id === post.id); if (!cur) return;
+    const has = cur.likes.includes(myId);
+    const nl = has ? cur.likes.filter(x => x !== myId) : [...cur.likes, myId];
+    const next = chatRef.current.map(r => (r.id === post.id ? { ...r, likes: nl } : r));
+    chatRef.current = next; setChatRows(next);
+    void fetch('/api/live-chat', {
+      method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'like', likeId: post.id, commentId: post.id, id: post.id, userId: myId, room: LIVE_CHAT_ROOM, roomId: LIVE_CHAT_ROOM, likes: nl, text: cur.text }),
+    }).catch(() => { /* offline */ });
+  };
+  const sendComment = () => {
+    const t = text.trim().slice(0, 500);
+    if (!myId || !post || !t || liveChatTextIsBlocked(t)) return;
+    const row: PublicLiveComment = {
+      id: `${inTpl ? 'tplc' : 'c'}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      userId: myId, name: myName, username: myUsername, avatarUrl: myAvatar,
+      text: `↩${post.id}\u200b${t}`, imageUrl: null, voiceUrl: null, voiceDuration: null, likes: [], createdAt: Date.now(),
+    } as PublicLiveComment;
+    if (inTpl) {
+      markTemplatePending(row.id);
+      const next = [...rowsRef.current, row]; rowsRef.current = next; saveTemplatesCache(next as any); setRows(next);
+      void postTemplateRow(row as any);
+      notifyTplCommentOwner(post, row, t, { id: myId, name: myName, username: myUsername, avatarUrl: myAvatar });
+    } else {
+      const next = [...chatRef.current, row]; chatRef.current = next; setChatRows(next);
+      void postLiveChatToServer(row);
+    }
+    close(); // posted => the rectangle disappears
+  };
+  const canAct = !!myId && !!post;
   return createPortal(
-    <div ref={wrapRef} onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: 2147483300, pointerEvents: 'auto', touchAction: 'auto' }}>
-      <TplSharedFeedHost postId={sel.postId} fallback={sel} myId={myId} myName={myName} myUsername={myUsername} myAvatar={myAvatar} onClose={() => setSel(null)} />
+    <div
+      ref={wrapRef}
+      onClick={close}
+      style={{ position: 'fixed', inset: 0, zIndex: 2147483300, pointerEvents: 'auto', touchAction: 'auto', background: 'rgba(0,0,0,0.35)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: '16vh' }}
+    >
+      <div
+        dir="ltr" onClick={e => e.stopPropagation()}
+        style={{ width: 'min(86vw, 340px)', boxSizing: 'border-box', padding: 12, borderRadius: 18, background: '#0a1f1a', border: '1px solid rgba(126,232,245,0.4)', boxShadow: '0 18px 50px rgba(0,0,0,0.55)', color: '#fff', display: 'flex', flexDirection: 'column', gap: 10 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 54, height: 54, borderRadius: 12, overflow: 'hidden', background: '#0b1214', flexShrink: 0 }}>
+            {thumb ? (isVideo
+              ? <video src={thumb} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+              : <img src={thumb} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />) : null}
+          </div>
+          <div style={{ flex: 1, minWidth: 0, fontWeight: 800, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {who || 'Post'}
+            {!post && synced ? <div style={{ fontSize: 12, fontWeight: 600, opacity: 0.7 }}>المنشور غير متوفر</div> : null}
+          </div>
+          <button
+            type="button" aria-label="Like" onClick={toggleLike} disabled={!canAct}
+            style={{ border: 'none', background: 'rgba(255,255,255,0.1)', color: liked ? '#ef4444' : '#fff', borderRadius: 999, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 14, cursor: canAct ? 'pointer' : 'default', opacity: canAct ? 1 : 0.5 }}
+          >
+            <Heart size={20} fill={liked ? '#ef4444' : 'none'} color={liked ? '#ef4444' : '#fff'} />{likes.length}
+          </button>
+          <button
+            type="button" aria-label="Close" onClick={close}
+            style={{ border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer' }}
+          ><X size={16} /></button>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input
+            value={text} onChange={e => setText(e.target.value)} maxLength={500} disabled={!canAct}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendComment(); } }}
+            placeholder="Comment..." dir="auto"
+            style={{ flex: 1, minWidth: 0, height: 40, borderRadius: 999, border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.08)', color: '#fff', padding: '0 14px', fontSize: 15, outline: 'none' }}
+          />
+          <button
+            type="button" aria-label="Send" onClick={sendComment} disabled={!canAct || !text.trim()}
+            style={{ border: 'none', width: 40, height: 40, borderRadius: '50%', background: '#00bcd4', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', opacity: canAct && text.trim() ? 1 : 0.45 }}
+          ><Send size={18} /></button>
+        </div>
+      </div>
     </div>,
     document.body,
   );
 }
+
+function mountTplQuickPostCard() {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return;
+  const w = window as any;
+  if (w.__STOOORNA_TPL_QUICK__) return;
+  w.__STOOORNA_TPL_QUICK__ = true;
+  const go = () => { const h = document.createElement('div'); h.id = 'stooorna-tpl-quick-card'; document.body.appendChild(h); createTplQuickRoot(h).render(<TplQuickPostCard />); };
+  if (document.body) go(); else document.addEventListener('DOMContentLoaded', go, { once: true });
+}
+if (typeof window !== 'undefined') window.setTimeout(mountTplQuickPostCard, 0);
 
 function SavedMessagesScreen({
   open,
@@ -21897,7 +22030,6 @@ export function PublicLiveCommentsPanel({
       userUsername={myUsername}
       userAvatar={myAvatar}
     />
-    <TplFriendPostHost myId={myId} myName={myName} myUsername={myUsername} myAvatar={myAvatar} />{/* TPL-POST-TO-CHAT */}
     </>,
     document.body
   );
