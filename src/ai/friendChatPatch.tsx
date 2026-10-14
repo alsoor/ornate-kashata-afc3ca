@@ -461,7 +461,9 @@ function FriendChatPatch() {
     const nm = rq.name.trim().toLowerCase();
     const pool: Friend[] = [...friends, ...recents.map(r => ({ id: r.id, name: r.name, avatar: r.avatar ?? null }))];
     let hit: Friend | undefined = rq.id ? pool.find(f => f.id === rq.id) : undefined;
-    if (!hit && nm) hit = pool.find(f => f.name.trim().toLowerCase() === nm);
+    if (!hit && nm) hit = pool.find(f => f.name.trim().toLowerCase() === nm)
+      || pool.find(f => { const a = normName(f.name); return !!a && a === normName(rq.name); })
+      || pool.find(f => { const a = normName(f.name); const b = normName(rq.name); return !!a && !!b && (a.startsWith(b) || b.startsWith(a)); });
     if (!hit) hit = [...friends].filter(f => (unread[f.id] || 0) > 0).sort((a, b) => (unread[b.id] || 0) - (unread[a.id] || 0))[0];
     openReq.current = null;
     if (hit) {
@@ -1470,6 +1472,7 @@ const emptyStyle: React.CSSProperties = { margin: '10px 8px', color: '#6b7280', 
 const REFRESH_EVENT = 'stooorna:friend-chat-refresh';
 const PREVIEW_EVENT = 'stooorna:friend-chat-preview';
 const OPEN_EVENT = 'stooorna:friend-chat-open';
+const normName = (s: string) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const previewKey = (me: string) => `stooorna_friend_chat_preview_v1_${me}`;
 const readPreviews = (me: string): Record<string, { text: string; ts: number }> => {
   try { const v = JSON.parse(localStorage.getItem(previewKey(me)) || '{}'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
@@ -1481,7 +1484,19 @@ const writePreview = (me: string, peer: string, text: string) => {
 
 function openAiSheet() {
   try { if (scanSheet()) return; } catch { /* */ }
-  void import('@/ai').then((m: any) => { try { m.openGeneralChat?.(); } catch { /* */ } }).catch(() => {});
+  const fire = () => { try { window.dispatchEvent(new CustomEvent('stooorna:ai-open')); } catch { /* */ } };
+  fire();
+  window.setTimeout(() => {
+    try { if (scanSheet()) return; } catch { /* */ }
+    try {
+      if (window.location.pathname !== '/') {
+        window.history.pushState({}, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+      }
+    } catch { /* */ }
+    window.setTimeout(fire, 700);
+    window.setTimeout(fire, 2000);
+  }, 900);
 }
 
 /** a notification was tapped outside the app: go to the exact place */
@@ -1526,10 +1541,10 @@ function FriendChatNotifier() {
       if (type && type !== 'message') return;
       const title = String(n?.title || '').trim().toLowerCase();
       const body = String(n?.body || '');
-      if (title) pushRef.current[title] = { text: body, at: Date.now() };
+      if (title) pushRef.current[normName(title)] = { text: body, at: Date.now() };
       const me = meRef.current;
       if (me && title && body) {
-        const hit = Object.values(namesRef.current.map).find(f => f.name.trim().toLowerCase() === title);
+        const hit = Object.values(namesRef.current.map).find(f => f.name.trim().toLowerCase() === title || normName(f.name) === normName(title));
         if (hit) { writePreview(me.id, hit.id, body); window.dispatchEvent(new CustomEvent(PREVIEW_EVENT)); }
       }
       window.dispatchEvent(new CustomEvent(REFRESH_EVENT));
@@ -1558,7 +1573,7 @@ function FriendChatNotifier() {
       if (!alive) return;
       const id = fresh[0];
       const name = names[id]?.name || 'New message';
-      const pushed = pushRef.current[name.trim().toLowerCase()];
+      const pushed = pushRef.current[normName(name)];
       const text = pushed && Date.now() - pushed.at < 20000 && pushed.text ? pushed.text : 'New message';
       writePreview(me.id, id, text);
       window.dispatchEvent(new CustomEvent(PREVIEW_EVENT));

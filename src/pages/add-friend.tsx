@@ -27549,6 +27549,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [dockSettingsGray, setDockSettingsGray] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   useBackClose(aiOpen, () => setAiOpen(false)); // HARDWARE-BACK-PATCH
+  // PUSH-TAP: a notification tap opens the Stooorna Ai sheet (its friend chat), never the public live chat
+  useEffect(() => {
+    const onOpenAi = () => setAiOpen(true);
+    window.addEventListener('stooorna:ai-open', onOpenAi);
+    return () => window.removeEventListener('stooorna:ai-open', onOpenAi);
+  }, []);
   const aiIconVisible = useAiIconVisible(user as any);
   const dockSettled = useDockSettled(); // DOCK-SETTLE: no "bar jumps down" at app start
   useEffect(() => {
