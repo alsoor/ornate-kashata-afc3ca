@@ -19301,6 +19301,7 @@ function tplLongPressStart(onFire: () => void) {
     onFire();
   }, 450);
 }
+void (() => TplLongPressHint); // TPL-PAGE-ON-GRABBER: the dock icon hint is no longer rendered (icon removed)
 function tplLongPressEnd() {
   if (tplLongPress.timer) { window.clearTimeout(tplLongPress.timer); tplLongPress.timer = 0; }
 }
@@ -19513,7 +19514,7 @@ export function PublicLiveCommentsPanel({
   const [tplOpen, setTplOpen] = useState(false);
   useBackClose(tplOpen, () => setTplOpen(false)); // HARDWARE-BACK-PATCH
   // ── Templates bubble (dock icon between LIVE and Settings): the photos/videos gallery now lives here instead of behind the sheet ──
-  const [tplBubble, setTplBubble] = useState<null | { x: number }>(null);
+  const [tplBubble, setTplBubble] = useState<null | { x: number }>(() => { try { return (window as any).__stooornaTplPageOpen ? { x: 0 } : null; } catch { return null; } }); // TPL-PAGE-ON-GRABBER
   // KEEP-ALIVE: once built (on first open, or pre-built at idle) the Templates bubble stays mounted and is only hidden.
   const [tplWarm, setTplWarm] = useState(false);
   const tplLastX = useRef(0);
@@ -19543,7 +19544,7 @@ export function PublicLiveCommentsPanel({
   }, []);
   // Long-press on the dock Templates icon opens the publish page (slides up; closing slides it down)
   useEffect(() => {
-    const onStudio = () => { setTplBubble(null); setTplOpen(true); };
+    const onStudio = () => { setTplOpen(true); }; // TPL-PAGE-ON-GRABBER: the Templates page stays behind; the publish page slides over it
     window.addEventListener('stooorna:templates-studio', onStudio);
     return () => window.removeEventListener('stooorna:templates-studio', onStudio);
   }, []);
@@ -20607,18 +20608,14 @@ export function PublicLiveCommentsPanel({
       window.dispatchEvent(new CustomEvent('stooorna:template-published'));
     } catch { /* */ }
     setTplOpen(false);
-    // stay inside Templates: show the gallery page with the new post (newest first); X closes it
-    try {
-      const btn = document.querySelector('button[aria-label="Templates"]') as HTMLElement | null;
-      const r = btn ? btn.getBoundingClientRect() : null;
-      setTplBubble({ x: r ? r.left + r.width / 2 : window.innerWidth / 2 });
-    } catch { setTplBubble({ x: 0 }); }
+    // TPL-PAGE-ON-GRABBER: the story page listens to 'stooorna:template-published' and raises the sheet, so the Templates page (with the new post) is what shows.
   };
   const closeTplBubble = () => {
     setTplFavOpen(false);
     setTplBubble(null);
     try { window.dispatchEvent(new CustomEvent('stooorna:templates-bubble-close')); } catch { /* */ }
   };
+  void closeTplBubble; // TPL-PAGE-ON-GRABBER: X removed — the grabber line opens/closes the Templates page
   const tplShown = !!tplBubble;
   const templatesBubble = ((tplBubble || tplWarm) && typeof document !== 'undefined') ? createPortal(
     (() => {
@@ -20632,9 +20629,9 @@ export function PublicLiveCommentsPanel({
             onTouchEnd={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}
             style={{
-              position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
+              position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 'var(--stooorna-tpl-top, 0px)', bottom: 'var(--stooorna-bottom-bar-h, 96px)', /* TPL-PAGE-ON-GRABBER */
               display: 'flex', flexDirection: 'column',
-              padding: 'calc(env(safe-area-inset-top, 0px) + 10px) 10px 0',
+              padding: '6px 10px 0',
               background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
               visibility: tplShown ? 'visible' : 'hidden',
               pointerEvents: tplShown ? 'auto' : 'none',
@@ -20652,9 +20649,6 @@ export function PublicLiveCommentsPanel({
               <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>Templates</p>
               <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(250,204,21,0.14)', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#facc15' : 'none'} />
-              </button>
-              <button type="button" aria-label="Close" onClick={closeTplBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <X size={15} strokeWidth={2.4} />
               </button>
             </div>
             <div
@@ -23295,7 +23289,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
         aria-hidden={!active}
         onClick={e => e.stopPropagation()}
         style={{
-          position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
+          position: 'fixed', zIndex: 10076, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
           display: 'flex', flexDirection: 'column',
           padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
           background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
@@ -27479,10 +27473,44 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return Array.from(map.values());
   }, [user?.id, friends, storyGroups]);
   const isLiveRoute = routeLocation.pathname.includes('/live');
+  // ── TPL-PAGE-ON-GRABBER ─────────────────────────────────────────────────────────────────────────
+  // Sheet raised (default on entry) = the Templates page (posts + Favorites) is shown directly under the grabber line.
+  // Sheet dropped (tap on the line, or a new story / live opens) = Templates hides and the live cards + Ads show.
+  const tplPageOn = !!user?.id && !guestMode && pageTab === 'profile' && !isFriendManagement && !isLiveRoute && !headerOpen && !liveScrollHidden;
+  useEffect(() => {
+    try { (window as any).__stooornaTplPageOpen = tplPageOn; } catch { /* */ }
+    try { window.dispatchEvent(new CustomEvent('stooorna:templates-bubble', { detail: { open: tplPageOn, x: 0 } })); } catch { /* */ }
+    if (!tplPageOn) return;
+    const apply = () => {
+      try {
+        const el = (document.querySelector('[data-stooorna-header-icons]:not([data-stooorna-icons-bottom])') || document.querySelector('[data-stooorna-header-grabber]')) as HTMLElement | null;
+        if (!el) return;
+        const b = Math.max(0, Math.round(el.getBoundingClientRect().bottom));
+        document.documentElement.style.setProperty('--stooorna-tpl-top', `${b}px`);
+      } catch { /* */ }
+    };
+    let raf = 0;
+    const t0 = performance.now();
+    const loop = () => { apply(); if (performance.now() - t0 < 900) raf = requestAnimationFrame(loop); };
+    loop();
+    window.addEventListener('resize', apply);
+    return () => { if (raf) cancelAnimationFrame(raf); window.removeEventListener('resize', apply); };
+  }, [tplPageOn]);
+  useEffect(() => () => {
+    try { (window as any).__stooornaTplPageOpen = false; } catch { /* */ }
+    try { window.dispatchEvent(new CustomEvent('stooorna:templates-bubble', { detail: { open: false, x: 0 } })); } catch { /* */ }
+  }, []);
+  // After publishing a Templates post, raise the sheet so the Templates page (with the new post first) is what shows.
+  useEffect(() => {
+    const onPub = () => { setLiveScrollHidden(false); setHeaderOpen(false); };
+    window.addEventListener('stooorna:template-published', onPub);
+    return () => window.removeEventListener('stooorna:template-published', onPub);
+  }, []);
   // نقطة أيقونة السجل: خضراء إذا أنا أو أي مستخدم ظاهر عندي داخل مكالمة (حتى لو مو معي)
   usePublishInCall(user?.id ? String(user.id) : null, !!callHistoryDotState.joined);
   const anyInCall = useAnyInCall(anyLiveHostIds);
   const [dockTplYellow, setDockTplYellow] = useState(false);
+  void dockTplYellow; // TPL-PAGE-ON-GRABBER: the dock icon (yellow dot) was removed
   const [dockSettingsGray, setDockSettingsGray] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   useBackClose(aiOpen, () => setAiOpen(false)); // HARDWARE-BACK-PATCH
@@ -29637,7 +29665,17 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
+              onPointerDown={() => tplLongPressStart(() => { // TPL-PAGE-ON-GRABBER: long-press the grabber line = Templates publish page
+                if (!user?.id) return;
+                try { localStorage.setItem(TPL_HINT_DONE_KEY, '1'); window.dispatchEvent(new CustomEvent('stooorna:tpl-hint-done')); } catch { /* */ }
+                try { window.dispatchEvent(new CustomEvent('stooorna:templates-studio')); } catch { /* */ }
+              })}
+              onPointerUp={tplLongPressEnd}
+              onPointerLeave={tplLongPressEnd}
+              onPointerCancel={tplLongPressEnd}
+              onContextMenu={(e) => e.preventDefault()}
               onClick={() => {
+                if (tplLongPress.fired) { tplLongPress.fired = false; return; }
                 if (headerOpen) {
                   try {
                     (window as any).__stooornaGrabberLift = true;
@@ -29649,6 +29687,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               aria-label={headerOpen ? 'Lift header' : 'Show header'}
               style={{
                 background: 'none', border: 'none', cursor: 'pointer',
+                WebkitTouchCallout: 'none', userSelect: 'none',
                 padding: '16px 90px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent',
@@ -29947,44 +29986,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       />
                     </div>
                   )}
-                  {/* Templates — صور وفيديو Templates (كانت خلف الشيت) صارت هنا بين LIVE و Settings */}
-                  {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
-<button
-                      type="button"
-                      onPointerDown={() => tplLongPressStart(() => {
-                        dockSet(null);
-                        try { localStorage.setItem(TPL_HINT_DONE_KEY, '1'); window.dispatchEvent(new CustomEvent('stooorna:tpl-hint-done')); } catch { /* */ }
-                        try { window.dispatchEvent(new CustomEvent('stooorna:templates-studio')); } catch { /* */ }
-                      })}
-                      onPointerUp={tplLongPressEnd}
-                      onPointerLeave={tplLongPressEnd}
-                      onPointerCancel={tplLongPressEnd}
-                      onContextMenu={(e) => e.preventDefault()}
-                      onClick={(e) => {
-                        if (tplLongPress.fired) { tplLongPress.fired = false; return; }
-                        try { sessionStorage.setItem('stooorna_tpl_seen_at', String(Date.now())); } catch { /* */ }
-                        setDockTplYellow(false);
-                        openDockBubble('templates', e.currentTarget);
-                      }}
-                      aria-label="Templates"
-                      title="Templates"
-                      style={{
-                        WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
-                        width: 44, height: 44, borderRadius: '50%',
-                        border: '1.5px solid #ffffff',
-                        background: 'transparent',
-                        color: dockTplYellow ? '#eab308' : '#ffffff',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: 'none',
-                      }}
-                    >
-                      <Film size={22} strokeWidth={2.2} />
-                    </button>
-                    <TplLongPressHint /> {/* TPL-LONGPRESS-HINT */}
-</div>
-                  )}
+                  {/* TPL-PAGE-ON-GRABBER: the Templates dock icon was removed — Templates is the page under the grabber line (long-press the line to publish) */}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
                   {guestMode ? (
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 64 }}>
@@ -36137,7 +36139,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           myId={user?.id ? String(user.id) : (guestMode ? 'guest' : '')}
           hosts={homeLiveHosts}
           enabled={!isLiveRoute && !!user?.id}
-          showCards={pageTab === 'profile' && !isLiveRoute}
+          showCards={pageTab === 'profile' && !isLiveRoute && (headerOpen || liveScrollHidden || guestMode)} /* TPL-PAGE-ON-GRABBER: raised sheet = Templates page, no live cards / Ads */
           collapsed={liveScrollHidden}
           dockVisible={!chatLifted}
           guest={guestMode}
