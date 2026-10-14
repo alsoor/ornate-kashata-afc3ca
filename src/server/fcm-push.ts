@@ -11,6 +11,8 @@
 import type { Express, Request, Response } from 'express';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
+import http2 from 'node:http2'; // IOS-PUSH
+import crypto from 'node:crypto'; // IOS-PUSH
 import { db } from './db/client.js';
 import { getAuth } from '../lib/auth/auth.js';
 
@@ -123,28 +125,110 @@ function fcmImage(u?: string): string | undefined {
 }
 
 
-/** iOS (APNs through FCM): same notification, delivered to iPhone devices registered with platform "ios". */
-function apnsConfig(ttlMs: number, img?: string) {
-  return {
-    headers: {
-      'apns-priority': '10',
-      'apns-push-type': 'alert',
-      'apns-expiration': String(Math.floor(Date.now() / 1000) + Math.floor(ttlMs / 1000)),
-    },
-    payload: {
-      aps: {
-        sound: 'default',
-        ...(img ? { 'mutable-content': 1 } : {}),
-      },
-    },
-    ...(img ? { fcmOptions: { imageUrl: img } } : {}),
-  };
+// ───────────────────────── IOS-PUSH: iPhone notifications straight through APNs ─────────────────────────
+// No Firebase SDK is needed inside the iOS app. The app registers the plain APNs device token (64+ hex chars),
+// and this server sends to Apple directly with the .p8 key (HTTP/2 + ES256 JWT, built-in Node modules only).
+//
+// Railway variables:
+//   APNS_KEY        = contents of the AuthKey_XXXX.p8 file (raw text, or single-line base64 of it)
+//   APNS_KEY_ID     = the 10-character Key ID of that key
+//   APNS_TEAM_ID    = your 10-character Apple Team ID
+//   APNS_BUNDLE_ID  = optional, default com.stooorna.app
+//   APNS_ENV        = optional, "sandbox" only for Xcode debug builds; default is production (TestFlight / App Store)
+const isApnsToken = (t: string) => /^[0-9a-f]{64,200}$/i.test(t);
+
+let apnsJwt: { token: string; at: number } | null = null;
+const apnsConfigured = () => !!(process.env.APNS_KEY && process.env.APNS_KEY_ID && process.env.APNS_TEAM_ID);
+
+function apnsKeyPem(): string {
+  let raw = (process.env.APNS_KEY || '').trim();
+  if (!raw.includes('BEGIN')) raw = Buffer.from(raw, 'base64').toString('utf8');
+  return raw.replace(/\\n/g, '\n').trim();
+}
+
+function apnsAuthToken(): string {
+  const now = Math.floor(Date.now() / 1000);
+  if (apnsJwt && now - apnsJwt.at < 50 * 60) return apnsJwt.token;
+  const b64 = (v: string | Buffer) => Buffer.from(v).toString('base64url');
+  const header = b64(JSON.stringify({ alg: 'ES256', kid: process.env.APNS_KEY_ID }));
+  const claims = b64(JSON.stringify({ iss: process.env.APNS_TEAM_ID, iat: now }));
+  const sig = crypto.sign('sha256', Buffer.from(`${header}.${claims}`), { key: apnsKeyPem(), dsaEncoding: 'ieee-p1363' });
+  const token = `${header}.${claims}.${b64(sig)}`;
+  apnsJwt = { token, at: now };
+  return token;
+}
+
+/** Sends one alert to many iPhones. Returns the tokens Apple says are no longer valid (HTTP 410). Never throws. */
+async function sendApns(
+  tokens: string[],
+  m: { title: string; body: string; url?: string; type?: string; ttlMs: number },
+): Promise<string[]> {
+  const dead: string[] = [];
+  if (!tokens.length) return dead;
+  if (!apnsConfigured()) {
+    console.warn('[apns] APNS_KEY / APNS_KEY_ID / APNS_TEAM_ID not set - iPhone push disabled');
+    return dead;
+  }
+  let session: http2.ClientHttp2Session | null = null;
+  try {
+    const host = process.env.APNS_ENV === 'sandbox' ? 'https://api.sandbox.push.apple.com' : 'https://api.push.apple.com';
+    const topic = process.env.APNS_BUNDLE_ID || 'com.stooorna.app';
+    const jwt = apnsAuthToken();
+    const expiration = String(Math.floor(Date.now() / 1000) + Math.floor(m.ttlMs / 1000));
+    const payload = JSON.stringify({
+      aps: { alert: { title: m.title || 'Stooorna', body: (m.body || '').slice(0, 180) }, sound: 'default' },
+      url: m.url || '/',
+      type: m.type || '',
+    });
+    const s = http2.connect(host);
+    session = s;
+    s.on('error', (e) => console.warn('[apns] session error:', e?.message || e));
+
+    let ok = 0;
+    const one = (token: string) =>
+      new Promise<void>((resolve) => {
+        try {
+          const req = s.request({
+            ':method': 'POST',
+            ':path': `/3/device/${token}`,
+            authorization: `bearer ${jwt}`,
+            'apns-topic': topic,
+            'apns-push-type': 'alert',
+            'apns-priority': '10',
+            'apns-expiration': expiration,
+            'content-type': 'application/json',
+          });
+          let status = 0;
+          let data = '';
+          req.setEncoding('utf8');
+          req.on('response', (h) => { status = Number(h[':status'] || 0); });
+          req.on('data', (c) => { data += c; });
+          req.on('end', () => {
+            if (status === 200) ok++;
+            else {
+              console.warn('[apns] failed:', status, data);
+              if (status === 410) dead.push(token);
+            }
+            resolve();
+          });
+          req.on('error', () => resolve());
+          req.setTimeout(10_000, () => { try { req.close(); } catch { /* */ } resolve(); });
+          req.end(payload);
+        } catch { resolve(); }
+      });
+    await Promise.all(tokens.map(one));
+    console.log(`[apns] sent ${ok}/${tokens.length}`);
+  } catch (e) {
+    console.error('[apns] send failed:', e);
+  } finally {
+    try { session?.close(); } catch { /* */ }
+  }
+  return dead;
 }
 
 /** Fire-and-forget safe: never throws. */
 export async function sendFcmToUser(m: FcmMessage): Promise<void> {
   try {
-    if (!ensureFirebase()) return;
     const uid = String(m.userId || '');
     const uname = String(m.username || '').replace(/^@/, '').toLowerCase();
     if (!uid && !uname) return;
@@ -163,8 +247,19 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
 
     const isCall = m.type === 'call';
     const img = fcmImage(m.image); // TPL-COMMENT-NOTIFY
+
+    // IOS-PUSH: iPhone tokens go to APNs directly, everything else (Android) through FCM.
+    const iosTokens = tokens.filter(isApnsToken);
+    const androidTokens = tokens.filter((t) => !isApnsToken(t));
+    const deadIos = await sendApns(iosTokens, {
+      title: m.title, body: m.body, url: m.url, type: m.type,
+      ttlMs: isCall ? 30_000 : 24 * 60 * 60 * 1000,
+    });
+    for (const t of deadIos) await client().execute('DELETE FROM fcm_tokens WHERE token = ?', [t]);
+    if (!androidTokens.length || !ensureFirebase()) return;
+
     const resp = await getMessaging().sendEachForMulticast({
-      tokens,
+      tokens: androidTokens,
       notification: { title: m.title || 'Stooorna', body: (m.body || '').slice(0, 180), ...(img ? { imageUrl: img } : {}) },
       data: { url: m.url || '/', type: m.type || '' },
       android: {
@@ -172,10 +267,9 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
         ttl: isCall ? 30_000 : 24 * 60 * 60 * 1000,
         notification: { channelId: 'default', ...(img ? { imageUrl: img } : {}) },
       },
-      apns: apnsConfig(isCall ? 30_000 : 24 * 60 * 60 * 1000, img), // IOS-PUSH
     });
 
-    console.log(`[fcm] sent ${resp.successCount}/${tokens.length} to ${uid || uname}`);
+    console.log(`[fcm] sent ${resp.successCount}/${androidTokens.length} to ${uid || uname}`);
     resp.responses.forEach((r) => {
       if (r.error) console.warn('[fcm] failed:', r.error.code, r.error.message);
     });
@@ -187,7 +281,7 @@ export async function sendFcmToUser(m: FcmMessage): Promise<void> {
       if (
         code === 'messaging/registration-token-not-registered' ||
         code === 'messaging/invalid-registration-token'
-      ) dead.push(tokens[i]);
+      ) dead.push(androidTokens[i]);
     });
     for (const t of dead) await client().execute('DELETE FROM fcm_tokens WHERE token = ?', [t]);
   } catch (e) {
@@ -207,7 +301,6 @@ export type FcmBroadcast = {
 /** Sends to every registered device except the given user (used for "someone went live"). Never throws. */
 export async function sendFcmToAll(m: FcmBroadcast): Promise<void> {
   try {
-    if (!ensureFirebase()) return;
     const uid = String(m.exceptUserId || '');
     const uname = String(m.exceptUsername || '').replace(/^@/, '').toLowerCase();
 
@@ -220,8 +313,15 @@ export async function sendFcmToAll(m: FcmBroadcast): Promise<void> {
     const tokens: string[] = list.map((r) => String(r.token)).filter(Boolean);
     if (!tokens.length) return;
 
+    // IOS-PUSH
+    const iosTokens = tokens.filter(isApnsToken);
+    const androidTokens = tokens.filter((t) => !isApnsToken(t));
+    const deadIos = await sendApns(iosTokens, { title: m.title, body: m.body, url: m.url, type: m.type, ttlMs: 10 * 60 * 1000 });
+    for (const t of deadIos) await client().execute('DELETE FROM fcm_tokens WHERE token = ?', [t]);
+    if (!androidTokens.length || !ensureFirebase()) return;
+
     const resp = await getMessaging().sendEachForMulticast({
-      tokens,
+      tokens: androidTokens,
       notification: { title: m.title || 'Stooorna', body: (m.body || '').slice(0, 180) },
       data: { url: m.url || '/', type: m.type || '' },
       android: {
@@ -229,9 +329,8 @@ export async function sendFcmToAll(m: FcmBroadcast): Promise<void> {
         ttl: 10 * 60 * 1000,
         notification: { channelId: 'default' },
       },
-      apns: apnsConfig(10 * 60 * 1000), // IOS-PUSH
     });
-    console.log(`[fcm] broadcast ${m.type || ''} sent ${resp.successCount}/${tokens.length}`);
+    console.log(`[fcm] broadcast ${m.type || ''} sent ${resp.successCount}/${androidTokens.length}`);
 
     const dead: string[] = [];
     resp.responses.forEach((r, i) => {
@@ -239,7 +338,7 @@ export async function sendFcmToAll(m: FcmBroadcast): Promise<void> {
       if (
         code === 'messaging/registration-token-not-registered' ||
         code === 'messaging/invalid-registration-token'
-      ) dead.push(tokens[i]);
+      ) dead.push(androidTokens[i]);
     });
     for (const t of dead) await client().execute('DELETE FROM fcm_tokens WHERE token = ?', [t]);
   } catch (e) {

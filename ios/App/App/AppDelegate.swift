@@ -1,7 +1,5 @@
 import UIKit
 import Capacitor
-import FirebaseCore // IOS-PUSH
-import FirebaseMessaging // IOS-PUSH
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -10,21 +8,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
-        FirebaseApp.configure() // IOS-PUSH: reads GoogleService-Info.plist
         return true
     }
 
-    // IOS-PUSH: give Firebase the APNs token, then hand the FCM token to the Capacitor PushNotifications plugin
-    // (so the web app registers an FCM token, which is what the server's fcm-push.ts sends to).
+    // IOS-PUSH: hand the APNs device token to the Capacitor PushNotifications plugin.
+    // The server (fcm-push.ts) sends to this token straight through APNs - no Firebase SDK needed in the app.
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        Messaging.messaging().apnsToken = deviceToken
-        Messaging.messaging().token(completion: { (token, error) in
-            if let error = error {
-                NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)
-            } else if let token = token {
-                NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: token)
-            }
-        })
+        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
     }
 
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
