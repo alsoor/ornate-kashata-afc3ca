@@ -17,5 +17,14 @@
       "*.stripe.com",
       "*.stripe.network"
     ]
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
+    }
   }
 }
