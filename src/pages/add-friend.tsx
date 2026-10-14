@@ -19649,6 +19649,12 @@ export function PublicLiveCommentsPanel({
   tplRowsRef.current = tplRows;
   const tplIdSet = useMemo(() => new Set(tplRows.map(r => r.id)), [tplRows]);
   const tplCommit = (next: PublicLiveComment[]) => { tplRowsRef.current = next; saveTemplatesCache(next as any); setTplRows(next); };
+  // TPL-GRABBER-FRESH: tell the story page the time of the newest Templates post, so the grabber line can turn yellow
+  useEffect(() => {
+    let ts = 0;
+    for (const r of tplRows) { if (isLiveTplText(r.text) && r.userId !== myId && Number(r.createdAt) > ts) ts = Number(r.createdAt); }
+    try { (window as any).__stooornaTplNewest = ts; window.dispatchEvent(new CustomEvent('stooorna:tpl-newest', { detail: { ts } })); } catch { /* */ }
+  }, [tplRows, myId]);
   useEffect(() => {
     if (!myId) return;
     let cancelled = false;
@@ -27500,6 +27506,23 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     try { (window as any).__stooornaTplPageOpen = false; } catch { /* */ }
     try { window.dispatchEvent(new CustomEvent('stooorna:templates-bubble', { detail: { open: false, x: 0 } })); } catch { /* */ }
   }, []);
+  // TPL-GRABBER-FRESH: someone published in Templates while it is not on screen -> grabber line turns yellow with a silver shimmer;
+  // being on the Templates page (entering / leaving it) puts the default color back.
+  const TPL_SEEN_KEY = 'stooorna_tpl_seen_ts';
+  const [tplNewest, setTplNewest] = useState<number>(() => { try { return Number((window as any).__stooornaTplNewest || 0); } catch { return 0; } });
+  const [tplSeenTs, setTplSeenTs] = useState<number>(() => { try { return Number(localStorage.getItem(TPL_SEEN_KEY) || 0); } catch { return 0; } });
+  useEffect(() => {
+    const on = (e: Event) => setTplNewest(Number((e as CustomEvent).detail?.ts) || 0);
+    window.addEventListener('stooorna:tpl-newest', on as EventListener);
+    return () => window.removeEventListener('stooorna:tpl-newest', on as EventListener);
+  }, []);
+  useEffect(() => {
+    if (tplPageOn && tplNewest > tplSeenTs) {
+      try { localStorage.setItem(TPL_SEEN_KEY, String(tplNewest)); } catch { /* */ }
+      setTplSeenTs(tplNewest);
+    }
+  }, [tplPageOn, tplNewest, tplSeenTs]);
+  const tplFresh = !tplPageOn && tplNewest > tplSeenTs;
   // After publishing a Templates post, raise the sheet so the Templates page (with the new post first) is what shows.
   useEffect(() => {
     const onPub = () => { setLiveScrollHidden(false); setHeaderOpen(false); };
@@ -29703,16 +29726,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   display: 'block',
                   position: 'relative', overflow: 'hidden',
                   width: 36, height: 4, borderRadius: 2,
-                  background: '#ffffff',
+                  background: tplFresh ? '#facc15' : '#ffffff', // TPL-GRABBER-FRESH
                   boxShadow: 'none',
                 }}
               >
-                {(liveChatBusy || anyoneOnlineInApp) ? (
+                {(tplFresh || liveChatBusy || anyoneOnlineInApp) ? (
                   <span
                     aria-hidden="true"
                     style={{
                       position: 'absolute', top: 0, bottom: 0, left: 0, width: '40%',
-                      background: 'linear-gradient(90deg, transparent, rgba(148,163,184,1), transparent)',
+                      background: tplFresh ? 'linear-gradient(90deg, transparent, rgba(226,232,240,1), transparent)' : 'linear-gradient(90deg, transparent, rgba(148,163,184,1), transparent)',
                       animation: 'stooornaGrabberShine 1.6s ease-in-out infinite',
                     }}
                   />
