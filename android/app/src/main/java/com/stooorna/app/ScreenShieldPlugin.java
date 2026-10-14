@@ -20,8 +20,9 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * Screen shield for the Templates section.
  * - setActive({active}) is called from templatesShieldPatch.ts when Templates opens/closes.
  * - While active:
- *     a) Volume-Down key press (part of Power + Volume Down screenshot) -> FLAG_SECURE for ~2.5s + popup event
- *     b) Android 14+: Activity.ScreenCaptureCallback -> popup event
+ *     a) Volume-Down key press -> FLAG_SECURE for ~2.5s (silent protection only, NO popup:
+ *        volume-down alone is just a volume change, not a screenshot)
+ *     b) Android 14+: Activity.ScreenCaptureCallback (real screenshot, e.g. Power + Volume Down) -> popup event
  *     c) Fallback: MediaStore observer sees a new "screenshot" image -> popup event
  * - The popup itself is drawn by the web patch when it receives 'stooorna:screenshot-attempt'.
  */
@@ -55,7 +56,8 @@ public class ScreenShieldPlugin extends Plugin {
         a.getWindow().setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE);
         main.removeCallbacks(clearSecure);
         main.postDelayed(clearSecure, 2500);
-        fire();
+        // no fire() here: the popup must appear only when a real screenshot is detected
+        // (ScreenCaptureCallback / MediaStore observer), not on volume-down alone.
     }
 
     private void fire() {
