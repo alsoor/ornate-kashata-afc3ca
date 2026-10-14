@@ -15850,7 +15850,7 @@ function TplQuickPostCard() {
     >
       <div
         dir="ltr" onClick={e => e.stopPropagation()}
-        style={{ width: 'min(86vw, 340px)', boxSizing: 'border-box', padding: 12, borderRadius: 18, background: '#0a1f1a', border: '1px solid rgba(126,232,245,0.4)', boxShadow: '0 18px 50px rgba(0,0,0,0.55)', color: '#fff', display: 'flex', flexDirection: 'column', gap: 10 }}
+        style={{ width: 'min(86vw, 340px)', boxSizing: 'border-box', padding: 12, borderRadius: 18, background: '#000', border: '1px solid rgba(255,255,255,0.25)', boxShadow: '0 18px 50px rgba(0,0,0,0.55)', color: '#fff', display: 'flex', flexDirection: 'column', gap: 10 }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 54, height: 54, borderRadius: 12, overflow: 'hidden', background: '#0b1214', flexShrink: 0 }}>
@@ -15864,26 +15864,26 @@ function TplQuickPostCard() {
           </div>
           <button
             type="button" aria-label="Like" onClick={toggleLike} disabled={!canAct}
-            style={{ border: 'none', background: 'rgba(255,255,255,0.1)', color: liked ? '#ef4444' : '#fff', borderRadius: 999, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 14, cursor: canAct ? 'pointer' : 'default', opacity: canAct ? 1 : 0.5 }}
+            style={{ border: 'none', background: '#fff', color: '#111', borderRadius: 999, padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 14, cursor: canAct ? 'pointer' : 'default', opacity: canAct ? 1 : 0.5 }}
           >
-            <Heart size={20} fill={liked ? '#ef4444' : 'none'} color={liked ? '#ef4444' : '#fff'} />{likes.length}
+            <Heart size={20} fill={liked ? '#ef4444' : 'none'} color="#ef4444" />{likes.length}
           </button>
           <button
             type="button" aria-label="Close" onClick={close}
-            style={{ border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer' }}
-          ><X size={16} /></button>
+            style={{ border: 'none', background: '#fff', color: '#000', width: 32, height: 32, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer' }}
+          ><X size={16} color="#000" /></button>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             value={text} onChange={e => setText(e.target.value)} maxLength={500} disabled={!canAct}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendComment(); } }}
             placeholder="Comment..." dir="auto"
-            style={{ flex: 1, minWidth: 0, height: 40, borderRadius: 999, border: '1px solid rgba(255,255,255,0.18)', background: 'rgba(255,255,255,0.08)', color: '#fff', padding: '0 14px', fontSize: 15, outline: 'none' }}
+            style={{ flex: 1, minWidth: 0, height: 40, borderRadius: 999, border: 'none', background: '#fff', color: '#111', padding: '0 14px', fontSize: 15, outline: 'none' }}
           />
           <button
             type="button" aria-label="Send" onClick={sendComment} disabled={!canAct || !text.trim()}
-            style={{ border: 'none', width: 40, height: 40, borderRadius: '50%', background: '#00bcd4', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', opacity: canAct && text.trim() ? 1 : 0.45 }}
-          ><Send size={18} /></button>
+            style={{ border: 'none', width: 40, height: 40, borderRadius: '50%', background: '#fff', color: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', opacity: canAct && text.trim() ? 1 : 0.45 }}
+          ><Send size={18} color="#000" /></button>
         </div>
       </div>
     </div>,
