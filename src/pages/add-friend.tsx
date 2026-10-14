@@ -15975,7 +15975,7 @@ function mountTplQuickPostCard() {
   const w = window as any;
   if (w.__STOOORNA_TPL_QUICK__) return;
   w.__STOOORNA_TPL_QUICK__ = true;
-  const go = () => { const h = document.createElement('div'); h.id = 'stooorna-tpl-quick-card'; document.body.appendChild(h); createTplQuickRoot(h).render(<><TplQuickPostCard /><TplFullPostHost /></>); };
+  const go = () => { const h = document.createElement('div'); h.id = 'stooorna-tpl-quick-card'; document.body.appendChild(h); createTplQuickRoot(h).render(<TplQuickPostCard />); };
   if (document.body) go(); else document.addEventListener('DOMContentLoaded', go, { once: true });
 }
 if (typeof window !== 'undefined') window.setTimeout(mountTplQuickPostCard, 0);
@@ -30213,6 +30213,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           onClose={() => setAiOpen(false)}
           user={user}
         />
+        <TplFullPostHost />{/* TPL-POST-TO-CHAT: shared post tapped in the Stooorna Ai chat -> full post page. Lives INSIDE the app tree (a separate React root crashed on the post page's own hooks) */}
         {!isFriendManagement && !visitorProfileOpen && !chatLifted && !dockSettingsOpen && !tplMediaOpen && (
           <BottomHeaderPortal key={dockBarKey} enabled={!guestMode}>
           <div data-stooorna-header-icons="1" data-stooorna-icons-bottom={!guestMode ? '1' : undefined} style={!guestMode ? {
