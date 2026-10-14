@@ -51,6 +51,8 @@ export function registerTemplatesShareRoutes(
     const postId = clip(b.postId, 200);
     const kind = b.kind === "image" ? "image" : "video";
     if (!toUserId || !postId || toUserId === me) return res.status(400).json({ ok: false, error: "bad-request" });
+    // TPL-POST-TO-CHAT: the client already delivered this post into the friend's Stooorna Ai chat -> no Saved-Messages copy
+    if (String(req.headers["x-tpl-via-friend-chat"] || "") === "1") return res.json({ ok: true, id: "friend-chat" });
     const row: ShareRow = {
       id: `tshare_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       toUserId, fromUserId: me,

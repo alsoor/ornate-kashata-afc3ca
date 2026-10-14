@@ -15741,6 +15741,33 @@ function TplSharedFeedHost({ postId, fallback, myId, myName, myUsername, myAvata
   );
 }
 
+// TPL-POST-TO-CHAT: a Templates post sent to me in the Stooorna Ai chat — tapping the picture opens the real post (like / comment / favorite) above everything
+function TplFriendPostHost({ myId, myName, myUsername, myAvatar }: { myId: string; myName: string | null; myUsername: string | null; myAvatar: string | null }) {
+  const [sel, setSel] = useState<{ postId: string; u?: string; kind?: string; from?: string } | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useBackClose(!!sel, () => setSel(null));
+  useEffect(() => {
+    const f = (e: Event) => { const d = (e as CustomEvent).detail || {}; const id = String(d.postId || ''); if (id) setSel({ postId: id, u: d.u ? String(d.u) : undefined, kind: d.kind, from: d.from }); };
+    window.addEventListener('stooorna:tpl-open-friend', f);
+    return () => window.removeEventListener('stooorna:tpl-open-friend', f);
+  }, []);
+  useEffect(() => {
+    if (!sel) return;
+    const el = wrapRef.current; if (!el) return;
+    const stop = (e: Event) => { if (el.contains(e.target as Node)) e.stopPropagation(); };
+    const evs = ['pointerdown', 'pointerup', 'pointermove', 'mousedown', 'mouseup', 'touchstart', 'touchmove', 'touchend', 'wheel', 'focusin', 'keydown'];
+    evs.forEach(n => document.body.addEventListener(n, stop, { passive: true } as AddEventListenerOptions));
+    return () => { evs.forEach(n => document.body.removeEventListener(n, stop)); };
+  }, [sel]);
+  if (!sel || typeof document === 'undefined') return null;
+  return createPortal(
+    <div ref={wrapRef} onClick={e => e.stopPropagation()} style={{ position: 'fixed', inset: 0, zIndex: 2147483300, pointerEvents: 'auto', touchAction: 'auto' }}>
+      <TplSharedFeedHost postId={sel.postId} fallback={sel} myId={myId} myName={myName} myUsername={myUsername} myAvatar={myAvatar} onClose={() => setSel(null)} />
+    </div>,
+    document.body,
+  );
+}
+
 function SavedMessagesScreen({
   open,
   onClose,
@@ -21870,6 +21897,7 @@ export function PublicLiveCommentsPanel({
       userUsername={myUsername}
       userAvatar={myAvatar}
     />
+    <TplFriendPostHost myId={myId} myName={myName} myUsername={myUsername} myAvatar={myAvatar} />{/* TPL-POST-TO-CHAT */}
     </>,
     document.body
   );

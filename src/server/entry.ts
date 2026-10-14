@@ -1297,6 +1297,15 @@ registerTemplatesRoutes(app, {
 registerTemplatesShareRoutes(app, { dataDir: join(ASSETS_DIR, "_private", "templates-share"), getUser: (req) => session.user(req) as any }); // TEMPLATES-SHARE-PATCH
 registerAiIconRoutes(app, { pool: templatesPool, dataDir: join(ASSETS_DIR, "_private", "ai-icon"), getUser: (req) => session.user(req) as any, isAdmin: (u) => session.isAdmin(u as any) }); // AI-ICON-PATCH
 registerAiCreditsRoutes(app, { pool: templatesPool, getUser: (req) => session.user(req) as any, isAdmin: (u) => session.isAdmin(u as any) }); // AI-CREDITS: 30 P welcome, 5 P per published photo / video
+// TPL-POST-TO-CHAT: a shared Templates post travels as "TPLPOST::{json}" — the phone notification shows "📷 Post" + the picture instead of the raw text
+function tplPostPush(text: string): { body: string; image?: string } | null {
+	if (!String(text || "").startsWith("TPLPOST::")) return null;
+	try {
+		const o = JSON.parse(String(text).slice("TPLPOST::".length));
+		const video = o?.k === "video";
+		return { body: video ? "🎬 Post" : "📷 Post", image: !video && o?.u ? String(o.u) : undefined };
+	} catch { return null; }
+}
 // ── FRIEND-CHAT-ROUTES: شات الأصدقاء بجدول خاص (friend_chat_messages) — مستقل تماماً عن /api/messages القديم ──
 registerFriendChatRoutes(app, {
   pool: templatesPool,
@@ -1313,7 +1322,7 @@ registerFriendChatRoutes(app, {
     const accepted: Array<{ friendId?: string }> = Array.isArray(body?.accepted) ? body.accepted : [];
     return accepted.some((f) => String(f?.friendId || "") === peerId);
   },
-  push: (toId, fromName, text) => sendFcmToUser({ userId: toId, title: fromName, body: text, url: `/?openChat=1&peerName=${encodeURIComponent(fromName || "")}`, type: "message" as any }),
+  push: (toId, fromName, text) => { const tp = tplPostPush(text); return sendFcmToUser({ userId: toId, title: fromName, body: tp ? tp.body : text, ...(tp?.image ? { image: tp.image } : {}), url: `/?openChat=1&peerName=${encodeURIComponent(fromName || "")}`, type: "message" as any }); }, // TPL-POST-TO-CHAT
 });
 // ── FRIEND-GROUP-CHAT: قروبات داخل شات الأصدقاء (جداول fgc_*) — إضافة مستقلة، لا تلمس مسارات الشات القديمة ──
 registerFriendGroupChatRoutes(app, {

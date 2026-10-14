@@ -322,7 +322,39 @@ function merge(prev: ChatMsg[], inc: ChatMsg[]): ChatMsg[] {
 }
 
 /** FRIEND-CHAT-MEDIA: short text shown in the chat list for a location / photo message */
+/* TPL-POST-TO-CHAT: a Templates post shared to a friend = one text message "TPLPOST::{json}" (rendered as a picture tile) */
+const TPL_POST_PREFIX = 'TPLPOST::';
+interface TplPost { p: string; k: 'image' | 'video'; u: string }
+function encodeTplPost(t: TplPost): string { return TPL_POST_PREFIX + JSON.stringify(t); }
+function decodeTplPost(text: string): TplPost | null {
+  if (!text || !text.startsWith(TPL_POST_PREFIX)) return null;
+  try {
+    const o = JSON.parse(text.slice(TPL_POST_PREFIX.length));
+    if (!o || !o.p) return null;
+    return { p: String(o.p), k: o.k === 'video' ? 'video' : 'image', u: String(o.u || '') };
+  } catch { return null; }
+}
+function openTplPost(tp: TplPost, from?: string) {
+  try { window.dispatchEvent(new CustomEvent('stooorna:tpl-open-friend', { detail: { postId: tp.p, u: tp.u, kind: tp.k, from } })); } catch { /* */ }
+}
+function TplPostTile({ tp, time, onOpen }: { tp: TplPost; time: string; onOpen: () => void }) {
+  return (
+    <div role="button" onClick={e => { e.stopPropagation(); onOpen(); }} style={{ position: 'relative', width: 220, maxWidth: '100%', height: 260, borderRadius: 14, overflow: 'hidden', background: '#0b1214', cursor: 'pointer' }}>
+      {tp.u ? (tp.k === 'video'
+        ? <video src={tp.u} muted playsInline preload="metadata" style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+        : <img src={tp.u} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />) : null}
+      {tp.k === 'video' && (
+        <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+          <span style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, paddingLeft: 3 }}>▶</span>
+        </span>
+      )}
+      <span style={{ position: 'absolute', left: 8, bottom: 8, padding: '3px 9px', borderRadius: 999, background: 'rgba(0,0,0,0.55)', color: '#7ee8f5', fontSize: 11.5, fontWeight: 800 }}>Post · {time}</span>
+    </div>
+  );
+}
+
 const previewOf = (t: string): string => {
+  { const tp0 = decodeTplPost(t); if (tp0) return tp0.k === 'video' ? '🎬 Post' : '📷 Post'; } // TPL-POST-TO-CHAT
   if (decodeSavedLocation(t)) return '📍 Location';
   const dl = decodeSavedMediaLink(t);
   if (dl) return dl.kind === 'video' ? '🎬 Video' : '📷 Photo';
@@ -1274,7 +1306,8 @@ function FriendChatPatch() {
             const mine = m.from === myId;
             const loc = decodeSavedLocation(m.text); // FRIEND-CHAT-MEDIA
             const med = loc ? null : decodeSavedMediaLink(m.text); // FRIEND-CHAT-MEDIA
-            const media = !!loc || !!med;
+            const tp = loc || med ? null : decodeTplPost(m.text); // TPL-POST-TO-CHAT
+            const media = !!loc || !!med || !!tp;
             return (
               <div key={m.clientId || m.id} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%', display: 'flex', flexDirection: 'column', alignItems: mine ? 'flex-end' : 'flex-start' }}>
                 {isGroup && !mine && m.fromName && <span dir="auto" style={{ fontSize: 11.5, fontWeight: 700, color: '#0f766e', margin: '0 6px 2px' }}>{m.fromName}</span>}
@@ -1296,6 +1329,8 @@ function FriendChatPatch() {
                     time={hhmm(m.ts)}
                     onOpen={() => setLocView({ lat: loc.lat, lng: loc.lng, label: /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(String(loc.label || '').trim()) ? '' : String(loc.label || ''), name: mine ? (me?.username || me?.name) : peer.name, avatar: mine ? (me?.avatarUrl || me?.image) : peer.avatar })}
                   />
+                ) : tp ? (
+                  <TplPostTile tp={tp} time={hhmm(m.ts)} onOpen={() => openTplPost(tp, mine ? (me?.username || me?.name) : peer.name)} />
                 ) : med && med.kind !== 'video' ? (
                   <img
                     src={med.url} alt="" draggable={false}
@@ -1625,11 +1660,45 @@ function FriendChatNotifier() {
   );
 }
 
+/* TPL-POST-TO-CHAT: Share on a Templates post -> the post goes to that user's Stooorna Ai chat (not Saved Messages).
+ * The existing Share button still calls POST /api/templates-share/send; we first drop the post into the friend chat,
+ * and only if that worked we tell the server to skip the old Saved-Messages copy. If the chat send fails, the old path runs unchanged. */
+function installTplShareToFriendChat() {
+  const w: any = window;
+  if (w.__STOOORNA_TPL_TO_CHAT__) return;
+  w.__STOOORNA_TPL_TO_CHAT__ = true;
+  const orig: typeof fetch = w.fetch.bind(w);
+  w.fetch = async (input: any, init?: RequestInit) => {
+    try {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : '';
+      const method = String(init?.method || 'GET').toUpperCase();
+      if (url && method === 'POST' && /\/api\/templates-share\/send(\?|$)/.test(url) && typeof init?.body === 'string') {
+        const b = JSON.parse(init.body);
+        const to = String(b?.toUserId || ''); const postId = String(b?.postId || '');
+        if (to && postId) {
+          const text = encodeTplPost({ p: postId, k: b?.kind === 'image' ? 'image' : 'video', u: String(b?.mediaUrl || '') });
+          const r = await orig('/api/friend-chat/messages', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ receiverId: to, body: text, clientId: `c_tpl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}` }),
+          });
+          if (r.ok) {
+            try { window.dispatchEvent(new CustomEvent(REFRESH_EVENT)); } catch { /* */ }
+            const h = new Headers(init.headers || {}); h.set('x-tpl-via-friend-chat', '1');
+            return orig(input, { ...init, headers: h });
+          }
+        }
+      }
+    } catch { /* fall through to the normal request */ }
+    return orig(input, init);
+  };
+}
+
 export function installFriendChatPatch() {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
   const w: any = window;
   if (w.__STOOORNA_FRIEND_CHAT_PATCH__) return;
   w.__STOOORNA_FRIEND_CHAT_PATCH__ = FRIEND_CHAT_PATCH_VERSION;
+  try { installTplShareToFriendChat(); } catch { /* */ } // TPL-POST-TO-CHAT
   // NEW-CHAT: drop the cached old chats (v1/v2 + seen counters) so nothing old is tied to this screen
   try {
     Object.keys(localStorage).filter(k => k.startsWith('stooorna_friend_chat_v1_') || k.startsWith('stooorna_friend_chat_v2_') || k.startsWith('stooorna_friend_chat_seen_')).forEach(k => localStorage.removeItem(k));
