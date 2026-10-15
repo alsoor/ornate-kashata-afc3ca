@@ -27071,8 +27071,16 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, [profileSlideOpen]);
   // PROFILE-CALL-INLINE: the friends list opens under the green Call banner, on the profile page itself (no separate dark page).
   const [profileCallListOpen, setProfileCallListOpen] = useState(false);
+  const [downCallBubble, setDownCallBubble] = useState<null | { x: number; top: number }>(null);
   const [profileCallFriends, setProfileCallFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
   const [profileCallLoading, setProfileCallLoading] = useState(false);
+  useEffect(() => {
+    if (!downCallBubble) return;
+    let off = false;
+    if (dockFriendsCache.list) setProfileCallFriends(dockFriendsCache.list); else setProfileCallLoading(true);
+    void refreshDockFriends().then(l => { if (!off && l) setProfileCallFriends(l); }).finally(() => { if (!off) setProfileCallLoading(false); });
+    return () => { off = true; };
+  }, [downCallBubble]);
   useEffect(() => {
     if (!profileCallListOpen) return;
     let off = false;
@@ -27080,7 +27088,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     void refreshDockFriends().then(l => { if (!off && l) setProfileCallFriends(l); }).finally(() => { if (!off) setProfileCallLoading(false); });
     return () => { off = true; };
   }, [profileCallListOpen]);
-  useEffect(() => { if (homeCallUiActive) setProfileCallListOpen(false); }, [homeCallUiActive]); // list turns into the call buttons
+  useEffect(() => { if (homeCallUiActive) { setProfileCallListOpen(false); setDownCallBubble(null); } }, [homeCallUiActive]); // list turns into the call buttons
   useEffect(() => { if (!profileSlideOpen) setProfileCallListOpen(false); }, [profileSlideOpen]);
   // PERF: bubble state lives in an external store (dockSet/dockGet) — this page does NOT subscribe to it,
   // so opening/closing the bubble no longer re-renders this ~12k-line component.
@@ -30147,7 +30155,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           // not ringing: long-press shows friends above the banner; tap one to call directly
                           if (!profilePlusIncomingCallUi.ringing) {
                             const el = e.currentTarget;
-                            callDockLongPress.start(() => openDockShortcut('call', el));
+                            callDockLongPress.start(() => { setDownCallBubble(null); openDockShortcut('call', el); });
                             return;
                           }
                           // ringing: long-press declines the incoming call
@@ -30183,9 +30191,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                             return;
                           }
                           if (!profilePlusIncomingCallUi.ringing) {
-                            // PROFILE-CALL-INLINE: names list opens right under this banner, on the profile page
-                            if (homeCallUiActive) return; // call already running: its buttons are below the banner
-                            setProfileCallListOpen(o => !o);
+                            // DOWN-CALL-BUBBLE: normal click opens a dark bubble BELOW the green banner (same design as the long-press upper bubble)
+                            if (homeCallUiActive) return;
+                            const el = e.currentTarget as HTMLElement;
+                            const r = el.getBoundingClientRect();
+                            setDownCallBubble(prev => prev ? null : { x: r.left + r.width / 2, top: r.bottom });
+                            setProfileCallListOpen(false); // keep old list closed
                             return;
                           }
                           setProfilePlusOpen(false);
@@ -30215,40 +30226,68 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       </button>
                     </div>
                   ) : null}
-                  {/* PROFILE-CALL-INLINE: names list under the Call banner, framed like the icon bar above (black lines + black rounded frame); it turns into the call buttons (slot below) once a call starts */}
-                  {user?.id && profileCallListOpen && !homeCallUiActive ? (
-                    <div style={{ width: '100%', maxWidth: 420, margin: '4px auto 0' }}>
-                      <div style={{
-                        margin: '0 8px calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 24px)', padding: 2, background: 'transparent',
-                        display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 'max(150px, min(42vh, calc(100dvh - 560px)))', overflowY: 'auto', /* PROFILE-CALL-INLINE: list ends above the Android buttons */
-                        WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', boxSizing: 'border-box',
-                      }}>
-                        {profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>Loading…</p>}
-                        {!profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>No friends to call yet</p>}
+                  {/* DOWN-CALL-BUBBLE: dark bubble opens BELOW the green banner on normal click — same design as the upper long-press bubble, tail pointing up */}
+                  {user?.id && downCallBubble && !homeCallUiActive && typeof document !== 'undefined' && createPortal(
+                    <>
+                      <div
+                        onClick={() => setDownCallBubble(null)}
+                        style={{ position: 'fixed', inset: 0, zIndex: 16110, background: 'transparent' }}
+                      />
+                      <div
+                        style={{
+                          position: 'fixed', zIndex: 16111,
+                          left: Math.max(8, Math.min(window.innerWidth - 220, downCallBubble.x - 106)),
+                          top: downCallBubble.top + 8,
+                          width: 212,
+                          maxHeight: 'min(52vh, 420px)',
+                          overflowY: 'auto',
+                          background: 'rgba(6,16,18,0.98)',
+                          border: '1.5px solid #0f4040',
+                          borderRadius: 16,
+                          padding: '10px 8px',
+                          boxShadow: '0 8px 28px rgba(0,0,0,0.55)',
+                          display: 'flex', flexDirection: 'column', gap: 6,
+                          WebkitOverflowScrolling: 'touch',
+                        }}
+                      >
+                        {profileCallLoading && profileCallFriends.length === 0 && (
+                          <p style={{ margin: '10px 4px', textAlign: 'center', fontSize: '0.74rem', color: 'rgba(150,200,200,0.7)' }}>Loading…</p>
+                        )}
+                        {!profileCallLoading && profileCallFriends.length === 0 && (
+                          <p style={{ margin: '10px 4px', textAlign: 'center', fontSize: '0.74rem', color: 'rgba(150,200,200,0.7)' }}>No friends to call yet</p>
+                        )}
                         {profileCallFriends.map(f => (
-                          <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '2px solid #111111', background: '#ffffff', flexShrink: 0 }}>
-                            <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ display: 'block', color: '#111', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
-                              {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: '#6b7280' }}>@{f.username}</span> : null}
-                            </div>
-                            <button
-                              type="button"
-                              aria-label={`Call ${f.name || f.username || 'friend'}`}
-                              onClick={() => {
-                                setProfileCallListOpen(false);
-                                try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
-                              }}
-                              style={{ width: 36, height: 36, borderRadius: '50%', border: '2px solid #16a34a', background: '#22c55e', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}
-                            >
-                              <Phone size={16} strokeWidth={2.3} color="#ffffff" />
-                            </button>
-                          </div>
+                          <button
+                            key={f.friendId}
+                            type="button"
+                            onClick={() => {
+                              setDownCallBubble(null);
+                              try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
+                            }}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '5px 6px', borderRadius: 12, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.06)', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
+                          >
+                            <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={34} style={{ flexShrink: 0, border: 'none' }} />
+                            <span style={{ flex: 1, minWidth: 0, color: '#d7eeee', fontWeight: 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {f.name || f.username || 'Friend'}
+                            </span>
+                            <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', background: 'rgba(34,197,94,0.14)', border: '1.5px solid rgba(34,197,94,0.75)' }}><Phone size={15} strokeWidth={2.4} /></span>
+                          </button>
                         ))}
                       </div>
-                    </div>
-                  ) : null}
-                  {/* CALL-SLOT: the live call controls (owned by the layout) are drawn here, on this page */}
+                      {/* tail pointing UP at the green banner */}
+                      <div
+                        aria-hidden="true"
+                        style={{
+                          position: 'fixed', zIndex: 16112, pointerEvents: 'none',
+                          left: downCallBubble.x - 7, top: downCallBubble.top + 1, width: 14, height: 14,
+                          transform: 'rotate(45deg)', background: 'rgba(6,16,18,0.98)',
+                          borderLeft: '1.5px solid #0f4040', borderTop: '1.5px solid #0f4040',
+                        }}
+                      />
+                    </>,
+                    document.body
+                  )}
+                                    {/* CALL-SLOT: the live call controls (owned by the layout) are drawn here, on this page */}
                   <div id="stooorna-call-slot" data-call-slot-ready={homeCallUiActive ? '1' : '0'} style={{ width: '100%', maxWidth: 420, flexShrink: 0 }} />
                 </div>
               </div>
