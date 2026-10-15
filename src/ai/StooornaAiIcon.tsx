@@ -22,6 +22,7 @@ export default function StooornaAiIcon({ active = false, onClick, onLongPress, s
   const press = useRef({ timer: 0, fired: false });
   const endPress = () => { if (press.current.timer) { window.clearTimeout(press.current.timer); press.current.timer = 0; } };
   const glyph = Math.round(size * 0.74); // globe size
+  const APP_CYAN = '#22BAD9'; // AI-ICON-DARK: app logo color (globe + ring arcs)
 
   return (
     <button
@@ -50,9 +51,9 @@ export default function StooornaAiIcon({ active = false, onClick, onLongPress, s
         height: size,
         borderRadius: '50%', // circle
         position: 'relative',
-        border: hasUnread ? '1.5px solid #93c5fd' : (active ? '1.5px solid #ef4444' : '1px solid rgba(255,255,255,0.9)'),
-        background: hasUnread ? 'linear-gradient(145deg, #3b82f6 0%, #1d4ed8 100%)' : '#ffffff', // AI-ICON-UNREAD: blue chat bubble
-        color: hasUnread ? '#ffffff' : '#000000',
+        border: hasUnread ? '1.5px solid #93c5fd' : (active ? '1.5px solid #ef4444' : '1px solid #000000'),
+        background: hasUnread ? 'linear-gradient(145deg, #3b82f6 0%, #1d4ed8 100%)' : '#000000', // AI-ICON-UNREAD: blue chat bubble · AI-ICON-DARK: black frame (was white)
+        color: hasUnread ? '#ffffff' : '#22BAD9',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -93,7 +94,7 @@ export default function StooornaAiIcon({ active = false, onClick, onLongPress, s
           position: 'absolute',
           inset: 2,
           borderRadius: '50%',
-          background: 'conic-gradient(from 0deg, #000 0deg 70deg, transparent 70deg 180deg, #000 180deg 250deg, transparent 250deg 360deg)',
+          background: 'conic-gradient(from 0deg, #22BAD9 0deg 70deg, transparent 70deg 180deg, #22BAD9 180deg 250deg, transparent 250deg 360deg)',
           WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))',
           mask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))',
           animation: 'stooornaAiIconRing 14s linear infinite',
@@ -101,13 +102,13 @@ export default function StooornaAiIcon({ active = false, onClick, onLongPress, s
         }}
       />}
 
-      {/* Stooorna Ai globe logo (black on white) — slow rotation */}
+      {/* Stooorna Ai globe logo (app cyan on black) — slow rotation */}
       {!hasUnread && <svg
         width={glyph}
         height={glyph}
         viewBox="0 0 24 24"
         fill="none"
-        stroke="#000000"
+        stroke={APP_CYAN}
         strokeWidth={2.4}
         strokeLinecap="round"
         strokeLinejoin="round"
