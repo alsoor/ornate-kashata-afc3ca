@@ -30159,31 +30159,39 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       </button>
                     </div>
                   ) : null}
-                  {/* PROFILE-CALL-INLINE: names list under the Call banner; it turns into the call buttons (slot below) once a call starts */}
+                  {/* PROFILE-CALL-INLINE: names list under the Call banner, framed like the icon bar above (black lines + black rounded frame); it turns into the call buttons (slot below) once a call starts */}
                   {user?.id && profileCallListOpen && !homeCallUiActive ? (
-                    <div style={{ width: '100%', maxWidth: 420, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '42vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
-                      {profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>Loading…</p>}
-                      {!profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>No friends to call yet</p>}
-                      {profileCallFriends.map(f => (
-                        <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1px solid rgba(0,0,0,0.1)', background: '#f6f8f8' }}>
-                          <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ display: 'block', color: '#111', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
-                            {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: '#6b7280' }}>@{f.username}</span> : null}
+                    <div style={{ width: '100%', maxWidth: 420, margin: '4px auto 0' }}>
+                      <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '0 8px 8px' }} />
+                      <div style={{
+                        margin: '0 8px', padding: 10, borderRadius: 16, border: '2px solid #111111', background: '#fafafa',
+                        display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '42vh', overflowY: 'auto',
+                        WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', boxSizing: 'border-box',
+                      }}>
+                        {profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>Loading…</p>}
+                        {!profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>No friends to call yet</p>}
+                        {profileCallFriends.map(f => (
+                          <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '2px solid #111111', background: '#ffffff', flexShrink: 0 }}>
+                            <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ display: 'block', color: '#111', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
+                              {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: '#6b7280' }}>@{f.username}</span> : null}
+                            </div>
+                            <button
+                              type="button"
+                              aria-label={`Call ${f.name || f.username || 'friend'}`}
+                              onClick={() => {
+                                setProfileCallListOpen(false);
+                                try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
+                              }}
+                              style={{ width: 36, height: 36, borderRadius: '50%', ...hdrIconTonePanel(true), display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}
+                            >
+                              <Phone size={16} strokeWidth={2.3} />
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            aria-label={`Call ${f.name || f.username || 'friend'}`}
-                            onClick={() => {
-                              setProfileCallListOpen(false);
-                              try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
-                            }}
-                            style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(34,197,94,0.55)', background: 'rgba(34,197,94,0.16)', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-                          >
-                            <Phone size={16} strokeWidth={2.3} />
-                          </button>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
+                      <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '8px 8px 0' }} />
                     </div>
                   ) : null}
                   {/* CALL-SLOT: the live call controls (owned by the layout) are drawn here, on this page */}
