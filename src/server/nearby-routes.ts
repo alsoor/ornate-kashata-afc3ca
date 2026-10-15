@@ -3,6 +3,7 @@
  * مستقل تماماً: جداول خاصة (nearby_presence / nearby_messages / nearby_profiles / nearby_requests) ولا يلمس أي مسار قديم.
  * كل المسارات تتطلب جلسة مستخدم مسجّل => الميزة محصورة بمستخدمي التطبيق فقط.
  *
+ * [v1.5] الأصدقاء المضافون دردشتهم مباشرة بدون طلب (canChat) · حفظ آخر صورة (COALESCE) + احتياطي الصورة من جدول الحضور · نصوص الإشعارات إنجليزي.
  * [v1.2] نظام الطلبات: ما في دردشة مباشرة — لازم تبعث طلب والطرف الثاني يقبل.
  *   POST   /api/nearby/requests            {to}      => يرسل طلب (وإذا هو أرسل لك قبلها => يتقبّل الاثنين تلقائياً)
  *   GET    /api/nearby/requests                      => { incoming, outgoing, accepted }
@@ -69,13 +70,13 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
     if (!u?.id) { res.status(401).json({ error: 'unauthorized' }); return null; }
     const user = {
       id: String(u.id), name: String(u.name || u.username || 'User'), username: String(u.username || ''),
-      avatar: (u.avatarUrl ?? u.image ?? null) as string | null,
+      avatar: ((u.avatarUrl || u.avatar || u.image || u.profileImage || '') as string) || null,
     };
     if (Date.now() - (profSeen.get(user.id) || 0) > PROFILE_REFRESH_MS) {
       profSeen.set(user.id, Date.now());
       pool.query(
         `INSERT INTO nearby_profiles (user_id, name, username, avatar, updated_at) VALUES (?,?,?,?,?)
-         ON DUPLICATE KEY UPDATE name=VALUES(name), username=VALUES(username), avatar=VALUES(avatar), updated_at=VALUES(updated_at)`,
+         ON DUPLICATE KEY UPDATE name=VALUES(name), username=VALUES(username), avatar=COALESCE(VALUES(avatar), avatar), updated_at=VALUES(updated_at)`,
         [user.id, user.name, user.username || null, user.avatar, Date.now()],
       ).catch(() => { /* */ });
     }
@@ -87,7 +88,8 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
     try { return new Set(((await Promise.resolve(o.friendIds?.(req))) || []).map(String)); } catch { return new Set(); }
   };
   const canChat = async (_req: Request, a: string, b: string): Promise<boolean> => {
-    // [v1.4] لا استثناء للأصدقاء ولا للمحادثات القديمة: لازم طلب مقبول دائماً
+    // [v1.5] الصديق المضاف => دردشة مباشرة بدون طلب؛ غير الأصدقاء لازم طلب مقبول
+    if ((await friendSet(_req)).has(String(b))) return true;
     const [rows]: any = await pool.query(
       `SELECT 1 FROM nearby_requests WHERE status='accepted' AND ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?)) LIMIT 1`, [a, b, b, a]);
     return !!rows?.length;
@@ -100,7 +102,7 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return res.status(400).json({ error: 'bad coords' });
     await pool.query(
       `INSERT INTO nearby_presence (user_id, lat, lng, accuracy, name, avatar, updated_at) VALUES (?,?,?,?,?,?,?)
-       ON DUPLICATE KEY UPDATE lat=VALUES(lat), lng=VALUES(lng), accuracy=VALUES(accuracy), name=VALUES(name), avatar=VALUES(avatar), updated_at=VALUES(updated_at)`,
+       ON DUPLICATE KEY UPDATE lat=VALUES(lat), lng=VALUES(lng), accuracy=VALUES(accuracy), name=VALUES(name), avatar=COALESCE(VALUES(avatar), avatar), updated_at=VALUES(updated_at)`,
       [u.id, lat, lng, Number(req.body?.accuracy) || null, u.name, u.avatar, Date.now()],
     );
     res.json({ ok: true });
@@ -130,16 +132,17 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
       .filter(p => p.distance <= radius).sort((a, b) => a.distance - b.distance).slice(0, 100);
     const ids = users.map(x => x.id);
     const uname: Record<string, string | null> = {};
+    const pav: Record<string, string | null> = {};
     if (ids.length) {
-      const [pr]: any = await pool.query('SELECT user_id, username FROM nearby_profiles WHERE user_id IN (?)', [ids]);
-      (pr as any[]).forEach(r => { uname[String(r.user_id)] = r.username || null; });
+      const [pr]: any = await pool.query('SELECT user_id, username, avatar FROM nearby_profiles WHERE user_id IN (?)', [ids]);
+      (pr as any[]).forEach(r => { uname[String(r.user_id)] = r.username || null; pav[String(r.user_id)] = r.avatar || null; });
     }
     const fr = await friendSet(req);
-    res.json({ users: users.map(x => ({ ...x, username: uname[x.id] ?? null, friend: fr.has(x.id) })) });
+    res.json({ users: users.map(x => ({ ...x, avatar: x.avatar || pav[x.id] || null, username: uname[x.id] ?? null, friend: fr.has(x.id) })) });
   });
 
   /** فحص سريع: هل المسارات مربوطة؟  GET /api/nearby/health */
-  app.get('/api/nearby/health', async (_req, res) => { await ready; res.json({ ok: true, v: '1.4' }); });
+  app.get('/api/nearby/health', async (_req, res) => { await ready; res.json({ ok: true, v: '1.5' }); });
 
   /** معرّفات أصدقائي المضافين. */
   app.get('/api/nearby/friends', async (req, res) => {
@@ -178,7 +181,7 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
     // هو أرسل لي طلب من قبل => أقبله مباشرة
     if (theirs?.status === 'pending') {
       await pool.query(`UPDATE nearby_requests SET status='accepted', updated_at=? WHERE id=?`, [now, theirs.id]);
-      if (o.push) { try { await o.push(to, u.name, 'قبل طلبك — تقدر تدردش معه الحين'); } catch { /* */ } }
+      if (o.push) { try { await o.push(to, u.name, 'Accepted your request — you can chat now'); } catch { /* */ } }
       return res.json({ ok: true, status: 'accepted' });
     }
 
@@ -187,7 +190,7 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
 
     if (mineRow) await pool.query(`UPDATE nearby_requests SET status='pending', created_at=?, updated_at=? WHERE id=?`, [now, now, mineRow.id]);
     else await pool.query(`INSERT INTO nearby_requests (from_id, to_id, status, created_at, updated_at) VALUES (?,?, 'pending', ?, ?)`, [u.id, to, now, now]);
-    if (o.push) { try { await o.push(to, u.name, 'أرسل لك طلب محادثة'); } catch { /* */ } }
+    if (o.push) { try { await o.push(to, u.name, 'Sent you a chat request'); } catch { /* */ } }
     res.json({ ok: true, status: 'pending' });
   });
 
@@ -195,17 +198,20 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
   app.get('/api/nearby/requests', async (req, res) => {
     const u = await me(req, res); if (!u) return;
     const [inc]: any = await pool.query(
-      `SELECT r.id, r.from_id, r.created_at, p.name, p.username, p.avatar FROM nearby_requests r
+      `SELECT r.id, r.from_id, r.created_at, p.name, p.username, COALESCE(NULLIF(p.avatar,''), pp.avatar) AS avatar FROM nearby_requests r
        LEFT JOIN nearby_profiles p ON p.user_id=r.from_id
+       LEFT JOIN nearby_presence pp ON pp.user_id=r.from_id
        WHERE r.to_id=? AND r.status='pending' ORDER BY r.id DESC LIMIT 50`, [u.id]);
     const [out]: any = await pool.query(
-      `SELECT r.id, r.to_id, r.created_at, p.name, p.username, p.avatar FROM nearby_requests r
+      `SELECT r.id, r.to_id, r.created_at, p.name, p.username, COALESCE(NULLIF(p.avatar,''), pp.avatar) AS avatar FROM nearby_requests r
        LEFT JOIN nearby_profiles p ON p.user_id=r.to_id
+       LEFT JOIN nearby_presence pp ON pp.user_id=r.to_id
        WHERE r.from_id=? AND r.status='pending' ORDER BY r.id DESC LIMIT 50`, [u.id]);
     const [acc]: any = await pool.query(
-      `SELECT IF(r.from_id=?, r.to_id, r.from_id) AS peer_id, p.name, p.username, p.avatar FROM nearby_requests r
+      `SELECT IF(r.from_id=?, r.to_id, r.from_id) AS peer_id, p.name, p.username, COALESCE(NULLIF(p.avatar,''), pp.avatar) AS avatar FROM nearby_requests r
        LEFT JOIN nearby_profiles p ON p.user_id=IF(r.from_id=?, r.to_id, r.from_id)
-       WHERE r.status='accepted' AND (r.from_id=? OR r.to_id=?) ORDER BY r.updated_at DESC LIMIT 200`, [u.id, u.id, u.id, u.id]);
+       LEFT JOIN nearby_presence pp ON pp.user_id=IF(r.from_id=?, r.to_id, r.from_id)
+       WHERE r.status='accepted' AND (r.from_id=? OR r.to_id=?) ORDER BY r.updated_at DESC LIMIT 200`, [u.id, u.id, u.id, u.id, u.id]);
     res.json({
       incoming: (inc as any[]).map(r => ({ id: String(r.id), fromId: String(r.from_id), name: r.name || 'User', username: r.username || null, avatar: r.avatar || null, ts: Number(r.created_at) })),
       outgoing: (out as any[]).map(r => ({ id: String(r.id), toId: String(r.to_id), name: r.name || 'User', username: r.username || null, avatar: r.avatar || null, ts: Number(r.created_at) })),
@@ -221,7 +227,7 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
     const r = rows?.[0];
     if (!r) return res.status(404).json({ error: 'not found' });
     await pool.query(`UPDATE nearby_requests SET status=?, updated_at=? WHERE id=?`, [accept ? 'accepted' : 'declined', Date.now(), id]);
-    if (accept && o.push) { try { await o.push(String(r.from_id), u.name, 'قبل طلبك — تقدر تدردش معه الحين'); } catch { /* */ } }
+    if (accept && o.push) { try { await o.push(String(r.from_id), u.name, 'Accepted your request — you can chat now'); } catch { /* */ } }
     res.json({ ok: true, status: accept ? 'accepted' : 'declined' });
   });
 

@@ -1,10 +1,12 @@
 /**
  * NEARBY PATCH  (ملف مستقل — لا يعدّل StooornaAiSheet.tsx ولا friendChatPatch.tsx)
  *
+ * [v1.5] الدردشة داخل حجم الشيت (مثل قائمة الشات) بدل صفحة كاملة · زر رجوع واضح مثل قائمة الأصدقاء · الأصدقاء دخول مباشر والطلب لغير المضافين فقط
+ *         إصلاح الصور (صور الأصدقاء من /api/friends + حفظ آخر صورة) · كل النصوص داخل النقطة الزرقاء إنجليزي (LTR).
  * [v1.3] بحث حيّ فعلياً: يتحدّث تلقائياً ويظهر المضاف وغير المضاف مع اليوزر (بلوتوث أو موقع عبر السيرفر — أندرويد وآيفون).
  *         الموقع يُنشر تلقائياً طالما صفحة Stooorna Ai مفتوحة (إلا لو فعّلت إخفاء موقعي).
  * [v1.2] البحث صار مربع بمنتصف الشاشة فوق قائمة الشات؛ الضغط على شخص يعرض بروفايله (صورة + يوزر + زر طلب)،
- *         الطلب يوصل للطرف الثاني داخل النقطة الزرقاء (تبويب الطلبات)، وبعد القبول فقط ينزل مستطيل تحت مستطيلات الشات ويفتح الدردشة.
+ *         الطلب يوصل للطرف الثاني داخل النقطة الزرقاء (تبويب الطلبات)، وبعد القبول فقط ينزل مستطيل تحت مستطيلات الشات ويOpen chat.
  *
  * ماذا يسوي:
  *  - يضيف نقطة زرقاء صغيرة في صفحة "قائمة الشات" فقط (اللي فيها زر اختر صديقاً) — لا تظهر في رئيسية Stooorna Ai ولا داخل الشات.
@@ -32,7 +34,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-export const NEARBY_PATCH_VERSION = '1.4.0';
+export const NEARBY_PATCH_VERSION = '1.5.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -89,6 +91,7 @@ const E = {
   incoming: [] as ReqIn[],                    // طلبات وصلتني (تظهر داخل النقطة الزرقاء)
   outgoing: {} as Record<string, ReqOut>,    // طلبات أرسلتها وبانتظار الرد
   accepted: new Set<string>(),
+  friendInfo: {} as Record<string, { name: string; avatar?: string | null; username?: string | null }>, // [v1.5] اسم/صورة الأصدقاء من /api/friends
   friends: new Set<string>(),                // الأصدقاء المضافون (من السيرفر) — دردشتهم مباشرة بدون طلب               // من قبلوا => مسموح الدردشة معهم
 };
 
@@ -148,14 +151,35 @@ type OriginFlags = { ble?: boolean; geo?: boolean };
 function loadAccepted(me: string) {
   E.accepted = new Set<string>(jget<string[]>(kAcc(me), [])); // [v1.4] الأصدقاء وقدامى المحادثات لازم يمرون بالطلب والقبول
 }
+const canTalk = (id: string) => E.accepted.has(id) || E.friends.has(id); // [v1.5] الأصدقاء دخول مباشر بدون طلب
 const relOf = (id: string): 'none' | 'out' | 'in' | 'accepted' =>
-  E.accepted.has(id) ? 'accepted' : E.incoming.some(r => r.fromId === id) ? 'in' : E.outgoing[id]?.status === 'pending' ? 'out' : 'none';
+  canTalk(id) ? 'accepted' : E.incoming.some(r => r.fromId === id) ? 'in' : E.outgoing[id]?.status === 'pending' ? 'out' : 'none';
+
+/** [v1.5] الأصدقاء المضافون مباشرة من /api/friends (نفس مصدر قائمة الأصدقاء) — معهم الاسم والصورة. */
+async function loadFriends(me: Me) {
+  if (!isOnline()) return;
+  try {
+    const d = await net('/api/friends');
+    const list: any[] = Array.isArray(d?.accepted) ? d.accepted : Array.isArray(d) ? d : [];
+    list.forEach(o => {
+      const id = String(o?.friendId ?? o?.userId ?? ''); if (!id) return;
+      E.friends.add(id);
+      const prev = E.friendInfo[id];
+      const avatar = o?.avatarUrl || o?.avatar || o?.image || prev?.avatar || null;
+      const name = String(o?.name || o?.displayName || o?.username || prev?.name || 'User');
+      E.friendInfo[id] = { name, avatar, username: o?.username ?? prev?.username ?? null };
+      if (avatar) touchAvatar(me.id, id, avatar, name);
+    });
+    emit('links'); emit('msgs');
+  } catch { /* */ }
+}
 
 /** يجلب الطلبات الواردة/الصادرة والمقبولين من السيرفر. المقبول الجديد ينزل مستطيل تحت قائمة الشات. */
 async function syncLinks(me: Me) {
   if (!isOnline()) return;
   try {
-    try { const f = await net('/api/nearby/friends'); (f?.ids || []).forEach((id: any) => { E.friends.add(String(id)); }); } catch { /* */ } // [v1.4] صديق ≠ مقبول
+    try { const f = await net('/api/nearby/friends'); (f?.ids || []).forEach((id: any) => { E.friends.add(String(id)); }); } catch { /* */ }
+    await loadFriends(me); // [v1.5] الأصدقاء + صورهم
     const d = await net('/api/nearby/requests');
     E.incoming = (d?.incoming || []).map((o: any): ReqIn => ({ id: String(o.id), fromId: String(o.fromId), name: String(o.name || 'User'), username: o.username || null, avatar: o.avatar ?? null, ts: Number(o.ts) || Date.now() }));
     const out: Record<string, ReqOut> = {};
@@ -212,6 +236,8 @@ function touchAvatar(meId: string, id: string, avatar: string, name?: string) {
 }
 const profTried = new Map<string, number>();
 async function hydrateProfile(me: Me, id: string): Promise<{ name?: string; username?: string | null; avatar?: string | null } | null> {
+  const fi = E.friendInfo[id];
+  if (fi?.avatar) { touchAvatar(me.id, id, fi.avatar, fi.name); emit('msgs'); return { name: fi.name, username: fi.username, avatar: fi.avatar }; }
   if (!isOnline() || Date.now() - (profTried.get(id) || 0) < 60000) return null;
   profTried.set(id, Date.now());
   try {
@@ -238,7 +264,7 @@ async function bleStart(me: Me) {
       p.addListener('peerLost', (d: any) => { if (d?.id) { E.blePeers.delete(String(d.id)); emit('peers'); } });
       p.addListener('message', (d: any) => {
         const cur = E.me; if (!cur || !d?.from || !d?.text) return;
-        if (!E.accepted.has(String(d.from))) return; // لا رسائل من أحد قبل القبول
+        if (!canTalk(String(d.from))) return; // لا رسائل من أحد قبل القبول (الأصدقاء مسموحين)
         storeIncoming(cur, { id: String(d.clientId || newId()), clientId: String(d.clientId || newId()), from: String(d.from), to: cur.id, text: String(d.text), ts: Number(d.ts) || Date.now(), status: 'ble' }, d.fromName);
       });
     }
@@ -270,7 +296,7 @@ async function deliver(me: Me, m: Msg): Promise<Msg> {
 }
 
 async function sendText(me: Me, peer: Peer, text: string) {
-  if (!E.accepted.has(peer.id)) return; // لازم يقبل طلبك أولاً
+  if (!canTalk(peer.id)) return; // لازم يقبل طلبك أولاً (إلا الأصدقاء)
   const m: Msg = { id: newId(), clientId: newId(), from: me.id, to: peer.id, text, ts: Date.now(), status: 'pending' };
   storeIncoming(me, m, peer.name);
   touchIndex(me.id, peer, previewOf(text));
@@ -349,25 +375,26 @@ async function publishPos(): Promise<Pos> {
 }
 function geoErr(e: any): string {
   const m = String(e?.message || '');
-  if (e?.code === 1) return 'صلاحية الموقع مرفوضة — فعّلها من إعدادات الجهاز';
-  if (/HTTP 404/.test(m)) return 'السيرفر غير مربوط بمسارات القريبون (nearby-routes في entry.ts)';
-  if (/HTTP 401/.test(m)) return 'سجّل الدخول أولاً';
-  if (/HTTP 5/.test(m)) return 'خطأ في السيرفر — حاول بعد قليل';
-  if (e?.code) return 'تعذّر تحديد الموقع — تأكد أن GPS شغّال';
-  return 'تعذّر الاتصال بالسيرفر';
+  if (e?.code === 1) return 'Location permission denied — enable it in device settings';
+  if (/HTTP 404/.test(m)) return 'Server is missing the Nearby routes (nearby-routes in entry.ts)';
+  if (/HTTP 401/.test(m)) return 'Please sign in first';
+  if (/HTTP 5/.test(m)) return 'Server error — try again shortly';
+  if (e?.code) return 'Could not get your location — make sure GPS is on';
+  return 'Could not reach the server';
 }
 async function geoSearch(radius: number): Promise<Peer[]> {
   await publishPos();
   const d = await net(`/api/nearby?radius=${radius}`);
   return (Array.isArray(d) ? d : d?.users || []).map((o: any): Peer => {
     if (o.friend) E.friends.add(String(o.id));
-    return { id: String(o.id), name: String(o.name || o.username || 'User'), username: o.username ?? null, avatar: o.avatar ?? o.avatarUrl ?? null, geo: true, dist: Number(o.distance), friend: !!o.friend };
+    const fi = E.friendInfo[String(o.id)];
+    return { id: String(o.id), name: String(o.name || o.username || fi?.name || 'User'), username: o.username ?? fi?.username ?? null, avatar: o.avatar || o.avatarUrl || fi?.avatar || null, geo: true, dist: Number(o.distance), friend: !!o.friend };
   });
 }
 
 /* ───────────────────────── Helpers UI ───────────────────────── */
 const hhmm = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-const fmtDist = (d?: number) => (d == null || !Number.isFinite(d) ? '' : d < 1000 ? `${Math.max(1, Math.round(d))} م` : `${(d / 1000).toFixed(1)} كم`);
+const fmtDist = (d?: number) => (d == null || !Number.isFinite(d) ? '' : d < 1000 ? `${Math.max(1, Math.round(d))} m` : `${(d / 1000).toFixed(1)} km`);
 
 function findUser(el: Element): Me | null {
   try {
@@ -391,19 +418,24 @@ function scanSheet(): SheetEls | null {
   return { inner, header, btn };
 }
 
-function Avatar({ p, size = 46 }: { p: { name: string; avatar?: string | null }; size?: number }) {
+const fixUrl = (u?: string | null): string | null => {
+  const s = String(u ?? '').trim(); if (!s) return null;
+  return /^(https?:|data:|blob:|\/)/i.test(s) ? s : '/' + s.replace(/^\.?\//, '');
+};
+function Avatar({ p, size = 46 }: { p: { name: string; avatar?: string | null; id?: string }; size?: number }) {
   const [bad, setBad] = useState(false);
-  useEffect(() => { setBad(false); }, [p.avatar]);
+  const src = fixUrl(p.avatar) || fixUrl(p.id ? E.friendInfo[p.id]?.avatar : null);
+  useEffect(() => { setBad(false); }, [src]);
   return (
     <span style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: size * 0.4 }}>
-      {p.avatar && !bad ? <img src={p.avatar} alt="" onError={() => setBad(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (p.name.trim().charAt(0).toUpperCase() || '?')}
+      {src && !bad ? <img src={src} alt="" onError={() => setBad(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (p.name.trim().charAt(0).toUpperCase() || '?')}
     </span>
   );
 }
 
 /** طبقة على document.body (خارج الـSheet) حتى لا يبتلع الـSheet اللمس — نفس فكرة ModalLayer في friendChatPatch.
  *  modal=true => خلفية معتمة + المحتوى في منتصف الشاشة (مربع). غير ذلك => صفحة كاملة (الدردشة). */
-function Layer({ children, onEsc, modal, dir = 'rtl' }: { children: React.ReactNode; onEsc: () => void; modal?: boolean; dir?: 'rtl' | 'ltr' }) {
+function Layer({ children, onEsc, modal, dir = 'ltr' }: { children: React.ReactNode; onEsc: () => void; modal?: boolean; dir?: 'rtl' | 'ltr' }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current; if (!el) return;
@@ -433,8 +465,8 @@ function Origin({ ble, geo, long }: { ble?: boolean; geo?: boolean; long?: boole
   );
   return (
     <span style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap' }}>
-      {ble && chip('#dcfce7', '#15803d', long ? '🟢 هذا الشخص من البلوتوث' : '🟢 من البلوتوث')}
-      {geo && chip('#dbeafe', '#1d4ed8', long ? '🔵 هذا الشخص كلمته من الموقع' : '🔵 من الموقع')}
+      {ble && chip('#dcfce7', '#15803d', long ? '🟢 Met via Bluetooth' : '🟢 From Bluetooth')}
+      {geo && chip('#dbeafe', '#1d4ed8', long ? '🔵 Met via Location' : '🔵 From Location')}
     </span>
   );
 }
@@ -491,8 +523,8 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
     setSearched(true);
     if (!hidden) void bleStart(me);
     try {
-      if (hidden) { setGeoPeers([]); setGeoNote('موقعك مخفي — ما أحد يشوفك وما تشوف أحد بالموقع'); }
-      else if (!isOnline()) setGeoNote('لا يوجد إنترنت — البحث بالبلوتوث فقط');
+      if (hidden) { setGeoPeers([]); setGeoNote('Your location is hidden — nobody sees you and you see nobody by location'); }
+      else if (!isOnline()) setGeoNote('No internet — searching by Bluetooth only');
       else { try { setGeoPeers(await geoSearch(radius)); setGeoNote(''); } catch (e) { setGeoNote(geoErr(e)); } }
       if (!silent) await new Promise(r => setTimeout(r, 1200));
     } finally { scanRef.current = false; setScanning(false); rerender(); }
@@ -518,32 +550,41 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
     }
   };
 
+  /** [v1.5] صديق/مقبول => دخول مباشر على الدردشة؛ غير مضاف => بروفايل + طلب. */
+  const enter = (p: Peer) => {
+    const fi = E.friendInfo[p.id];
+    const full: Peer = { ...p, name: p.name || fi?.name || 'User', avatar: p.avatar || fi?.avatar || null };
+    touchIndex(me.id, { id: full.id, name: full.name, avatar: full.avatar, ble: full.ble, geo: full.geo });
+    emit('msgs'); onOpenChat(full);
+  };
+  const pickPerson = (p: Peer) => { if (relOf(p.id) === 'accepted') enter(p); else openProfile(p); };
+
   const doRequest = async (p: Peer) => {
     if (busy) return; setBusy(true); setNote('');
     const r = await sendRequest(me, p);
     setBusy(false);
-    setNote(r === 'accepted' ? 'تم القبول — صار يظهر في قائمة الشات' : r === 'pending' ? 'انرسل الطلب — بانتظار قبوله' : r === 'declined' ? 'الطلب انرفض قبل شوي — جرّب بعد فترة' : isOnline() ? 'تعذّر إرسال الطلب' : 'إرسال الطلب يحتاج إنترنت');
+    setNote(r === 'accepted' ? 'Accepted — now in your chat list' : r === 'pending' ? 'Request sent — waiting for acceptance' : r === 'declined' ? 'Request was declined recently — try again later' : isOnline() ? 'Could not send the request' : 'Sending a request needs internet');
     rerender();
   };
   const doRespond = async (r: ReqIn, accept: boolean) => {
     if (busy) return; setBusy(true);
     const ok = await respondRequest(me, r, accept);
     setBusy(false);
-    if (!ok) setNote('تعذّر تنفيذ الإجراء — تأكد من الإنترنت');
-    else if (accept) setNote(`تم قبول ${r.name} — نزل في قائمة الشات`);
+    if (!ok) setNote('Action failed — check your internet');
+    else if (accept) setNote(`${r.name} accepted — added to your chat list`);
     rerender();
   };
 
   const pill: React.CSSProperties = { border: 'none', borderRadius: 999, padding: '7px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' };
   const reqButton = (p: Peer) => {
     const rel = relOf(p.id);
-    if (rel === 'accepted') return <span style={{ ...pill, background: 'rgba(34,197,94,.18)', color: '#4ade80', cursor: 'default' }}>{E.friends.has(p.id) ? 'صديق ✓' : 'مقبول ✓'}</span>;
-    if (rel === 'out') return <span style={{ ...pill, background: 'rgba(255,255,255,.1)', color: '#cbd5e1', cursor: 'default' }}>تم الإرسال ✓</span>;
-    if (rel === 'in') { const r = E.incoming.find(x => x.fromId === p.id); return <button type="button" disabled={busy || !r} onClick={() => r && void doRespond(r, true)} style={{ ...pill, background: '#16a34a', color: '#fff' }}>قبول</button>; }
-    return <button type="button" disabled={busy} onClick={() => void doRequest(p)} style={{ ...pill, background: BLUE, color: '#fff' }}>{busy ? '…' : 'طلب +'}</button>;
+    if (rel === 'accepted') return <span style={{ ...pill, background: 'rgba(34,197,94,.18)', color: '#4ade80', cursor: 'default' }}>{E.friends.has(p.id) ? 'Friend ✓' : 'Accepted ✓'}</span>;
+    if (rel === 'out') return <span style={{ ...pill, background: 'rgba(255,255,255,.1)', color: '#cbd5e1', cursor: 'default' }}>Sent ✓</span>;
+    if (rel === 'in') { const r = E.incoming.find(x => x.fromId === p.id); return <button type="button" disabled={busy || !r} onClick={() => r && void doRespond(r, true)} style={{ ...pill, background: '#16a34a', color: '#fff' }}>Accept</button>; }
+    return <button type="button" disabled={busy} onClick={() => void doRequest(p)} style={{ ...pill, background: BLUE, color: '#fff' }}>{busy ? '…' : 'Request +'}</button>;
   };
 
-  const bleMsg = E.ble === 'unavailable' ? 'البلوتوث غير متاح (الإضافة الأصلية غير مثبتة)' : E.ble === 'denied' ? 'صلاحية البلوتوث/القريبين مرفوضة' : E.ble === 'on' ? 'البلوتوث شغّال' : E.ble === 'starting' ? 'جارٍ تشغيل البلوتوث…' : '';
+  const bleMsg = E.ble === 'unavailable' ? 'Bluetooth unavailable (native plugin not installed)' : E.ble === 'denied' ? 'Bluetooth / Nearby permission denied' : E.ble === 'on' ? 'Bluetooth is on' : E.ble === 'starting' ? 'Starting Bluetooth…' : '';
   const pendingOut = Object.values(E.outgoing).filter(o => o.status === 'pending');
   const reqCount = E.incoming.length;
   const tabBtn = (id: 'find' | 'requests', label: string, count?: number) => (
@@ -554,18 +595,18 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
   );
 
   return (
-    <div dir="rtl" style={{ width: 'min(92vw, 380px)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', borderRadius: 26, background: CARD_BG, color: '#fff', border: '1px solid rgba(255,255,255,.1)', boxShadow: '0 24px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(59,130,246,.18)', overflow: 'hidden' }}>
+    <div dir="ltr" style={{ width: 'min(92vw, 380px)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', borderRadius: 26, background: CARD_BG, color: '#fff', border: '1px solid rgba(255,255,255,.1)', boxShadow: '0 24px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(59,130,246,.18)', overflow: 'hidden' }}>
       <style>{`@keyframes snaRing { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(1.9); opacity: 0; } }`}</style>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px 8px' }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: BLUE, boxShadow: '0 0 10px rgba(59,130,246,.9)' }} />
-        <div style={{ flex: 1, fontWeight: 800, fontSize: 18 }}>القريبون</div>
+        <div style={{ flex: 1, fontWeight: 800, fontSize: 18 }}>Nearby</div>
         <button type="button" aria-label="Close" onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,.1)', color: '#fff', fontSize: 16, cursor: 'pointer', padding: 0 }}>✕</button>
       </div>
 
       <div style={{ display: 'flex', gap: 6, margin: '0 14px 8px', padding: 4, borderRadius: 16, background: 'rgba(255,255,255,.05)' }}>
-        {tabBtn('find', 'بحث')}
-        {tabBtn('requests', 'الطلبات', reqCount)}
+        {tabBtn('find', 'Search')}
+        {tabBtn('requests', 'Requests', reqCount)}
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '6px 14px 16px' }}>
@@ -574,22 +615,22 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
         {tab === 'find' && sel && (
           /* ── بروفايل الشخص: صورة + اسم وزر الطلب بجانبه (يمين) + اليوزر ── */
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, paddingTop: 4 }}>
-            <button type="button" onClick={() => { setSel(null); setNote(''); }} style={{ alignSelf: 'flex-start', border: 'none', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer', padding: 0 }}>رجوع للنتائج ›</button>
+            <button type="button" onClick={() => { setSel(null); setNote(''); }} style={{ alignSelf: 'flex-start', border: 'none', background: 'transparent', color: '#94a3b8', fontSize: 13, cursor: 'pointer', padding: 0 }}>‹ Back to results</button>
             <span style={{ padding: 3, borderRadius: '50%', background: `linear-gradient(145deg, ${BLUE}, #22c55e)` }}>
               <span style={{ display: 'block', padding: 3, borderRadius: '50%', background: '#0a1f1a' }}><Avatar p={sel} size={92} /></span>
             </span>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 12, width: '100%' }}>
               {reqButton(sel)}
               <div style={{ minWidth: 0, textAlign: 'start' }}>
                 <div dir="auto" style={{ fontWeight: 800, fontSize: 18, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 190 }}>{sel.name}</div>
-                <div dir="ltr" style={{ fontSize: 13, color: '#93c5fd', textAlign: 'right' }}>{sel.username ? `@${String(sel.username).replace(/^@/, '')}` : ' '}</div>
+                <div dir="ltr" style={{ fontSize: 13, color: '#93c5fd', textAlign: 'left' }}>{sel.username ? `@${String(sel.username).replace(/^@/, '')}` : ' '}</div>
               </div>
             </div>
             <Origin ble={sel.ble} geo={sel.geo} />
-            {sel.dist != null && <div style={{ fontSize: 12, color: '#94a3b8' }}>على بعد {fmtDist(sel.dist)}</div>}
+            {sel.dist != null && <div style={{ fontSize: 12, color: '#94a3b8' }}>{fmtDist(sel.dist)} away</div>}
             {relOf(sel.id) === 'accepted'
-              ? <button type="button" onClick={() => onOpenChat(sel)} style={{ ...pill, background: '#16a34a', color: '#fff', padding: '10px 26px', fontSize: 14 }}>فتح الدردشة</button>
-              : <div style={{ fontSize: 12.5, color: '#94a3b8', textAlign: 'center', lineHeight: 1.7 }}>بعد ما يقبل طلبك ينزل في قائمة الشات وتقدر تدردش معه</div>}
+              ? <button type="button" onClick={() => enter(sel)} style={{ ...pill, background: '#16a34a', color: '#fff', padding: '10px 26px', fontSize: 14 }}>Open chat</button>
+              : <div style={{ fontSize: 12.5, color: '#94a3b8', textAlign: 'center', lineHeight: 1.7 }}>Once they accept your request they appear in your chat list and you can chat</div>}
           </div>
         )}
 
@@ -599,27 +640,27 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
               <button type="button" onClick={() => void search()} disabled={scanning} aria-label="Search nearby"
                 style={{ position: 'relative', width: 88, height: 88, borderRadius: '50%', border: 'none', background: `linear-gradient(145deg, ${BLUE}, #1d4ed8)`, color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 0 28px rgba(59,130,246,.55)' }}>
                 {scanning && [0, 1].map(i => <span key={i} style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(96,165,250,.75)', animation: `snaRing 1.8s ease-out ${i * 0.9}s infinite`, pointerEvents: 'none' }} />)}
-                <span style={{ position: 'relative' }}>{scanning ? 'جارٍ البحث' : 'تحديث'}</span>
+                <span style={{ position: 'relative' }}>{scanning ? 'Searching' : 'Refresh'}</span>
               </button>
               <div style={{ display: 'flex', gap: 6 }}>
-                {[[500, '500 م'], [3000, '3 كم'], [20000, '20 كم']].map(([v, l]) => (
+                {[[500, '500 m'], [3000, '3 km'], [20000, '20 km']].map(([v, l]) => (
                   <button key={v} type="button" onClick={() => setRadius(Number(v))} style={{ border: '1px solid ' + (radius === v ? BLUE : 'rgba(255,255,255,.18)'), background: radius === v ? 'rgba(59,130,246,.2)' : 'transparent', color: radius === v ? '#93c5fd' : '#cbd5e1', borderRadius: 999, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>{l}</button>
                 ))}
               </div>
-              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>{[bleMsg, geoNote].filter(Boolean).join(' · ') || 'تحديث تلقائي — يظهر الأشخاص مباشرة بالبلوتوث أو الموقع (مستخدمو التطبيق فقط)'}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>{[bleMsg, geoNote].filter(Boolean).join(' · ') || 'Auto-refresh — people appear live via Bluetooth or location (app users only)'}</div>
               <label style={{ fontSize: 12, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
-                <input type="checkbox" checked={hidden} onChange={toggleHidden} /> إخفاء موقعي عن الآخرين
+                <input type="checkbox" checked={hidden} onChange={toggleHidden} /> Hide my location from others
               </label>
             </div>
 
             {searched && (
               <div>
-                <div style={{ fontWeight: 800, fontSize: 13, margin: '2px 2px 8px', color: '#cbd5e1' }}>النتائج ({peers.length}) — اضغط على شخص لعرض بروفايله</div>
-                {peers.length === 0 && !scanning && <div style={{ color: '#64748b', fontSize: 14, padding: 10, textAlign: 'center', lineHeight: 1.7 }}>ما لقينا أحد قريب الآن — يظهر هنا مباشرة أول ما يفتح صفحة Stooorna Ai وموقعه أو البلوتوث شغّال</div>}
+                <div style={{ fontWeight: 800, fontSize: 13, margin: '2px 2px 8px', color: '#cbd5e1' }}>Results ({peers.length}) — tap a person to view their profile</div>
+                {peers.length === 0 && !scanning && <div style={{ color: '#64748b', fontSize: 14, padding: 10, textAlign: 'center', lineHeight: 1.7 }}>Nobody nearby right now — people appear here as soon as they open Stooorna Ai with location or Bluetooth on</div>}
                 {peers.map(p => (
-                  <PersonRow key={p.id} p={p} onClick={() => openProfile(p)}
-                    sub={<>{p.friend || E.friends.has(p.id) ? '⭐ صديق' : 'غير مضاف'}{p.username ? ` · @${String(p.username).replace(/^@/, '')}` : ''} · {p.ble ? '🟢 بلوتوث' : ''}{p.ble && p.geo ? ' · ' : ''}{p.geo ? `🔵 ${fmtDist(p.dist) || 'نفس المنطقة'}` : ''}</>}
-                    right={relOf(p.id) === 'accepted' ? <span style={{ fontSize: 11, color: '#4ade80' }}>مقبول</span> : relOf(p.id) === 'out' ? <span style={{ fontSize: 11, color: '#94a3b8' }}>بانتظار الرد</span> : relOf(p.id) === 'in' ? <span style={{ fontSize: 11, color: '#fbbf24' }}>طلب وارد</span> : undefined} />
+                  <PersonRow key={p.id} p={p} onClick={() => pickPerson(p)}
+                    sub={<>{p.friend || E.friends.has(p.id) ? '⭐ Friend' : 'Not added'}{p.username ? ` · @${String(p.username).replace(/^@/, '')}` : ''} · {p.ble ? '🟢 Bluetooth' : ''}{p.ble && p.geo ? ' · ' : ''}{p.geo ? `🔵 ${fmtDist(p.dist) || 'Same area'}` : ''}</>}
+                    right={relOf(p.id) === 'accepted' ? <span style={{ fontSize: 11, color: '#4ade80' }}>Accepted</span> : relOf(p.id) === 'out' ? <span style={{ fontSize: 11, color: '#94a3b8' }}>Awaiting reply</span> : relOf(p.id) === 'in' ? <span style={{ fontSize: 11, color: '#fbbf24' }}>Incoming request</span> : undefined} />
                 ))}
               </div>
             )}
@@ -628,21 +669,21 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
 
         {tab === 'requests' && (
           <>
-            <div style={{ fontWeight: 800, fontSize: 13, margin: '2px 2px 8px', color: '#cbd5e1' }}>طلبات واردة</div>
-            {E.incoming.length === 0 && <div style={{ color: '#64748b', fontSize: 14, padding: '6px 10px 12px', textAlign: 'center' }}>لا توجد طلبات حالياً</div>}
+            <div style={{ fontWeight: 800, fontSize: 13, margin: '2px 2px 8px', color: '#cbd5e1' }}>Incoming requests</div>
+            {E.incoming.length === 0 && <div style={{ color: '#64748b', fontSize: 14, padding: '6px 10px 12px', textAlign: 'center' }}>No requests right now</div>}
             {E.incoming.map(r => (
-              <PersonRow key={r.id} p={r} sub={r.username ? `@${String(r.username).replace(/^@/, '')}` : 'يبي يدردش معك'}
+              <PersonRow key={r.id} p={r} sub={r.username ? `@${String(r.username).replace(/^@/, '')}` : 'Wants to chat with you'}
                 right={
                   <span style={{ display: 'flex', gap: 6 }}>
-                    <button type="button" disabled={busy} onClick={() => void doRespond(r, true)} style={{ ...pill, padding: '6px 12px', background: '#16a34a', color: '#fff' }}>قبول</button>
-                    <button type="button" disabled={busy} onClick={() => void doRespond(r, false)} style={{ ...pill, padding: '6px 12px', background: 'rgba(255,255,255,.12)', color: '#e2e8f0' }}>رفض</button>
+                    <button type="button" disabled={busy} onClick={() => void doRespond(r, true)} style={{ ...pill, padding: '6px 12px', background: '#16a34a', color: '#fff' }}>Accept</button>
+                    <button type="button" disabled={busy} onClick={() => void doRespond(r, false)} style={{ ...pill, padding: '6px 12px', background: 'rgba(255,255,255,.12)', color: '#e2e8f0' }}>Decline</button>
                   </span>
                 } />
             ))}
-            {pendingOut.length > 0 && <div style={{ fontWeight: 800, fontSize: 13, margin: '12px 2px 8px', color: '#cbd5e1' }}>طلبات أرسلتها</div>}
+            {pendingOut.length > 0 && <div style={{ fontWeight: 800, fontSize: 13, margin: '12px 2px 8px', color: '#cbd5e1' }}>Sent requests</div>}
             {pendingOut.map(o => (
-              <PersonRow key={o.id} p={o} sub={o.username ? `@${String(o.username).replace(/^@/, '')}` : 'بانتظار الرد'}
-                right={<button type="button" onClick={() => void cancelRequest(me, o.toId)} style={{ ...pill, padding: '6px 12px', background: 'rgba(255,255,255,.1)', color: '#cbd5e1' }}>إلغاء</button>} />
+              <PersonRow key={o.id} p={o} sub={o.username ? `@${String(o.username).replace(/^@/, '')}` : 'Awaiting reply'}
+                right={<button type="button" onClick={() => void cancelRequest(me, o.toId)} style={{ ...pill, padding: '6px 12px', background: 'rgba(255,255,255,.1)', color: '#cbd5e1' }}>Cancel</button>} />
             ))}
           </>
         )}
@@ -651,17 +692,34 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
   );
 }
 
-/* ───────────────────────── الدردشة (صفحة كاملة — فقط بعد القبول) ───────────────────────── */
+/* ───────────────────────── الدردشة (داخل الشيت بنفس حجم قائمة الشات — [v1.5]) ───────────────────────── */
+function BackArrow() {
+  return (
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="m12 19-7-7 7-7" /><path d="M19 12H5" />
+    </svg>
+  );
+}
+
 function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => void }) {
   const [, force] = useState(0);
   const rerender = useCallback(() => force(x => x + 1), []);
   const [text, setText] = useState('');
   const [msgs, setMsgs] = useState<Msg[]>(() => loadMsgs(me.id, peer.id));
-  const [avatar, setAvatar] = useState<string | null>(peer.avatar ?? loadIndex(me.id).find(c => c.id === peer.id)?.avatar ?? null);
+  const [avatar, setAvatar] = useState<string | null>(peer.avatar ?? loadIndex(me.id).find(c => c.id === peer.id)?.avatar ?? E.friendInfo[peer.id]?.avatar ?? null);
   const [reqBusy, setReqBusy] = useState(false);
   const [reqNote, setReqNote] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
+  /* keep touches inside the panel away from the sheet (drag-to-close etc.) */
+  useEffect(() => {
+    const el = panelRef.current; if (!el) return;
+    const stop = (e: Event) => e.stopPropagation();
+    const evs = ['pointerdown', 'pointermove', 'touchstart', 'touchmove', 'mousedown', 'wheel'];
+    evs.forEach(n => el.addEventListener(n, stop, { passive: true } as AddEventListenerOptions));
+    return () => evs.forEach(n => el.removeEventListener(n, stop));
+  }, []);
   useEffect(() => { const offs = [on('peers', rerender), on('ble', rerender), on('links', rerender)]; return () => offs.forEach(f => f()); }, [rerender]);
   useEffect(() => {
     E.openPeer = peer.id; clearUnread(me.id, peer.id); emit('msgs');
@@ -673,44 +731,52 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
     return () => { off(); window.clearInterval(t); E.openPeer = ''; };
   }, [peer.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs.length]);
+  useEffect(() => { const fi = E.friendInfo[peer.id]; if (!avatar && fi?.avatar) setAvatar(fi.avatar); }); // friend photo may arrive later
 
   const rel = relOf(peer.id);
   const accepted = rel === 'accepted';
+  const isFriend = E.friends.has(peer.id);
   const submit = () => { const t = text.trim(); if (!t || !accepted) return; setText(''); void sendText(me, { ...peer, avatar }, t); };
   const invite = async () => {
     if (reqBusy) return; setReqBusy(true); setReqNote('');
     const r = await sendRequest(me, peer);
     setReqBusy(false);
-    setReqNote(r === 'accepted' ? 'تم القبول — تقدر تدردش الحين' : r === 'pending' ? 'انرسل الطلب — بانتظار قبوله' : r === 'declined' ? 'الطلب انرفض قبل شوي — جرّب بعد فترة' : isOnline() ? 'تعذّر إرسال الطلب' : 'إرسال الطلب يحتاج إنترنت');
+    setReqNote(r === 'accepted' ? 'Accepted — you can chat now' : r === 'pending' ? 'Request sent — waiting for acceptance' : r === 'declined' ? 'Request was declined recently — try again later' : isOnline() ? 'Could not send the request' : 'Sending a request needs internet');
     rerender();
   };
   const reach = bleReachable(peer.id) ? 'ble' : isOnline() ? 'net' : 'off';
   const meta = loadIndex(me.id).find(c => c.id === peer.id);
-  const shown = { name: peer.name, avatar };
+  const shown = { id: peer.id, name: peer.name, avatar };
 
   return (
-    <>
-      {/* [v1.4] ترتيب إنجليزي (LTR): رجوع + صورة + اسم على اليسار، حذف على اليمين */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'max(12px, env(safe-area-inset-top)) 14px 12px', borderBottom: '1px solid #eee', background: '#fff' }}>
+    <div ref={panelRef} data-nearby-chat="1" dir="ltr"
+      style={{ position: 'absolute', inset: 0, zIndex: 60, display: 'flex', flexDirection: 'column', background: '#fff', color: '#111', borderRadius: 'inherit', overflow: 'hidden', fontFamily: 'inherit', pointerEvents: 'auto', touchAction: 'auto' }}>
+      {/* header — same back button as the friends list: dark circle + clear white arrow */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 12px', borderBottom: '1px solid #eee', background: '#fff', flexShrink: 0 }}>
         <button type="button" aria-label="Back" onClick={onClose}
-          style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: GREEN, color: '#fff', fontSize: 20, cursor: 'pointer', padding: 0, flexShrink: 0 }}>←</button>
+          style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: GREEN, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0, boxShadow: '0 4px 12px rgba(0,0,0,0.25)', WebkitTapHighlightColor: 'transparent' }}>
+          <BackArrow />
+        </button>
         <Avatar p={shown} size={40} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div dir="auto" style={{ fontWeight: 800, fontSize: 16, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{peer.name}</div>
+          <div dir="auto" style={{ fontWeight: 800, fontSize: 16, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{peer.name}{isFriend ? ' ⭐' : ''}</div>
           <div dir="auto" style={{ fontSize: 12, color: reach === 'ble' ? '#16a34a' : reach === 'net' ? BLUE : '#9ca3af' }}>
-            {reach === 'ble' ? 'متصل بالبلوتوث — مباشر' : reach === 'net' ? 'عبر الإنترنت' : '⏳ لا يوجد اتصال — تُحفظ وتُرسل تلقائياً'}
+            {reach === 'ble' ? 'Connected via Bluetooth — direct' : reach === 'net' ? 'Via internet' : '⏳ No connection — saved and sent automatically'}
           </div>
         </div>
-        <button type="button" aria-label="Delete chat" onClick={() => { if (window.confirm('حذف هذه المحادثة من جهازك؟')) { removeConv(me.id, peer.id); onClose(); } }}
-          style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: '#f3f4f6', cursor: 'pointer', padding: 0, fontSize: 16, flexShrink: 0 }}>🗑</button>
+        <button type="button" aria-label="Delete chat" onClick={() => { if (window.confirm('Delete this conversation from your device?')) { removeConv(me.id, peer.id); onClose(); } }}
+          style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: '#f3f4f6', color: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+        </button>
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 6, background: '#f7f8f8' }}>
+
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 6, background: '#f7f8f8' }}>
         {(meta?.ble || meta?.geo || peer.ble || peer.geo) && (
           <div style={{ position: 'sticky', top: 0, zIndex: 2, alignSelf: 'center', margin: '8px 0 4px', background: '#f7f8f8', padding: '2px 0' }}>
             <Origin ble={meta?.ble || peer.ble} geo={meta?.geo || peer.geo} long />
           </div>
         )}
-        {msgs.length === 0 && <div dir="auto" style={{ margin: 'auto', color: '#9ca3af', fontSize: 14 }}>{accepted ? `ابدأ الدردشة مع ${peer.name}` : 'أرسل طلب دردشة — ينفتح الشات بعد ما يقبل'}</div>}
+        {msgs.length === 0 && <div dir="auto" style={{ margin: 'auto', color: '#9ca3af', fontSize: 14, textAlign: 'center' }}>{accepted ? `Start chatting with ${peer.name}` : 'Send a chat request — the chat opens once they accept'}</div>}
         {msgs.map(m => {
           const mine = m.from === me.id;
           return (
@@ -724,27 +790,29 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
         })}
         <div ref={endRef} />
       </div>
+
       {accepted ? (
-        /* [v1.4] المربع يسار والإرسال يمين */
-        <div style={{ display: 'flex', gap: 8, padding: '10px 12px max(12px, env(safe-area-inset-bottom))', borderTop: '1px solid #eee', background: '#fff' }}>
-          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submit(); }} dir="auto" placeholder="اكتب رسالة…"
+        <div style={{ display: 'flex', gap: 8, padding: '10px 12px 12px', borderTop: '1px solid #eee', background: '#fff', flexShrink: 0 }}>
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submit(); }} dir="auto" placeholder="Type a message…"
             style={{ flex: 1, minWidth: 0, height: 46, borderRadius: 23, border: 'none', background: GREEN, color: '#fff', padding: '0 18px', fontSize: 15, outline: 'none' }} />
-          <button type="button" onClick={submit} aria-label="Send" style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: BLUE, color: '#fff', fontSize: 18, cursor: 'pointer', padding: 0, flexShrink: 0 }}>➤</button>
+          <button type="button" onClick={submit} aria-label="Send" style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: BLUE, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
+          </button>
         </div>
       ) : (
-        /* [v1.4] لا دردشة قبل القبول: دعوة (طلب) بدل مربع الكتابة */
-        <div style={{ padding: '12px 14px max(14px, env(safe-area-inset-bottom))', borderTop: '1px solid #eee', background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        /* not a friend and not accepted yet => request instead of the message box */
+        <div style={{ padding: '12px 14px 14px', borderTop: '1px solid #eee', background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, flexShrink: 0 }}>
           {reqNote && <div dir="auto" style={{ fontSize: 13, color: '#1d4ed8', textAlign: 'center' }}>{reqNote}</div>}
           {rel === 'in'
             ? <button type="button" disabled={reqBusy} onClick={async () => { const r = E.incoming.find(x => x.fromId === peer.id); if (!r) return; setReqBusy(true); await respondRequest(me, r, true); setReqBusy(false); rerender(); }}
-                style={{ border: 'none', borderRadius: 999, padding: '12px 30px', fontSize: 15, fontWeight: 800, background: '#16a34a', color: '#fff', cursor: 'pointer' }}>قبول طلبه</button>
+                style={{ border: 'none', borderRadius: 999, padding: '12px 30px', fontSize: 15, fontWeight: 800, background: '#16a34a', color: '#fff', cursor: 'pointer' }}>Accept request</button>
             : rel === 'out'
-              ? <div dir="auto" style={{ fontSize: 14, color: '#6b7280' }}>⏳ تم إرسال الطلب — بانتظار القبول</div>
+              ? <div dir="auto" style={{ fontSize: 14, color: '#6b7280' }}>⏳ Request sent — waiting for acceptance</div>
               : <button type="button" disabled={reqBusy} onClick={() => void invite()}
-                  style={{ border: 'none', borderRadius: 999, padding: '12px 30px', fontSize: 15, fontWeight: 800, background: BLUE, color: '#fff', cursor: 'pointer' }}>{reqBusy ? '…' : 'إرسال طلب دردشة +'}</button>}
+                  style={{ border: 'none', borderRadius: 999, padding: '12px 30px', fontSize: 15, fontWeight: 800, background: BLUE, color: '#fff', cursor: 'pointer' }}>{reqBusy ? '…' : 'Send chat request +'}</button>}
         </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -857,7 +925,7 @@ function NearbyPatch() {
           // [v1.4] رسالة جاتني من شخص ما عندي له مستطيل => أنزّله في القائمة (مع صورته) عشان تنشاف
           const have = new Set(loadIndex(me.id).map(c => c.id));
           for (const sid of Object.keys(E.srvUnread)) {
-            if (have.has(sid) || !E.accepted.has(sid)) continue;
+            if (have.has(sid) || !canTalk(sid)) continue;
             touchIndex(me.id, { id: sid, name: 'User' });
             const pr = await hydrateProfile(me, sid);
             if (pr?.name) touchIndex(me.id, { id: sid, name: pr.name, avatar: pr.avatar });
@@ -886,7 +954,7 @@ function NearbyPatch() {
       {/* النقطة الزرقاء الصغيرة: فقط في صفحة قائمة الشات، بجانب زر القائمة (مكانها في الصورة ≈ 100px من اليمين) */}
       {listBox && !selecting && createPortal(
         <div data-sfc-portal="1" style={{ position: 'absolute', right: 83, top: 0, bottom: 0, display: 'flex', alignItems: 'center', zIndex: 9, pointerEvents: 'none' }}>
-          <button type="button" aria-label="Nearby" title="القريبون" onClick={() => setView({ mode: 'search' })}
+          <button type="button" aria-label="Nearby" title="Nearby" onClick={() => setView({ mode: 'search' })}
             style={{ pointerEvents: 'auto', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}>
             <span style={{ width: 10, height: 10, borderRadius: '50%', background: BLUE, position: 'relative', display: 'block' }}>
               {badge > 0 && <span style={{ position: 'absolute', top: -9, left: 7, minWidth: 14, height: 14, borderRadius: 7, background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 800, lineHeight: '14px', textAlign: 'center', padding: '0 3px', boxSizing: 'border-box' }}>{badge > 99 ? '99+' : badge}</span>}
@@ -900,9 +968,10 @@ function NearbyPatch() {
         <Layer modal onEsc={() => setView(null)}><NearbyDialog me={me} onClose={() => setView(null)} onOpenChat={(p) => setView({ mode: 'chat', peer: p })} /></Layer>,
         document.body,
       )}
+      {/* [v1.5] الدردشة داخل الشيت نفسه (بنفس حجم قائمة الشات) وليست صفحة كاملة */}
       {view?.mode === 'chat' && createPortal(
-        <Layer dir="ltr" onEsc={() => setView(null)}><NearbyChat me={me} peer={view.peer} onClose={() => setView(null)} /></Layer>,
-        document.body,
+        <NearbyChat me={me} peer={view.peer} onClose={() => setView(null)} />,
+        sheet.inner,
       )}
     </>
   );
