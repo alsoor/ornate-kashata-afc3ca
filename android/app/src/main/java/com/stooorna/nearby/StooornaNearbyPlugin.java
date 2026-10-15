@@ -1,14 +1,23 @@
 package com.stooorna.nearby;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
+import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.provider.Settings;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
 import androidx.core.content.ContextCompat;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -32,6 +41,7 @@ import com.google.android.gms.nearby.connection.Strategy;
 import com.google.android.gms.tasks.Task;
 import com.google.android.gms.tasks.Tasks;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.nio.charset.StandardCharsets;
@@ -49,7 +59,10 @@ import java.util.Set;
  *   الأحداث:  peerFound {id,name} · peerLost {id} · message {from,fromName,text,clientId,ts}
  *
  * ملاحظات:
- *  - يعمل والتطبيق مفتوح (Foreground).
+ *  - [v2] يعمل بالخلفية: عند start() تبدأ NearbyKeepAliveService (إشعار دائم) فيظل المستخدم ظاهراً بالبلوتوث والـGPS حتى لو طلع من التطبيق.
+ *    الرسائل الواردة والتطبيق بالخلفية تُحفظ وتظهر كإشعار، وتُسلَّم للواجهة عند الرجوع (drainPending).
+ *    الدوال الجديدة: status() · drainPending() · batterySettings() — و start() تقبل {serverUrl, geo}.
+ *    يلزم في AndroidManifest: الخدمة + صلاحيات FOREGROUND_SERVICE (انظر ملف المانيفست المرفق).
  *  - أندرويد↔أندرويد فقط (آيفون يستخدم MultipeerConnectivity وهو بروتوكول مختلف).
  *  - لازم خدمات Google Play على الجهاز.
  *  - معرّف المستخدم + الاسم يُنشران كاسم النقطة: "id|name".
@@ -59,7 +72,8 @@ import java.util.Set;
     permissions = {
         @Permission(alias = "loc", strings = { Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION }),
         @Permission(alias = "bt12", strings = { "android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_ADVERTISE", "android.permission.BLUETOOTH_CONNECT" }),
-        @Permission(alias = "wifi13", strings = { "android.permission.NEARBY_WIFI_DEVICES" })
+        @Permission(alias = "wifi13", strings = { "android.permission.NEARBY_WIFI_DEVICES" }),
+        @Permission(alias = "notif13", strings = { "android.permission.POST_NOTIFICATIONS" })
     }
 )
 public class StooornaNearbyPlugin extends Plugin {
@@ -72,6 +86,12 @@ public class StooornaNearbyPlugin extends Plugin {
     private String myId = "";
     private String myName = "";
     private String myEndpoint = "";
+    private String serverUrl = "";      // [v2] لتبليغ السيرفر بمن لقطهم البلوتوث
+    private boolean geoWanted = false;  // [v2] هل الخدمة تنشر الموقع؟
+    private boolean paused = false;     // [v2] الواجهة بالخلفية
+    private final List<JSObject> bgMsgs = new ArrayList<>(); // [v2] رسائل وصلت والواجهة بالخلفية
+    private static final String MSG_CHANNEL = "stooorna_nearby_msg";
+    private int notifSeq = 0;
 
     // كل الخرائط تُلمس من الخيط الرئيسي فقط
     private final Map<String, String> found = new HashMap<>();      // userId -> endpointId (مكتشف)
@@ -86,9 +106,16 @@ public class StooornaNearbyPlugin extends Plugin {
     public void start(PluginCall call) {
         String id = call.getString("id");
         if (id == null || id.isEmpty()) { call.reject("id required"); return; }
+        String su = call.getString("serverUrl", "");
+        if (su != null && !su.isEmpty()) serverUrl = su;
+        geoWanted = Boolean.TRUE.equals(call.getBoolean("geo", false));
         List<String> need = missingAliases();
-        if (need.isEmpty()) beginStart(call);
-        else requestPermissionForAliases(need.toArray(new String[0]), call, "permsCallback");
+        // [v2] إذن الإشعارات (أندرويد 13+) نطلبه مع البقية لكنه غير إلزامي للتشغيل
+        boolean wantNotif = Build.VERSION.SDK_INT >= 33 && !has("android.permission.POST_NOTIFICATIONS");
+        if (need.isEmpty() && !wantNotif) { beginStart(call); return; }
+        List<String> ask = new ArrayList<>(need);
+        if (wantNotif) ask.add("notif13");
+        requestPermissionForAliases(ask.toArray(new String[0]), call, "permsCallback");
     }
 
     @PermissionCallback
@@ -104,7 +131,45 @@ public class StooornaNearbyPlugin extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
-        main.post(() -> { stopAll(); call.resolve(); });
+        main.post(() -> { stopAll(); stopService(); call.resolve(); });
+    }
+
+    /** [v2] هل البلوتوث شغّال فعلاً؟ (الواجهة تستدعيها عند الرجوع للتطبيق لإعادة التشغيل لو لزم). */
+    @PluginMethod
+    public void status(PluginCall call) {
+        main.post(() -> {
+            JSObject r = new JSObject();
+            r.put("running", running);
+            r.put("service", NearbyKeepAliveService.isRunning());
+            r.put("connected", connected.size());
+            call.resolve(r);
+        });
+    }
+
+    /** [v2] رسائل وصلت والتطبيق بالخلفية (تُفرَّغ مرة واحدة). */
+    @PluginMethod
+    public void drainPending(PluginCall call) {
+        main.post(() -> {
+            JSArray arr = new JSArray();
+            for (JSObject o : bgMsgs) arr.put(o);
+            bgMsgs.clear();
+            JSObject r = new JSObject();
+            r.put("messages", arr);
+            call.resolve(r);
+        });
+    }
+
+    /** [v2] يفتح إعدادات استثناء البطارية (بعض الأجهزة تقتل الخدمة بدونها). */
+    @PluginMethod
+    public void batterySettings(PluginCall call) {
+        try {
+            Intent i = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject(String.valueOf(e.getMessage()));
+        }
     }
 
     @PluginMethod
@@ -136,8 +201,55 @@ public class StooornaNearbyPlugin extends Plugin {
     }
 
     @Override
+    protected void handleOnPause() { main.post(() -> paused = true); }
+
+    @Override
+    protected void handleOnResume() { main.post(() -> paused = false); }
+
+    @Override
     protected void handleOnDestroy() {
-        main.post(this::stopAll);
+        main.post(() -> { stopAll(); stopService(); });
+    }
+
+    /* ───────────── [v2] الخدمة الأمامية ───────────── */
+
+    private void startService() {
+        try {
+            Context c = getContext();
+            Intent i = new Intent(c, NearbyKeepAliveService.class);
+            i.putExtra(NearbyKeepAliveService.EXTRA_SERVER, serverUrl);
+            i.putExtra(NearbyKeepAliveService.EXTRA_GEO, geoWanted);
+            ContextCompat.startForegroundService(c, i);
+        } catch (Exception ignored) { /* نكمل بدون خدمة: يشتغل والتطبيق مفتوح فقط */ }
+    }
+
+    private void stopService() {
+        try { getContext().stopService(new Intent(getContext(), NearbyKeepAliveService.class)); } catch (Exception ignored) { /* */ }
+    }
+
+    /** إشعار رسالة وصلت بالبلوتوث والتطبيق بالخلفية. */
+    private void notifyMessage(String fromName, String text) {
+        try {
+            Context c = getContext();
+            NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+            if (Build.VERSION.SDK_INT >= 33 && !has("android.permission.POST_NOTIFICATIONS")) return;
+            if (Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(new NotificationChannel(MSG_CHANNEL, "Nearby messages", NotificationManager.IMPORTANCE_HIGH));
+            Intent launch = c.getPackageManager().getLaunchIntentForPackage(c.getPackageName());
+            PendingIntent pi = launch == null ? null : PendingIntent.getActivity(c, 0, launch, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+            Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(c, MSG_CHANNEL) : new Notification.Builder(c);
+            b.setContentTitle(fromName).setContentText(text).setSmallIcon(c.getApplicationInfo().icon).setAutoCancel(true);
+            if (pi != null) b.setContentIntent(pi);
+            nm.notify(8000 + (notifSeq++ % 50), b.build());
+        } catch (Exception ignored) { /* */ }
+    }
+
+    /** يبلّغ السيرفر بمن أنا ملاقيهم بالبلوتوث الآن (يظهرون عبر السيرفر أيضاً). */
+    private void reportSeen() {
+        if (serverUrl == null || serverUrl.isEmpty() || connected.isEmpty()) return;
+        JSONArray a = new JSONArray();
+        for (String uid : connected.keySet()) a.put(uid);
+        NearbyKeepAliveService.reportSeen(serverUrl, a.toString());
     }
 
     /* ───────────── الصلاحيات ───────────── */
@@ -180,12 +292,14 @@ public class StooornaNearbyPlugin extends Plugin {
             Task<Void> dis = client.startDiscovery(SERVICE_ID, discovery, dop);
             Tasks.whenAll(adv, dis)
                 .addOnSuccessListener(v -> {
+                    startService(); // [v2] يبقى شغّالاً بالخلفية
                     JSObject r = new JSObject();
                     r.put("granted", true);
                     call.resolve(r);
                 })
                 .addOnFailureListener(e -> {
                     stopAll();
+                    stopService();
                     call.reject(String.valueOf(e.getMessage()));
                 });
         });
@@ -260,6 +374,7 @@ public class StooornaNearbyPlugin extends Plugin {
             pending.remove(uid);
             if (result.getStatus().isSuccess()) {
                 connected.put(uid, endpointId);
+                reportSeen(); // [v2] عبر السيرفر أيضاً
                 JSObject o = new JSObject();
                 o.put("id", uid);
                 o.put("name", nameOf(uid));
@@ -300,6 +415,12 @@ public class StooornaNearbyPlugin extends Plugin {
                 r.put("clientId", o.optString("c", ""));
                 r.put("ts", o.optDouble("ts", 0));
                 notifyListeners("message", r);
+                if (paused) { // [v2] التطبيق بالخلفية: احفظها + إشعار
+                    if (bgMsgs.size() >= 100) bgMsgs.remove(0);
+                    bgMsgs.add(r);
+                    String t = o.optString("t", "");
+                    notifyMessage(o.optString("fn", nameOf(uid)), t.length() > 120 ? t.substring(0, 120) + "…" : t);
+                }
             } catch (Exception ignored) { /* رسالة تالفة */ }
         }
 

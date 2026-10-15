@@ -3,6 +3,8 @@
  * مستقل تماماً: جداول خاصة (nearby_presence / nearby_messages / nearby_profiles / nearby_requests) ولا يلمس أي مسار قديم.
  * كل المسارات تتطلب جلسة مستخدم مسجّل => الميزة محصورة بمستخدمي التطبيق فقط.
  *
+ * [v1.6] الظهور بالخلفية: TTL أطول (5 دقائق) لأن خدمة أندرويد الأمامية تنشر الموقع كل 45 ث حتى والتطبيق مقفول · /api/nearby يقبل lat/lng احتياطي إذا ما في موقع محفوظ ·
+ *        بلوتوث عبر السيرفر: POST/GET /api/nearby/ble-seen (من لقطني بالبلوتوث ظاهر لي حتى لو جهازي ما لقطه) · الإخفاء يمسح الموقع والمشاهدات.
  * [v1.5] الأصدقاء المضافون دردشتهم مباشرة بدون طلب (canChat) · حفظ آخر صورة (COALESCE) + احتياطي الصورة من جدول الحضور · نصوص الإشعارات إنجليزي.
  * [v1.2] نظام الطلبات: ما في دردشة مباشرة — لازم تبعث طلب والطرف الثاني يقبل.
  *   POST   /api/nearby/requests            {to}      => يرسل طلب (وإذا هو أرسل لك قبلها => يتقبّل الاثنين تلقائياً)
@@ -27,7 +29,7 @@ interface Opts {
   friendIds?: (req: Request) => Promise<string[]> | string[];
 }
 
-const TTL_MS = 3 * 60 * 1000; // الموقع يختفي تلقائياً بعد 3 دقائق بدون تحديث (التطبيق يجدّده كل 45 ثانية)
+const TTL_MS = 5 * 60 * 1000; // [v1.6] الموقع يختفي بعد 5 دقائق بدون تحديث (التطبيق/الخدمة الأمامية يجدّدانه كل 45 ثانية، حتى بالخلفية)
 const DECLINE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // بعد الرفض: ما يقدر يعيد الطلب قبل 24 ساعة
 const PROFILE_REFRESH_MS = 5 * 60 * 1000;
 const clean = (s: unknown, n = 4000) => String(s ?? '').slice(0, n);
@@ -50,6 +52,11 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
       id BIGINT AUTO_INCREMENT PRIMARY KEY, sender_id VARCHAR(64) NOT NULL, receiver_id VARCHAR(64) NOT NULL,
       client_id VARCHAR(80) NOT NULL, body TEXT NOT NULL, created_at BIGINT NOT NULL, read_at BIGINT NULL,
       UNIQUE KEY uq_client (sender_id, client_id), KEY idx_pair (sender_id, receiver_id, id), KEY idx_rcv (receiver_id, read_at)
+    ) CHARACTER SET utf8mb4`);
+    // [v1.6] مشاهدات البلوتوث: viewer لقط seen بالبلوتوث => seen يظهر عند viewer، و viewer يظهر عند seen (عبر السيرفر)
+    await pool.query(`CREATE TABLE IF NOT EXISTS nearby_ble_seen (
+      viewer_id VARCHAR(64) NOT NULL, seen_id VARCHAR(64) NOT NULL, updated_at BIGINT NOT NULL,
+      PRIMARY KEY (viewer_id, seen_id), KEY idx_seen (seen_id, updated_at), KEY idx_upd (updated_at)
     ) CHARACTER SET utf8mb4`);
     // بروفايل مختصر (الاسم/اليوزر/الصورة) — يتحدّث تلقائياً كل ما المستخدم يستخدم أي مسار هنا
     await pool.query(`CREATE TABLE IF NOT EXISTS nearby_profiles (
@@ -112,6 +119,7 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
   app.delete('/api/nearby/ping', async (req, res) => {
     const u = await me(req, res); if (!u) return;
     await pool.query('DELETE FROM nearby_presence WHERE user_id=?', [u.id]);
+    await pool.query('DELETE FROM nearby_ble_seen WHERE viewer_id=? OR seen_id=?', [u.id, u.id]).catch(() => { /* */ }); // [v1.6]
     res.json({ ok: true });
   });
 
@@ -119,8 +127,12 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
   app.get('/api/nearby', async (req, res) => {
     const u = await me(req, res); if (!u) return;
     const [rows]: any = await pool.query('SELECT * FROM nearby_presence WHERE user_id=?', [u.id]);
-    const mine = rows?.[0];
-    if (!mine) return res.json({ users: [] });
+    let mine = rows?.[0];
+    if (!mine) { // [v1.6] ما في موقع محفوظ (انتهى TTL) => نستخدم إحداثيات الطلب إن وُجدت ونحفظها
+      const qLat = Number(req.query.lat), qLng = Number(req.query.lng);
+      if (!Number.isFinite(qLat) || !Number.isFinite(qLng) || Math.abs(qLat) > 90 || Math.abs(qLng) > 180) return res.json({ users: [] });
+      mine = { lat: qLat, lng: qLng };
+    }
     const radius = Math.min(50000, Math.max(100, Number(req.query.radius) || 3000));
     const dLat = radius / 111000, dLng = radius / (111000 * Math.max(0.2, Math.cos((mine.lat * Math.PI) / 180)));
     const [near]: any = await pool.query(
@@ -142,7 +154,7 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
   });
 
   /** فحص سريع: هل المسارات مربوطة؟  GET /api/nearby/health */
-  app.get('/api/nearby/health', async (_req, res) => { await ready; res.json({ ok: true, v: '1.5' }); });
+  app.get('/api/nearby/health', async (_req, res) => { await ready; res.json({ ok: true, v: '1.6' }); });
 
   /** معرّفات أصدقائي المضافين. */
   app.get('/api/nearby/friends', async (req, res) => {
@@ -237,6 +249,46 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
     await pool.query(`DELETE FROM nearby_requests WHERE id=? AND from_id=? AND status='pending'`, [Number(req.params.id), u.id]);
     res.json({ ok: true });
   });
+
+  /* ───────────── [v1.6] البلوتوث عبر السيرفر ───────────── */
+
+  /** أبلغ السيرفر بمن لقطتهم بالبلوتوث الآن (يُستدعى من التطبيق/الخدمة كل ~45 ث). */
+  app.post('/api/nearby/ble-seen', async (req, res) => {
+    const u = await me(req, res); if (!u) return;
+    const ids: string[] = (Array.isArray(req.body?.ids) ? req.body.ids : []).map((x: unknown) => clean(x, 64)).filter((x: string) => x && x !== u.id).slice(0, 100);
+    if (ids.length) {
+      const now = Date.now();
+      await pool.query(
+        `INSERT INTO nearby_ble_seen (viewer_id, seen_id, updated_at) VALUES ${ids.map(() => '(?,?,?)').join(',')}
+         ON DUPLICATE KEY UPDATE updated_at=VALUES(updated_at)`,
+        ids.flatMap(id => [u.id, id, now]),
+      );
+    }
+    res.json({ ok: true, n: ids.length });
+  });
+
+  /** من لقطهم جهازي + من لقطوني (خلال TTL) — يظهرون في قسم البلوتوث حتى لو جهازي ما لقطهم مباشرة. */
+  app.get('/api/nearby/ble-seen', async (req, res) => {
+    const u = await me(req, res); if (!u) return;
+    const since = Date.now() - TTL_MS;
+    const [rows]: any = await pool.query(
+      `SELECT IF(viewer_id=?, seen_id, viewer_id) AS peer_id, MAX(updated_at) AS ts FROM nearby_ble_seen
+       WHERE (viewer_id=? OR seen_id=?) AND updated_at>? GROUP BY peer_id ORDER BY ts DESC LIMIT 100`, [u.id, u.id, u.id, since]);
+    const ids = (rows as any[]).map(r => String(r.peer_id));
+    if (!ids.length) return res.json({ users: [] });
+    const [pr]: any = await pool.query(
+      `SELECT p.user_id, p.name, p.username, COALESCE(NULLIF(p.avatar,''), pp.avatar) AS avatar FROM nearby_profiles p
+       LEFT JOIN nearby_presence pp ON pp.user_id=p.user_id WHERE p.user_id IN (?)`, [ids]);
+    const byId: Record<string, any> = {}; (pr as any[]).forEach(r => { byId[String(r.user_id)] = r; });
+    const fr = await friendSet(req);
+    res.json({ users: (rows as any[]).map(r => {
+      const id = String(r.peer_id), p = byId[id];
+      return { id, name: p?.name || 'User', username: p?.username || null, avatar: p?.avatar || null, ts: Number(r.ts), friend: fr.has(id) };
+    }) });
+  });
+
+  // تنظيف دوري للمشاهدات القديمة
+  setInterval(() => { pool.query('DELETE FROM nearby_ble_seen WHERE updated_at<?', [Date.now() - 60 * 60 * 1000]).catch(() => { /* */ }); }, 30 * 60 * 1000).unref?.();
 
   /* ───────────── الرسائل ───────────── */
 

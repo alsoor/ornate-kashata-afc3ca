@@ -1,6 +1,9 @@
 /**
  * NEARBY PATCH  (ملف مستقل — لا يعدّل StooornaAiSheet.tsx ولا friendChatPatch.tsx)
  *
+ * [v1.9.0] الظهور بالخلفية (بلوتوث + GPS): الإضافة الأصلية تشغّل خدمة أمامية (إشعار دائم) فيظل المستخدم ظاهراً حتى لو طلع من التطبيق أو أغلق صفحة Stooorna Ai ·
+ *          إغلاق الصفحة ما يوقف البلوتوث ولا يمسح الموقع من السيرفر (فقط "Hide my location from others" يخفيك) · المستخدم يُحفظ محلياً فيشتغل المحرّك من أول فتح التطبيق ·
+ *          البلوتوث يمر عبر السيرفر أيضاً (ble-seen): من لقطك أو لقطته يظهر في قسم Bluetooth حتى لو جهازك ما لقطه مباشرة · عند الرجوع للتطبيق: تفريغ الرسائل المحفوظة + إعادة تشغيل + نشر الموقع.
  * [v1.7.0] النقطة الصفراء انلغت: النقطة الزرقاء فيها قسمين داخل البحث: "Nearby · Bluetooth" و"Nearby · GPS" — كل قسم له حالته ونتائجه ورسائله (البلوتوث للبلوتوث فقط، والموقع للموقع فقط، مع أزرار المسافة وإخفاء موقعي في قسم GPS).
  * [v1.6.0] (سابقاً) نقطة صفراء مستقلة بجانب النقطة الزرقاء: بحث بالبلوتوث فقط (نفس مربع البحث والطلبات) — بدون موقع وبدون نطاق كيلومترات؛ يظهر كل من يلتقطه البلوتوث من متر لين أقصى مدى يدعمه الجهاز.
  * [v1.5.1] إصلاح "Bluetooth unavailable (native plugin not installed)": البحث عن الإضافة الأصلية صار أقوى (Capacitor registerPlugin) + رسائل خطأ واضحة (بلوتوث مطفي / صلاحيات مرفوضة) + ما نعيد طلب الصلاحيات كل 8 ثواني.
@@ -38,7 +41,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-export const NEARBY_PATCH_VERSION = '1.7.0';
+export const NEARBY_PATCH_VERSION = '1.9.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -62,6 +65,12 @@ const kHidden = (me: string) => `stooorna_nearby_hidden_v1_${me}`;
 
 const jget = <T,>(k: string, d: T): T => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v ?? d; } catch { return d; } };
 const jset = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* */ } };
+
+/* [v1.9] المستخدم المحفوظ: المحرّك (بلوتوث/موقع) يشتغل من أول فتح التطبيق وبعد إغلاق صفحة Stooorna Ai */
+const kLastMe = 'stooorna_nearby_me_v1';
+const saveMe = (u: Me) => jset(kLastMe, { id: u.id, name: u.name ?? null, username: u.username ?? null, avatarUrl: u.avatarUrl ?? u.image ?? null });
+const loadSavedMe = (): Me | null => { const v = jget<any>(kLastMe, null); return v && v.id ? { ...v, id: String(v.id) } : null; };
+const clearSavedMe = () => { try { localStorage.removeItem(kLastMe); } catch { /* */ } };
 
 const loadMsgs = (me: string, peer: string): Msg[] => { const v = jget<Msg[]>(kMsgs(me, peer), []); return Array.isArray(v) ? v : []; };
 const saveMsgs = (me: string, peer: string, l: Msg[]) => jset(kMsgs(me, peer), l.slice(-300));
@@ -90,6 +99,7 @@ const E = {
   ble: 'off' as BleState,
   bleErr: '' as string,            // [v1.5.1] سبب فشل تشغيل البلوتوث (للرسالة)
   blePeers: new Map<string, Peer & { at: number }>(),
+  srvBle: new Map<string, Peer>(),     // [v1.9] من لقطني/لقطتهم بالبلوتوث حسب السيرفر (يظهرون حتى لو جهازي ما لقطهم مباشرة)
   openPeer: '' as string,         // chat currently on screen
   srvUnread: {} as Record<string, number>, // unread per sender from the server
   listeners: false,
@@ -287,13 +297,14 @@ async function bleStart(me: Me) {
   if (!p) { E.ble = 'unavailable'; emit('ble'); return; }
   if (E.ble === 'on' || E.ble === 'starting') return;
   E.ble = 'starting'; emit('ble');
+  const geoOn = !jget(kHidden(me.id), false); // [v1.9] الخدمة الأمامية تنشر الموقع للسيرفر فقط لو ما أخفيت موقعي
   try {
     if (!E.listeners) {
       E.listeners = true;
       p.addListener('peerFound', (d: any) => {
         if (!d?.id || String(d.id) === me.id) return;
         E.blePeers.set(String(d.id), { id: String(d.id), name: String(d.name || 'User'), avatar: d.avatar ?? null, ble: true, at: Date.now() });
-        emit('peers'); void flushPending();
+        emit('peers'); void flushPending(); void reportBleSeen();
       });
       p.addListener('peerLost', (d: any) => { if (d?.id) { E.blePeers.delete(String(d.id)); emit('peers'); } });
       p.addListener('message', (d: any) => {
@@ -302,10 +313,46 @@ async function bleStart(me: Me) {
         storeIncoming(cur, { id: String(d.clientId || newId()), clientId: String(d.clientId || newId()), from: String(d.from), to: cur.id, text: String(d.text), ts: Number(d.ts) || Date.now(), status: 'ble' }, d.fromName);
       });
     }
-    const r = await p.start({ id: me.id, name: String(me.name || me.username || 'User') });
+    const r = await p.start({ id: me.id, name: String(me.name || me.username || 'User'), serverUrl: location.origin, geo: geoOn });
     if (r && r.granted === false) { E.ble = 'denied'; E.bleErr = 'permission'; } else { E.ble = 'on'; E.bleErr = ''; }
   } catch (e: any) { E.ble = 'denied'; E.bleErr = String(e?.message || e?.errorMessage || e || 'error'); }
   emit('ble');
+}
+/** [v1.9] البلوتوث عبر السيرفر: أبلغ بمن لقطتهم، واجلب من لقطوني/لقطتهم. */
+async function reportBleSeen() {
+  if (!isOnline() || !E.blePeers.size) return;
+  try { await net('/api/nearby/ble-seen', { method: 'POST', body: JSON.stringify({ ids: [...E.blePeers.keys()] }) }); } catch { /* */ }
+}
+async function pullBleSeen(me: Me) {
+  if (!isOnline()) return;
+  try {
+    const d = await net('/api/nearby/ble-seen');
+    const next = new Map<string, Peer>();
+    (d?.users || []).forEach((o: any) => {
+      const id = String(o.id); if (!id || id === me.id) return;
+      if (o.friend) E.friends.add(id);
+      const fi = E.friendInfo[id];
+      next.set(id, { id, name: String(o.name || fi?.name || 'User'), username: o.username ?? fi?.username ?? null, avatar: o.avatar || fi?.avatar || null, ble: true, friend: !!o.friend });
+    });
+    E.srvBle = next; emit('peers');
+  } catch { /* */ }
+}
+/** [v1.9] تفريغ الرسائل اللي وصلت بالبلوتوث والتطبيق بالخلفية + التأكد أن البلوتوث لسه شغّال. */
+async function resumeNative(me: Me) {
+  const p = plugin(); if (!p) return;
+  try {
+    const d = await p.drainPending?.();
+    (d?.messages || []).forEach((o: any) => {
+      if (!o?.from || !o?.text || !canTalk(String(o.from))) return;
+      const cid = String(o.clientId || newId());
+      storeIncoming(me, { id: cid, clientId: cid, from: String(o.from), to: me.id, text: String(o.text), ts: Number(o.ts) || Date.now(), status: 'ble' }, o.fromName);
+    });
+  } catch { /* */ }
+  try {
+    const st = await p.status?.();
+    if (st && st.running === false && (E.ble === 'on' || E.ble === 'starting')) E.ble = 'off'; // الإضافة انقتلت => نعيد التشغيل
+  } catch { /* */ }
+  if (!jget(kHidden(me.id), false)) void bleStart(me);
 }
 async function bleStop() {
   const p = plugin(); E.blePeers.clear();
@@ -417,8 +464,8 @@ function geoErr(e: any): string {
   return 'Could not reach the server';
 }
 async function geoSearch(radius: number): Promise<Peer[]> {
-  await publishPos();
-  const d = await net(`/api/nearby?radius=${radius}`);
+  const pos = await publishPos();
+  const d = await net(`/api/nearby?radius=${radius}&lat=${pos.lat}&lng=${pos.lng}`); // [v1.9] lat/lng احتياطي لو انتهى TTL موقعي
   return (Array.isArray(d) ? d : d?.users || []).map((o: any): Peer => {
     if (o.friend) E.friends.add(String(o.id));
     const fi = E.friendInfo[String(o.id)];
@@ -547,9 +594,10 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'ble' }: { me: Me; onClo
   const peers = useMemo(() => {
     const map = new Map<string, Peer>();
     if (!bleOnly) geoPeers.forEach(p => map.set(p.id, { ...p }));
-    if (bleOnly) E.blePeers.forEach(p => { const c = map.get(p.id); map.set(p.id, { ...(c || p), ...p, ble: true, geo: c?.geo, dist: c?.dist, username: c?.username }); });
+    if (bleOnly) E.srvBle.forEach(p => { if (!map.has(p.id)) map.set(p.id, { ...p, ble: true }); }); // [v1.9] عبر السيرفر
+    if (bleOnly) E.blePeers.forEach(p => { const c = map.get(p.id); map.set(p.id, { ...(c || p), name: p.name || c?.name || 'User', ...p, ble: true, geo: c?.geo, dist: c?.dist, username: c?.username ?? (p as Peer).username, avatar: p.avatar || c?.avatar }); });
     return [...map.values()].filter(p => p.id !== me.id).sort((a, b) => (a.ble === b.ble ? (a.dist ?? 1e9) - (b.dist ?? 1e9) : a.ble ? -1 : 1));
-  }, [geoPeers, me.id, E.blePeers.size, E.ble, bleOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [geoPeers, me.id, E.blePeers.size, E.srvBle.size, E.ble, bleOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const scanRef = useRef(false);
   /** بحث حيّ: يشتغل تلقائياً عند فتح المربع ويتحدّث كل 8 ثوانٍ؛ الزر للتحديث اليدوي. */
@@ -559,7 +607,7 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'ble' }: { me: Me; onClo
     setSearched(true);
     if ((bleOnly || !hidden) && (!silent || E.ble !== 'denied')) void bleStart(me); // [v1.5.1] التحديث التلقائي ما يعيد طلب الصلاحيات؛ الزر اليدوي يعيد المحاولة
     try {
-      if (bleOnly) { setGeoPeers([]); setGeoNote(''); }
+      if (bleOnly) { setGeoPeers([]); setGeoNote(''); void reportBleSeen(); await pullBleSeen(me); }
       else if (hidden) { setGeoPeers([]); setGeoNote('Your location is hidden — nobody sees you and you see nobody by location'); }
       else if (!isOnline()) setGeoNote('No internet — GPS search needs internet');
       else { try { setGeoPeers(await geoSearch(radius)); setGeoNote(''); } catch (e) { setGeoNote(geoErr(e)); } }
@@ -976,6 +1024,17 @@ function findListBox(inner: HTMLElement): HTMLElement | null {
   return (el as HTMLElement) || null;
 }
 
+/** [v1.9] يجهّز المحرّك للمستخدم (مرة لكل مستخدم): طلبات/أصدقاء + بلوتوث (إلا لو أخفيت موقعي). */
+let activatedFor = '';
+function activate(u: Me) {
+  E.me = u;
+  if (activatedFor !== u.id) { activatedFor = u.id; loadAccepted(u.id); }
+  void syncLinks(u);
+  if (!jget(kHidden(u.id), false)) void bleStart(u); // الاستقبال بالبلوتوث طالما التطبيق شغّال (حتى بالخلفية)
+}
+/** [v1.9] الجلسة انتهت (تسجيل خروج) => نوقف كل شيء وننسى المستخدم. */
+function deactivate() { activatedFor = ''; clearSavedMe(); void bleStop(); E.me = null; emit('logout'); }
+
 function NearbyPatch() {
   const [sheet, setSheet] = useState<SheetEls | null>(null);
   const [listBox, setListBox] = useState<HTMLElement | null>(null); // موجود فقط في صفحة قائمة الشات (ليس الرئيسية وليس داخل شات)
@@ -1001,10 +1060,21 @@ function NearbyPatch() {
   }, []);
 
   useEffect(() => {
-    if (!sheet) { setMe(null); setView(null); E.me = null; void bleStop(); return; }
-    const u = findUser(sheet.btn); setMe(u); E.me = u;
-    if (u) { loadAccepted(u.id); void syncLinks(u); if (!jget(kHidden(u.id), false)) void bleStart(u); } // الاستقبال بالبلوتوث طالما صفحة Stooorna Ai مفتوحة
+    // [v1.9] إغلاق صفحة Stooorna Ai ما يوقف البلوتوث ولا يخفي الموقع — المحرّك يظل شغّالاً بالخلفية (الإخفاء فقط من "Hide my location")
+    if (!sheet) { setView(null); return; }
+    const u = findUser(sheet.btn); if (!u) return;
+    setMe(prev => (prev && prev.id === u.id ? { ...prev, ...u } : u)); E.me = u; saveMe(u);
+    activate(u);
   }, [sheet]);
+
+  /* [v1.9] تشغيل المحرّك من أول فتح التطبيق بالمستخدم المحفوظ (بدون انتظار فتح صفحة Stooorna Ai) */
+  useEffect(() => {
+    const u = (window as any).__STOOORNA_USER__?.id ? ((window as any).__STOOORNA_USER__ as Me) : loadSavedMe();
+    if (!u) return;
+    setMe(prev => prev || u); E.me = E.me || u;
+    activate(u);
+    return on('logout', () => { setMe(null); E.me = null; });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { if (!selecting && NSEL.size) { NSEL.clear(); nselEmit(); } }, [selecting]);
 
@@ -1046,20 +1116,31 @@ function NearbyPatch() {
             void syncPeer(me, sid, pr?.name);
             emit('msgs');
           }
-        } catch { /* */ }
+        } catch (e: any) { if (/HTTP 401/.test(String(e?.message))) deactivate(); }
       }
       recount();
     };
     void tick();
     const t = window.setInterval(tick, 5000);
-    const beat = () => { if (jget(kHidden(me.id), false) || !isOnline()) return; void publishPos().catch(() => { /* */ }); }; // أنشر موقعي طالما الصفحة مفتوحة
+    // [v1.9] أنشر موقعي + مشاهدات البلوتوث طالما التطبيق شغّال (والخدمة الأمامية تكمل بالخلفية). 401 => خرج المستخدم
+    const beat = () => {
+      if (jget(kHidden(me.id), false) || !isOnline()) return;
+      void publishPos().catch((e) => { if (/HTTP 401/.test(String(e?.message))) deactivate(); });
+      void reportBleSeen();
+    };
     beat();
     const hb = window.setInterval(beat, 45000);
+    // [v1.9] الرجوع للتطبيق من الخلفية: فرّغ رسائل البلوتوث المحفوظة + أعد تشغيل البلوتوث لو انقطع + انشر الموقع + زامن
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      void resumeNative(me); lastPos = null; beat(); void flushPending(); void tick();
+    };
+    document.addEventListener('visibilitychange', onVis);
     const offMsgs = on('msgs', () => { void tick(false); });
     const offLinks = on('links', recount);
     const onNet = () => { void flushPending(); void tick(); };
     window.addEventListener('online', onNet);
-    return () => { alive = false; window.clearInterval(t); window.clearInterval(hb); offMsgs(); offLinks(); void net('/api/nearby/ping', { method: 'DELETE' }).catch(() => { /* */ }); window.removeEventListener('online', onNet); };
+    return () => { document.removeEventListener('visibilitychange', onVis); alive = false; window.clearInterval(t); window.clearInterval(hb); offMsgs(); offLinks(); void net('/api/nearby/ping', { method: 'DELETE' }).catch(() => { /* */ }); window.removeEventListener('online', onNet); };
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!sheet || !me) return null;

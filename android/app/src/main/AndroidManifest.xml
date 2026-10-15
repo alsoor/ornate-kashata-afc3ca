@@ -17,6 +17,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- NEARBY-BG: background Bluetooth + GPS visibility (foreground service) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
@@ -49,6 +52,12 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- NEARBY-BG: keeps Bluetooth advertising + publishes GPS while the app is in background -->
+        <service
+            android:name="com.stooorna.nearby.NearbyKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice|location" />
 
         <!-- FCM: default channel for notifications (matches the channel created in nativePush.ts) -->
         <meta-data
