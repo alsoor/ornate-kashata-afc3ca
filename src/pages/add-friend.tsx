@@ -30162,9 +30162,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {/* PROFILE-CALL-INLINE: names list under the Call banner, framed like the icon bar above (black lines + black rounded frame); it turns into the call buttons (slot below) once a call starts */}
                   {user?.id && profileCallListOpen && !homeCallUiActive ? (
                     <div style={{ width: '100%', maxWidth: 420, margin: '4px auto 0' }}>
-                      <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '0 8px 8px' }} />
                       <div style={{
-                        margin: '0 8px', padding: 10, borderRadius: 16, border: '2px solid #111111', background: '#fafafa',
+                        margin: '0 8px', padding: 2, background: 'transparent',
                         display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '42vh', overflowY: 'auto',
                         WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', boxSizing: 'border-box',
                       }}>
@@ -30184,14 +30183,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                                 setProfileCallListOpen(false);
                                 try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
                               }}
-                              style={{ width: 36, height: 36, borderRadius: '50%', ...hdrIconTonePanel(true), display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}
+                              style={{ width: 36, height: 36, borderRadius: '50%', border: '2px solid #16a34a', background: '#22c55e', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, padding: 0 }}
                             >
-                              <Phone size={16} strokeWidth={2.3} />
+                              <Phone size={16} strokeWidth={2.3} color="#ffffff" />
                             </button>
                           </div>
                         ))}
                       </div>
-                      <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '8px 8px 0' }} />
                     </div>
                   ) : null}
                   {/* CALL-SLOT: the live call controls (owned by the layout) are drawn here, on this page */}
