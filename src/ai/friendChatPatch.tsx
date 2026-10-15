@@ -424,6 +424,16 @@ const hhmm = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digi
 const REACTIONS = ['❤️', '😂', '😍', '😮', '😢', '😡', '👍', '👎', '🙏', '🔥', '🎉', '😘'];
 const reactKey = (me: string, peer: string) => `stooorna_friend_chat_react_v1_${me}_${peer}`;
 
+/** DAY-SEPARATORS: "Today" / "Yesterday" / date, shown between messages of different days */
+const dayKey = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+function dayLabel(ts: number): string {
+  const d = new Date(ts); const now = new Date();
+  if (dayKey(ts) === dayKey(now.getTime())) return 'Today';
+  if (dayKey(ts) === dayKey(now.getTime() - 864e5)) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' as const } : {}) });
+}
+const DAY_CHIP: React.CSSProperties = { alignSelf: 'center', background: 'rgba(0,0,0,0.06)', color: '#6b7280', fontSize: 12, fontWeight: 700, padding: '4px 14px', borderRadius: 999, margin: '6px 0 2px', flexShrink: 0 };
+
 /** SHATTER-DELETE: the deleted bubble (text / image / video) breaks into pieces that fly away and fade. */
 function shatterEl(el: Element | null) {
   try {
@@ -1472,7 +1482,9 @@ function FriendChatPatch() {
               ابدأ المحادثة مع <b style={{ color: '#111' }}>{peer.name}</b>
             </div>
           )}
-          {peer && (chat.peerId === peer.id ? chat.list : []).map(m => {
+          {peer && (chat.peerId === peer.id ? chat.list : []).map((m, i, arr) => {
+            const daySep = (i === 0 || dayKey(arr[i - 1].ts) !== dayKey(m.ts)) ? <div style={DAY_CHIP}>{dayLabel(m.ts)}</div> : null; // DAY-SEPARATORS
+            const node = (() => {
             if (m.kind === 'system') { // GROUP-CHAT: "X joined / left / was removed"
               return <div key={m.clientId || m.id} dir="auto" style={{ alignSelf: 'center', background: 'rgba(0,0,0,0.06)', color: '#6b7280', fontSize: 12, padding: '4px 12px', borderRadius: 999, textAlign: 'center', maxWidth: '90%' }}>{m.text}</div>;
             }
@@ -1531,6 +1543,8 @@ function FriendChatPatch() {
                 </div>
               </div>
             );
+            })();
+            return <React.Fragment key={m.clientId || m.id}>{daySep}{node}</React.Fragment>;
           })}
           <div ref={endRef} />
           {toast && (

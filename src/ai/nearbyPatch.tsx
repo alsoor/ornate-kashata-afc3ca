@@ -693,6 +693,16 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
 }
 
 /* ───────────────────────── الدردشة (داخل الشيت بنفس حجم قائمة الشات — [v1.5]) ───────────────────────── */
+/** DAY-SEPARATORS: "Today" / "Yesterday" / date, shown between messages of different days */
+const dayKey = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+function dayLabel(ts: number): string {
+  const d = new Date(ts); const now = new Date();
+  if (dayKey(ts) === dayKey(now.getTime())) return 'Today';
+  if (dayKey(ts) === dayKey(now.getTime() - 864e5)) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' as const } : {}) });
+}
+const DAY_CHIP: React.CSSProperties = { alignSelf: 'center', background: 'rgba(0,0,0,0.06)', color: '#6b7280', fontSize: 12, fontWeight: 700, padding: '4px 14px', borderRadius: 999, margin: '6px 0 2px', flexShrink: 0 };
+
 function BackArrow() {
   return (
     <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -784,15 +794,18 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
           </div>
         )}
         {msgs.length === 0 && <div dir="auto" style={{ margin: 'auto', color: '#9ca3af', fontSize: 14, textAlign: 'center' }}>{accepted ? `Start chatting with ${peer.name}` : 'Send a chat request — the chat opens once they accept'}</div>}
-        {msgs.map(m => {
+        {msgs.map((m, i) => {
           const mine = m.from === me.id;
           return (
-            <div key={m.clientId} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
+            <React.Fragment key={m.clientId}>
+            {(i === 0 || dayKey(msgs[i - 1].ts) !== dayKey(m.ts)) && <div style={DAY_CHIP}>{dayLabel(m.ts)}</div>}
+            <div style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
               <div dir="auto" style={{ background: mine ? GREEN : '#fff', color: mine ? '#fff' : '#111', border: mine ? 'none' : '1px solid #e5e7eb', borderRadius: 16, padding: '8px 12px', fontSize: 15, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
               <div dir="ltr" style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, textAlign: mine ? 'right' : 'left' }}>
                 {hhmm(m.ts)}{mine ? (m.status === 'ble' ? ' ✓✓' : m.status === 'sent' ? ' ✓' : m.status === 'pending' ? ' ⏳' : ' !') : ''}
               </div>
             </div>
+            </React.Fragment>
           );
         })}
         <div ref={endRef} />
