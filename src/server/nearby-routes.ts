@@ -22,9 +22,11 @@ interface Opts {
   pool: any; // mysql2/promise pool
   getUser: (req: Request) => Promise<any> | any;
   push?: (toId: string, fromName: string, text: string) => Promise<unknown> | unknown;
+  /** معرّفات أصدقائي المضافين (اختياري) — يظهرون كـ"صديق" ودردشتهم مباشرة بدون طلب. */
+  friendIds?: (req: Request) => Promise<string[]> | string[];
 }
 
-const TTL_MS = 10 * 60 * 1000; // الموقع يختفي تلقائياً بعد 10 دقائق بدون تحديث
+const TTL_MS = 3 * 60 * 1000; // الموقع يختفي تلقائياً بعد 3 دقائق بدون تحديث (التطبيق يجدّده كل 45 ثانية)
 const DECLINE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // بعد الرفض: ما يقدر يعيد الطلب قبل 24 ساعة
 const PROFILE_REFRESH_MS = 5 * 60 * 1000;
 const clean = (s: unknown, n = 4000) => String(s ?? '').slice(0, n);
@@ -81,7 +83,11 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
   };
 
   /** هل مسموح بينهم دردشة؟ طلب مقبول، أو محادثة قديمة قبل نظام الطلبات (ما لم يُرفض/ينتظر). */
-  const canChat = async (a: string, b: string): Promise<boolean> => {
+  const friendSet = async (req: Request): Promise<Set<string>> => {
+    try { return new Set(((await Promise.resolve(o.friendIds?.(req))) || []).map(String)); } catch { return new Set(); }
+  };
+  const canChat = async (req: Request, a: string, b: string): Promise<boolean> => {
+    if ((await friendSet(req)).has(b)) return true; // صديق مضاف => مسموح مباشرة
     const [rows]: any = await pool.query(
       `SELECT status FROM nearby_requests WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)`, [a, b, b, a]);
     if (rows?.length) return rows.some((r: any) => r.status === 'accepted');
@@ -131,7 +137,17 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
       const [pr]: any = await pool.query('SELECT user_id, username FROM nearby_profiles WHERE user_id IN (?)', [ids]);
       (pr as any[]).forEach(r => { uname[String(r.user_id)] = r.username || null; });
     }
-    res.json({ users: users.map(x => ({ ...x, username: uname[x.id] ?? null })) });
+    const fr = await friendSet(req);
+    res.json({ users: users.map(x => ({ ...x, username: uname[x.id] ?? null, friend: fr.has(x.id) })) });
+  });
+
+  /** فحص سريع: هل المسارات مربوطة؟  GET /api/nearby/health */
+  app.get('/api/nearby/health', async (_req, res) => { await ready; res.json({ ok: true, v: '1.3' }); });
+
+  /** معرّفات أصدقائي المضافين. */
+  app.get('/api/nearby/friends', async (req, res) => {
+    const u = await me(req, res); if (!u) return;
+    res.json({ ids: [...(await friendSet(req))] });
   });
 
   /** بروفايل مختصر لشخص (مثلاً وجدته بالبلوتوث وما عندي يوزره/صورته). */
@@ -222,7 +238,7 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
     const u = await me(req, res); if (!u) return;
     const to = clean(req.body?.receiverId, 64), body = clean(req.body?.body), cid = clean(req.body?.clientId, 80);
     if (!to || !body || !cid || to === u.id) return res.status(400).json({ error: 'bad request' });
-    if (!(await canChat(u.id, to))) return res.status(403).json({ error: 'not_accepted' });
+    if (!(await canChat(req, u.id, to))) return res.status(403).json({ error: 'not_accepted' });
     const ts = Date.now();
     const [r]: any = await pool.query('INSERT IGNORE INTO nearby_messages (sender_id, receiver_id, client_id, body, created_at) VALUES (?,?,?,?,?)', [u.id, to, cid, body, ts]);
     if (r?.affectedRows && o.push) { try { await o.push(to, u.name, body); } catch { /* */ } }

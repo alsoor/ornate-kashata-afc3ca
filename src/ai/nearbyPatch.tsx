@@ -1,6 +1,8 @@
 /**
  * NEARBY PATCH  (ملف مستقل — لا يعدّل StooornaAiSheet.tsx ولا friendChatPatch.tsx)
  *
+ * [v1.3] بحث حيّ فعلياً: يتحدّث تلقائياً ويظهر المضاف وغير المضاف مع اليوزر (بلوتوث أو موقع عبر السيرفر — أندرويد وآيفون).
+ *         الموقع يُنشر تلقائياً طالما صفحة Stooorna Ai مفتوحة (إلا لو فعّلت إخفاء موقعي).
  * [v1.2] البحث صار مربع بمنتصف الشاشة فوق قائمة الشات؛ الضغط على شخص يعرض بروفايله (صورة + يوزر + زر طلب)،
  *         الطلب يوصل للطرف الثاني داخل النقطة الزرقاء (تبويب الطلبات)، وبعد القبول فقط ينزل مستطيل تحت مستطيلات الشات ويفتح الدردشة.
  *
@@ -30,11 +32,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-export const NEARBY_PATCH_VERSION = '1.2.0';
+export const NEARBY_PATCH_VERSION = '1.3.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
-interface Peer { id: string; name: string; username?: string | null; avatar?: string | null; ble?: boolean; geo?: boolean; dist?: number }
+interface Peer { id: string; name: string; username?: string | null; avatar?: string | null; ble?: boolean; geo?: boolean; dist?: number; friend?: boolean }
 interface ReqIn { id: string; fromId: string; name: string; username?: string | null; avatar?: string | null; ts: number }
 interface ReqOut { id: string; toId: string; status: 'pending'; name: string; username?: string | null; avatar?: string | null; ts: number }
 type MsgStatus = 'pending' | 'sent' | 'ble' | 'failed';
@@ -86,7 +88,8 @@ const E = {
   flushing: false,
   incoming: [] as ReqIn[],                    // طلبات وصلتني (تظهر داخل النقطة الزرقاء)
   outgoing: {} as Record<string, ReqOut>,    // طلبات أرسلتها وبانتظار الرد
-  accepted: new Set<string>(),               // من قبلوا => مسموح الدردشة معهم
+  accepted: new Set<string>(),
+  friends: new Set<string>(),                // الأصدقاء المضافون (من السيرفر) — دردشتهم مباشرة بدون طلب               // من قبلوا => مسموح الدردشة معهم
 };
 
 const newId = () => `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -152,6 +155,7 @@ const relOf = (id: string): 'none' | 'out' | 'in' | 'accepted' =>
 async function syncLinks(me: Me) {
   if (!isOnline()) return;
   try {
+    try { const f = await net('/api/nearby/friends'); (f?.ids || []).forEach((id: any) => { E.friends.add(String(id)); E.accepted.add(String(id)); }); } catch { /* */ }
     const d = await net('/api/nearby/requests');
     E.incoming = (d?.incoming || []).map((o: any): ReqIn => ({ id: String(o.id), fromId: String(o.fromId), name: String(o.name || 'User'), username: o.username || null, avatar: o.avatar ?? null, ts: Number(o.ts) || Date.now() }));
     const out: Record<string, ReqOut> = {};
@@ -293,17 +297,53 @@ async function syncPeer(me: Me, peerId: string, name?: string) {
 }
 
 /* ── الموقع الجغرافي ── */
-function getPos(): Promise<GeolocationPosition> {
+type Pos = { lat: number; lng: number; accuracy?: number };
+let lastPos: (Pos & { at: number }) | null = null;
+function webPos(high: boolean, timeout: number): Promise<Pos> {
   return new Promise((res, rej) => {
-    if (!navigator.geolocation) return rej(new Error('nogeo'));
-    navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 12000, maximumAge: 15000 });
+    if (!navigator.geolocation) return rej({ code: 0, message: 'nogeo' });
+    navigator.geolocation.getCurrentPosition(p => res({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }), rej, { enableHighAccuracy: high, timeout, maximumAge: 60000 });
   });
 }
+/** الموقع: إضافة Capacitor Geolocation إن وُجدت (أندرويد + آيفون)، وإلا متصفح الـWebView؛ دقة عالية ثم تقريبية إذا تأخّر الـGPS. */
+async function getPos(): Promise<Pos> {
+  if (lastPos && Date.now() - lastPos.at < 20000) return lastPos;
+  let p: Pos | null = null;
+  const cap: any = (() => { try { const w: any = window; return w.Capacitor?.Plugins?.Geolocation || null; } catch { return null; } })();
+  if (cap) {
+    try {
+      const perm = await cap.checkPermissions?.();
+      if (perm && perm.location !== 'granted' && perm.coarseLocation !== 'granted') await cap.requestPermissions?.();
+      const r = await cap.getCurrentPosition({ enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 });
+      p = { lat: r.coords.latitude, lng: r.coords.longitude, accuracy: r.coords.accuracy };
+    } catch (e: any) { if (/denied|permission/i.test(String(e?.message))) throw { code: 1 }; }
+  }
+  if (!p) { try { p = await webPos(true, 8000); } catch (e: any) { if (e?.code === 1) throw e; p = await webPos(false, 15000); } }
+  lastPos = { ...p, at: Date.now() };
+  return p;
+}
+/** ينشر موقعي للسيرفر (يختفي تلقائياً بعد دقائق بدون تحديث). */
+async function publishPos(): Promise<Pos> {
+  const p = await getPos();
+  await net('/api/nearby/ping', { method: 'POST', body: JSON.stringify(p) });
+  return p;
+}
+function geoErr(e: any): string {
+  const m = String(e?.message || '');
+  if (e?.code === 1) return 'صلاحية الموقع مرفوضة — فعّلها من إعدادات الجهاز';
+  if (/HTTP 404/.test(m)) return 'السيرفر غير مربوط بمسارات القريبون (nearby-routes في entry.ts)';
+  if (/HTTP 401/.test(m)) return 'سجّل الدخول أولاً';
+  if (/HTTP 5/.test(m)) return 'خطأ في السيرفر — حاول بعد قليل';
+  if (e?.code) return 'تعذّر تحديد الموقع — تأكد أن GPS شغّال';
+  return 'تعذّر الاتصال بالسيرفر';
+}
 async function geoSearch(radius: number): Promise<Peer[]> {
-  const pos = await getPos();
-  await net('/api/nearby/ping', { method: 'POST', body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }) });
+  await publishPos();
   const d = await net(`/api/nearby?radius=${radius}`);
-  return (Array.isArray(d) ? d : d?.users || []).map((o: any): Peer => ({ id: String(o.id), name: String(o.name || o.username || 'User'), username: o.username ?? null, avatar: o.avatar ?? o.avatarUrl ?? null, geo: true, dist: Number(o.distance) }));
+  return (Array.isArray(d) ? d : d?.users || []).map((o: any): Peer => {
+    if (o.friend) { E.friends.add(String(o.id)); E.accepted.add(String(o.id)); }
+    return { id: String(o.id), name: String(o.name || o.username || 'User'), username: o.username ?? null, avatar: o.avatar ?? o.avatarUrl ?? null, geo: true, dist: Number(o.distance), friend: !!o.friend };
+  });
 }
 
 /* ───────────────────────── Helpers UI ───────────────────────── */
@@ -422,23 +462,29 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
     return [...map.values()].filter(p => p.id !== me.id).sort((a, b) => (a.ble === b.ble ? (a.dist ?? 1e9) - (b.dist ?? 1e9) : a.ble ? -1 : 1));
   }, [geoPeers, me.id, E.blePeers.size, E.ble]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const search = async () => {
-    if (scanning) return;
-    setScanning(true); setSearched(true); setGeoNote(''); setSel(null);
-    void bleStart(me);
-    const geo = (async () => {
-      if (hidden) { setGeoNote('الموقع مخفي — فعّلت إخفاء موقعي'); return; }
-      if (!isOnline()) { setGeoNote('لا يوجد إنترنت — البحث بالبلوتوث فقط'); return; }
-      try { setGeoPeers(await geoSearch(radius)); }
-      catch (e: any) { setGeoNote(e?.code === 1 ? 'صلاحية الموقع مرفوضة — فعّلها من إعدادات الجهاز' : 'تعذّر تحديد الموقع'); }
-    })();
-    await Promise.all([geo, new Promise(r => setTimeout(r, 6000))]);
-    setScanning(false); rerender();
+  const scanRef = useRef(false);
+  /** بحث حيّ: يشتغل تلقائياً عند فتح المربع ويتحدّث كل 8 ثوانٍ؛ الزر للتحديث اليدوي. */
+  const search = async (silent = false) => {
+    if (scanRef.current) return; scanRef.current = true;
+    if (!silent) { setScanning(true); setSel(null); }
+    setSearched(true);
+    if (!hidden) void bleStart(me);
+    try {
+      if (hidden) { setGeoPeers([]); setGeoNote('موقعك مخفي — ما أحد يشوفك وما تشوف أحد بالموقع'); }
+      else if (!isOnline()) setGeoNote('لا يوجد إنترنت — البحث بالبلوتوث فقط');
+      else { try { setGeoPeers(await geoSearch(radius)); setGeoNote(''); } catch (e) { setGeoNote(geoErr(e)); } }
+      if (!silent) await new Promise(r => setTimeout(r, 1200));
+    } finally { scanRef.current = false; setScanning(false); rerender(); }
   };
+  useEffect(() => {
+    void search();
+    const t = window.setInterval(() => { void search(true); }, 8000);
+    return () => window.clearInterval(t);
+  }, [radius, hidden]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleHidden = async () => {
     const v = !hidden; setHidden(v); jset(kHidden(me.id), v);
-    if (v) { try { await net('/api/nearby/ping', { method: 'DELETE' }); } catch { /* */ } setGeoPeers([]); }
+    if (v) { try { await net('/api/nearby/ping', { method: 'DELETE' }); } catch { /* */ } setGeoPeers([]); void bleStop(); }
   };
 
   /** الضغط على شخص => يظهر بروفايله (صورة + يوزر + زر طلب). */
@@ -470,7 +516,7 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
   const pill: React.CSSProperties = { border: 'none', borderRadius: 999, padding: '7px 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', whiteSpace: 'nowrap' };
   const reqButton = (p: Peer) => {
     const rel = relOf(p.id);
-    if (rel === 'accepted') return <span style={{ ...pill, background: 'rgba(34,197,94,.18)', color: '#4ade80', cursor: 'default' }}>مقبول ✓</span>;
+    if (rel === 'accepted') return <span style={{ ...pill, background: 'rgba(34,197,94,.18)', color: '#4ade80', cursor: 'default' }}>{E.friends.has(p.id) ? 'صديق ✓' : 'مقبول ✓'}</span>;
     if (rel === 'out') return <span style={{ ...pill, background: 'rgba(255,255,255,.1)', color: '#cbd5e1', cursor: 'default' }}>تم الإرسال ✓</span>;
     if (rel === 'in') { const r = E.incoming.find(x => x.fromId === p.id); return <button type="button" disabled={busy || !r} onClick={() => r && void doRespond(r, true)} style={{ ...pill, background: '#16a34a', color: '#fff' }}>قبول</button>; }
     return <button type="button" disabled={busy} onClick={() => void doRequest(p)} style={{ ...pill, background: BLUE, color: '#fff' }}>{busy ? '…' : 'طلب +'}</button>;
@@ -529,17 +575,17 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
         {tab === 'find' && !sel && (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '6px 0 12px' }}>
-              <button type="button" onClick={search} disabled={scanning} aria-label="Search nearby"
+              <button type="button" onClick={() => void search()} disabled={scanning} aria-label="Search nearby"
                 style={{ position: 'relative', width: 88, height: 88, borderRadius: '50%', border: 'none', background: `linear-gradient(145deg, ${BLUE}, #1d4ed8)`, color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 0 28px rgba(59,130,246,.55)' }}>
                 {scanning && [0, 1].map(i => <span key={i} style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '2px solid rgba(96,165,250,.75)', animation: `snaRing 1.8s ease-out ${i * 0.9}s infinite`, pointerEvents: 'none' }} />)}
-                <span style={{ position: 'relative' }}>{scanning ? 'جارٍ البحث' : 'بحث'}</span>
+                <span style={{ position: 'relative' }}>{scanning ? 'جارٍ البحث' : 'تحديث'}</span>
               </button>
               <div style={{ display: 'flex', gap: 6 }}>
                 {[[500, '500 م'], [3000, '3 كم'], [20000, '20 كم']].map(([v, l]) => (
                   <button key={v} type="button" onClick={() => setRadius(Number(v))} style={{ border: '1px solid ' + (radius === v ? BLUE : 'rgba(255,255,255,.18)'), background: radius === v ? 'rgba(59,130,246,.2)' : 'transparent', color: radius === v ? '#93c5fd' : '#cbd5e1', borderRadius: 999, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>{l}</button>
                 ))}
               </div>
-              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>{[bleMsg, geoNote].filter(Boolean).join(' · ') || 'يبحث بالبلوتوث + الموقع معاً — مستخدمو التطبيق فقط'}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>{[bleMsg, geoNote].filter(Boolean).join(' · ') || 'تحديث تلقائي — يظهر الأشخاص مباشرة بالبلوتوث أو الموقع (مستخدمو التطبيق فقط)'}</div>
               <label style={{ fontSize: 12, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input type="checkbox" checked={hidden} onChange={toggleHidden} /> إخفاء موقعي عن الآخرين
               </label>
@@ -548,10 +594,10 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
             {searched && (
               <div>
                 <div style={{ fontWeight: 800, fontSize: 13, margin: '2px 2px 8px', color: '#cbd5e1' }}>النتائج ({peers.length}) — اضغط على شخص لعرض بروفايله</div>
-                {peers.length === 0 && !scanning && <div style={{ color: '#64748b', fontSize: 14, padding: 10, textAlign: 'center' }}>ما لقينا أحد قريب الآن</div>}
+                {peers.length === 0 && !scanning && <div style={{ color: '#64748b', fontSize: 14, padding: 10, textAlign: 'center', lineHeight: 1.7 }}>ما لقينا أحد قريب الآن — يظهر هنا مباشرة أول ما يفتح صفحة Stooorna Ai وموقعه أو البلوتوث شغّال</div>}
                 {peers.map(p => (
                   <PersonRow key={p.id} p={p} onClick={() => openProfile(p)}
-                    sub={<>{p.ble ? '🟢 بلوتوث' : ''}{p.ble && p.geo ? ' · ' : ''}{p.geo ? `🔵 ${fmtDist(p.dist) || 'نفس المنطقة'}` : ''}</>}
+                    sub={<>{p.friend || E.friends.has(p.id) ? '⭐ صديق' : 'غير مضاف'}{p.username ? ` · @${String(p.username).replace(/^@/, '')}` : ''} · {p.ble ? '🟢 بلوتوث' : ''}{p.ble && p.geo ? ' · ' : ''}{p.geo ? `🔵 ${fmtDist(p.dist) || 'نفس المنطقة'}` : ''}</>}
                     right={relOf(p.id) === 'accepted' ? <span style={{ fontSize: 11, color: '#4ade80' }}>مقبول</span> : relOf(p.id) === 'out' ? <span style={{ fontSize: 11, color: '#94a3b8' }}>بانتظار الرد</span> : relOf(p.id) === 'in' ? <span style={{ fontSize: 11, color: '#fbbf24' }}>طلب وارد</span> : undefined} />
                 ))}
               </div>
@@ -724,7 +770,7 @@ function NearbyPatch() {
   useEffect(() => {
     if (!sheet) { setMe(null); setView(null); E.me = null; void bleStop(); return; }
     const u = findUser(sheet.btn); setMe(u); E.me = u;
-    if (u) { loadAccepted(u.id); void syncLinks(u); void bleStart(u); } // الاستقبال بالبلوتوث طالما صفحة Stooorna Ai مفتوحة
+    if (u) { loadAccepted(u.id); void syncLinks(u); if (!jget(kHidden(u.id), false)) void bleStart(u); } // الاستقبال بالبلوتوث طالما صفحة Stooorna Ai مفتوحة
   }, [sheet]);
 
   /* مكان المستطيلات: عنصر خاص بنا داخل صندوق القائمة (order:999 => دائماً تحت الأصدقاء) */
@@ -759,11 +805,14 @@ function NearbyPatch() {
     };
     void tick();
     const t = window.setInterval(tick, 5000);
+    const beat = () => { if (jget(kHidden(me.id), false) || !isOnline()) return; void publishPos().catch(() => { /* */ }); }; // أنشر موقعي طالما الصفحة مفتوحة
+    beat();
+    const hb = window.setInterval(beat, 45000);
     const offMsgs = on('msgs', () => { void tick(false); });
     const offLinks = on('links', recount);
     const onNet = () => { void flushPending(); void tick(); };
     window.addEventListener('online', onNet);
-    return () => { alive = false; window.clearInterval(t); offMsgs(); offLinks(); window.removeEventListener('online', onNet); };
+    return () => { alive = false; window.clearInterval(t); window.clearInterval(hb); offMsgs(); offLinks(); void net('/api/nearby/ping', { method: 'DELETE' }).catch(() => { /* */ }); window.removeEventListener('online', onNet); };
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!sheet || !me) return null;

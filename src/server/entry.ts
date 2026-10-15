@@ -29,6 +29,7 @@ import { registerImageProxyRoutes } from "./image-proxy-patch.js"; // IMAGE-PROX
 import { registerAiFreeRoutes } from "./ai-free-routes.js"; // AI-FREE (free chat / search / image / file routes for Stooorna Ai)
 import { registerFriendChatRoutes } from "./friend-chat-routes.js"; // FRIEND-CHAT-ROUTES (dedicated table, no hidden marker)
 import { registerFriendGroupChatRoutes } from "./friend-group-chat-routes.js"; // FRIEND-GROUP-CHAT (groups inside friend chat)
+import { registerNearbyRoutes } from "./nearby-routes.js"; // NEARBY (blue dot: location/Bluetooth discovery + requests + chat)
 import { createLiveBoxRouter } from "./liveBox.server.js"; // TREASURE-BOX
 
 // <api-imports>
@@ -1341,6 +1342,24 @@ registerFriendGroupChatRoutes(app, {
     return accepted.some((f) => String(f?.friendId || "") === peerId);
   },
   push: (toId, title, text) => sendFcmToUser({ userId: toId, title, body: text, url: `/?openChat=1`, type: "message" as any }),
+});
+// ── NEARBY: النقطة الزرقاء في Stooorna Ai — بحث بالموقع/البلوتوث (أندرويد + آيفون عبر السيرفر) + طلبات + دردشة؛ جداول خاصة لا تلمس شيئاً قديماً ──
+registerNearbyRoutes(app, {
+  pool: templatesPool,
+  getUser: (req) => session.user(req),
+  friendIds: async (req) => {
+    let body: any = null;
+    const fake: any = {
+      statusCode: 200, headersSent: false,
+      setHeader() { return fake; }, set() { return fake; }, header() { return fake; }, type() { return fake; },
+      status(c: number) { fake.statusCode = c; return fake; },
+      json(x: unknown) { body = x; return fake; }, send(x: unknown) { body = x; return fake; }, end() { return fake; },
+    };
+    await (friends_get_5 as any)(req, fake);
+    const accepted: Array<{ friendId?: string }> = Array.isArray(body?.accepted) ? body.accepted : [];
+    return accepted.map((f) => String(f?.friendId || "")).filter(Boolean);
+  },
+  push: (toId, fromName, text) => sendFcmToUser({ userId: toId, title: fromName, body: text, url: `/?openChat=1&peerName=${encodeURIComponent(fromName || "")}`, type: "message" as any }),
 });
 const allow = makeLimiter();
 const deny = (res: Response, code: number, error: string) => res.status(code).json({ ok: false, error });
