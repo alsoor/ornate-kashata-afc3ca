@@ -32,7 +32,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-export const NEARBY_PATCH_VERSION = '1.3.0';
+export const NEARBY_PATCH_VERSION = '1.4.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -146,7 +146,7 @@ type OriginFlags = { ble?: boolean; geo?: boolean };
 
 /** المحادثات القديمة (قبل نظام الطلبات) تُعتبر مقبولة حتى ما تضيع. */
 function loadAccepted(me: string) {
-  E.accepted = new Set<string>([...jget<string[]>(kAcc(me), []), ...loadIndex(me).map(c => c.id)]);
+  E.accepted = new Set<string>(jget<string[]>(kAcc(me), [])); // [v1.4] الأصدقاء وقدامى المحادثات لازم يمرون بالطلب والقبول
 }
 const relOf = (id: string): 'none' | 'out' | 'in' | 'accepted' =>
   E.accepted.has(id) ? 'accepted' : E.incoming.some(r => r.fromId === id) ? 'in' : E.outgoing[id]?.status === 'pending' ? 'out' : 'none';
@@ -155,7 +155,7 @@ const relOf = (id: string): 'none' | 'out' | 'in' | 'accepted' =>
 async function syncLinks(me: Me) {
   if (!isOnline()) return;
   try {
-    try { const f = await net('/api/nearby/friends'); (f?.ids || []).forEach((id: any) => { E.friends.add(String(id)); E.accepted.add(String(id)); }); } catch { /* */ }
+    try { const f = await net('/api/nearby/friends'); (f?.ids || []).forEach((id: any) => { E.friends.add(String(id)); }); } catch { /* */ } // [v1.4] صديق ≠ مقبول
     const d = await net('/api/nearby/requests');
     E.incoming = (d?.incoming || []).map((o: any): ReqIn => ({ id: String(o.id), fromId: String(o.fromId), name: String(o.name || 'User'), username: o.username || null, avatar: o.avatar ?? null, ts: Number(o.ts) || Date.now() }));
     const out: Record<string, ReqOut> = {};
@@ -163,13 +163,15 @@ async function syncLinks(me: Me) {
     E.outgoing = out;
     const org = jget<Record<string, OriginFlags>>(kOrigin(me.id), {});
     let added = false;
+    const srvAcc = new Set<string>((d?.accepted || []).map((a: any) => String(a.peerId)));
     (d?.accepted || []).forEach((a: any) => {
       const id = String(a.peerId);
-      if (E.accepted.has(id)) return;
+      if (E.accepted.has(id)) { if (a.avatar) touchAvatar(me.id, id, a.avatar); return; }
       E.accepted.add(id); added = true;
       touchIndex(me.id, { id, name: a.name, avatar: a.avatar, ...(org[id] || (E.blePeers.has(id) ? { ble: true } : { geo: true })) });
     });
-    if (added) jset(kAcc(me.id), [...E.accepted]);
+    if (srvAcc.size !== E.accepted.size || [...E.accepted].some(x => !srvAcc.has(x))) { E.accepted = srvAcc; added = true; }
+    jset(kAcc(me.id), [...E.accepted]);
     emit('links'); if (added) emit('msgs');
   } catch { /* */ }
 }
@@ -200,6 +202,23 @@ async function respondRequest(me: Me, r: ReqIn, accept: boolean): Promise<boolea
 async function cancelRequest(me: Me, toId: string) {
   const o = E.outgoing[toId]; if (!o) return;
   try { await net(`/api/nearby/requests/${encodeURIComponent(o.id)}`, { method: 'DELETE' }); delete E.outgoing[toId]; emit('links'); } catch { /* */ }
+}
+
+/* ── [v1.4] الصورة: لو ما وصلت صورة الشخص نجيبها من بروفايله ونحفظها في الفهرس ── */
+function touchAvatar(meId: string, id: string, avatar: string, name?: string) {
+  const list = loadIndex(meId); const cur = list.find(x => x.id === id);
+  if (!cur || (cur.avatar === avatar && (!name || cur.name === name))) return;
+  jset(kIndex(meId), list.map(x => (x.id === id ? { ...x, avatar, name: name || x.name } : x)));
+}
+const profTried = new Map<string, number>();
+async function hydrateProfile(me: Me, id: string): Promise<{ name?: string; username?: string | null; avatar?: string | null } | null> {
+  if (!isOnline() || Date.now() - (profTried.get(id) || 0) < 60000) return null;
+  profTried.set(id, Date.now());
+  try {
+    const d = await net(`/api/nearby/user/${encodeURIComponent(id)}`);
+    if (d?.avatar) { touchAvatar(me.id, id, d.avatar, d.name); emit('msgs'); }
+    return d || null;
+  } catch { return null; }
 }
 
 /* ── البلوتوث (Nearby) ── */
@@ -341,7 +360,7 @@ async function geoSearch(radius: number): Promise<Peer[]> {
   await publishPos();
   const d = await net(`/api/nearby?radius=${radius}`);
   return (Array.isArray(d) ? d : d?.users || []).map((o: any): Peer => {
-    if (o.friend) { E.friends.add(String(o.id)); E.accepted.add(String(o.id)); }
+    if (o.friend) E.friends.add(String(o.id));
     return { id: String(o.id), name: String(o.name || o.username || 'User'), username: o.username ?? null, avatar: o.avatar ?? o.avatarUrl ?? null, geo: true, dist: Number(o.distance), friend: !!o.friend };
   });
 }
@@ -373,16 +392,18 @@ function scanSheet(): SheetEls | null {
 }
 
 function Avatar({ p, size = 46 }: { p: { name: string; avatar?: string | null }; size?: number }) {
+  const [bad, setBad] = useState(false);
+  useEffect(() => { setBad(false); }, [p.avatar]);
   return (
     <span style={{ width: size, height: size, borderRadius: '50%', flexShrink: 0, overflow: 'hidden', background: '#16a34a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: size * 0.4 }}>
-      {p.avatar ? <img src={p.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (p.name.trim().charAt(0).toUpperCase() || '?')}
+      {p.avatar && !bad ? <img src={p.avatar} alt="" onError={() => setBad(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (p.name.trim().charAt(0).toUpperCase() || '?')}
     </span>
   );
 }
 
 /** طبقة على document.body (خارج الـSheet) حتى لا يبتلع الـSheet اللمس — نفس فكرة ModalLayer في friendChatPatch.
  *  modal=true => خلفية معتمة + المحتوى في منتصف الشاشة (مربع). غير ذلك => صفحة كاملة (الدردشة). */
-function Layer({ children, onEsc, modal }: { children: React.ReactNode; onEsc: () => void; modal?: boolean }) {
+function Layer({ children, onEsc, modal, dir = 'rtl' }: { children: React.ReactNode; onEsc: () => void; modal?: boolean; dir?: 'rtl' | 'ltr' }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = ref.current; if (!el) return;
@@ -395,10 +416,10 @@ function Layer({ children, onEsc, modal }: { children: React.ReactNode; onEsc: (
   }, [onEsc]);
   const base: React.CSSProperties = { position: 'fixed', inset: 0, zIndex: 2147483100, display: 'flex', pointerEvents: 'auto', touchAction: 'auto', overscrollBehavior: 'contain', fontFamily: 'inherit' };
   return (
-    <div ref={ref} dir="rtl" onClick={modal ? (e) => { if (e.target === e.currentTarget) onEsc(); } : undefined}
+    <div ref={ref} dir={dir} onClick={modal ? (e) => { if (e.target === e.currentTarget) onEsc(); } : undefined}
       style={modal
         ? { ...base, background: 'rgba(2,10,9,.62)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', alignItems: 'center', justifyContent: 'center', padding: 16 }
-        : { ...base, background: '#fff', flexDirection: 'column' }}>
+        : { ...base, background: '#fff', color: '#111', flexDirection: 'column' }}>
       {children}
     </div>
   );
@@ -636,12 +657,16 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
   const rerender = useCallback(() => force(x => x + 1), []);
   const [text, setText] = useState('');
   const [msgs, setMsgs] = useState<Msg[]>(() => loadMsgs(me.id, peer.id));
+  const [avatar, setAvatar] = useState<string | null>(peer.avatar ?? loadIndex(me.id).find(c => c.id === peer.id)?.avatar ?? null);
+  const [reqBusy, setReqBusy] = useState(false);
+  const [reqNote, setReqNote] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { const offs = [on('peers', rerender), on('ble', rerender)]; return () => offs.forEach(f => f()); }, [rerender]);
+  useEffect(() => { const offs = [on('peers', rerender), on('ble', rerender), on('links', rerender)]; return () => offs.forEach(f => f()); }, [rerender]);
   useEffect(() => {
     E.openPeer = peer.id; clearUnread(me.id, peer.id); emit('msgs');
     void syncPeer(me, peer.id, peer.name);
+    if (!avatar) void hydrateProfile(me, peer.id).then(d => { if (d?.avatar) setAvatar(d.avatar); });
     const refresh = () => { setMsgs(loadMsgs(me.id, peer.id)); clearUnread(me.id, peer.id); };
     const off = on('msgs', refresh);
     const t = window.setInterval(() => { void syncPeer(me, peer.id, peer.name); void flushPending(); }, 3000);
@@ -649,24 +674,35 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
   }, [peer.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs.length]);
 
-  const submit = () => { const t = text.trim(); if (!t) return; setText(''); void sendText(me, peer, t); };
+  const rel = relOf(peer.id);
+  const accepted = rel === 'accepted';
+  const submit = () => { const t = text.trim(); if (!t || !accepted) return; setText(''); void sendText(me, { ...peer, avatar }, t); };
+  const invite = async () => {
+    if (reqBusy) return; setReqBusy(true); setReqNote('');
+    const r = await sendRequest(me, peer);
+    setReqBusy(false);
+    setReqNote(r === 'accepted' ? 'تم القبول — تقدر تدردش الحين' : r === 'pending' ? 'انرسل الطلب — بانتظار قبوله' : r === 'declined' ? 'الطلب انرفض قبل شوي — جرّب بعد فترة' : isOnline() ? 'تعذّر إرسال الطلب' : 'إرسال الطلب يحتاج إنترنت');
+    rerender();
+  };
   const reach = bleReachable(peer.id) ? 'ble' : isOnline() ? 'net' : 'off';
   const meta = loadIndex(me.id).find(c => c.id === peer.id);
+  const shown = { name: peer.name, avatar };
 
   return (
     <>
+      {/* [v1.4] ترتيب إنجليزي (LTR): رجوع + صورة + اسم على اليسار، حذف على اليمين */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'max(12px, env(safe-area-inset-top)) 14px 12px', borderBottom: '1px solid #eee', background: '#fff' }}>
         <button type="button" aria-label="Back" onClick={onClose}
-          style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: GREEN, color: '#fff', fontSize: 20, cursor: 'pointer', padding: 0 }}>→</button>
-        <Avatar p={peer} size={38} />
+          style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: GREEN, color: '#fff', fontSize: 20, cursor: 'pointer', padding: 0, flexShrink: 0 }}>←</button>
+        <Avatar p={shown} size={40} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{peer.name}</div>
-          <div style={{ fontSize: 12, color: reach === 'ble' ? '#16a34a' : reach === 'net' ? BLUE : '#9ca3af' }}>
+          <div dir="auto" style={{ fontWeight: 800, fontSize: 16, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{peer.name}</div>
+          <div dir="auto" style={{ fontSize: 12, color: reach === 'ble' ? '#16a34a' : reach === 'net' ? BLUE : '#9ca3af' }}>
             {reach === 'ble' ? 'متصل بالبلوتوث — مباشر' : reach === 'net' ? 'عبر الإنترنت' : '⏳ لا يوجد اتصال — تُحفظ وتُرسل تلقائياً'}
           </div>
         </div>
         <button type="button" aria-label="Delete chat" onClick={() => { if (window.confirm('حذف هذه المحادثة من جهازك؟')) { removeConv(me.id, peer.id); onClose(); } }}
-          style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: '#f3f4f6', cursor: 'pointer', padding: 0, fontSize: 16 }}>🗑</button>
+          style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: '#f3f4f6', cursor: 'pointer', padding: 0, fontSize: 16, flexShrink: 0 }}>🗑</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 6, background: '#f7f8f8' }}>
         {(meta?.ble || meta?.geo || peer.ble || peer.geo) && (
@@ -674,13 +710,13 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
             <Origin ble={meta?.ble || peer.ble} geo={meta?.geo || peer.geo} long />
           </div>
         )}
-        {msgs.length === 0 && <div style={{ margin: 'auto', color: '#9ca3af', fontSize: 14 }}>ابدأ الدردشة مع {peer.name}</div>}
+        {msgs.length === 0 && <div dir="auto" style={{ margin: 'auto', color: '#9ca3af', fontSize: 14 }}>{accepted ? `ابدأ الدردشة مع ${peer.name}` : 'أرسل طلب دردشة — ينفتح الشات بعد ما يقبل'}</div>}
         {msgs.map(m => {
           const mine = m.from === me.id;
           return (
-            <div key={m.clientId} style={{ alignSelf: mine ? 'flex-start' : 'flex-end', maxWidth: '80%' }}>
+            <div key={m.clientId} style={{ alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: '80%' }}>
               <div dir="auto" style={{ background: mine ? GREEN : '#fff', color: mine ? '#fff' : '#111', border: mine ? 'none' : '1px solid #e5e7eb', borderRadius: 16, padding: '8px 12px', fontSize: 15, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, textAlign: mine ? 'left' : 'right' }}>
+              <div dir="ltr" style={{ fontSize: 11, color: '#9ca3af', marginTop: 2, textAlign: mine ? 'right' : 'left' }}>
                 {hhmm(m.ts)}{mine ? (m.status === 'ble' ? ' ✓✓' : m.status === 'sent' ? ' ✓' : m.status === 'pending' ? ' ⏳' : ' !') : ''}
               </div>
             </div>
@@ -688,11 +724,26 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
         })}
         <div ref={endRef} />
       </div>
-      <div style={{ display: 'flex', gap: 8, padding: '10px 12px max(12px, env(safe-area-inset-bottom))', borderTop: '1px solid #eee', background: '#fff' }}>
-        <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submit(); }} dir="auto" placeholder="اكتب رسالة…"
-          style={{ flex: 1, height: 46, borderRadius: 23, border: 'none', background: GREEN, color: '#fff', padding: '0 18px', fontSize: 15, outline: 'none' }} />
-        <button type="button" onClick={submit} aria-label="Send" style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: BLUE, color: '#fff', fontSize: 18, cursor: 'pointer', padding: 0 }}>➤</button>
-      </div>
+      {accepted ? (
+        /* [v1.4] المربع يسار والإرسال يمين */
+        <div style={{ display: 'flex', gap: 8, padding: '10px 12px max(12px, env(safe-area-inset-bottom))', borderTop: '1px solid #eee', background: '#fff' }}>
+          <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submit(); }} dir="auto" placeholder="اكتب رسالة…"
+            style={{ flex: 1, minWidth: 0, height: 46, borderRadius: 23, border: 'none', background: GREEN, color: '#fff', padding: '0 18px', fontSize: 15, outline: 'none' }} />
+          <button type="button" onClick={submit} aria-label="Send" style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: BLUE, color: '#fff', fontSize: 18, cursor: 'pointer', padding: 0, flexShrink: 0 }}>➤</button>
+        </div>
+      ) : (
+        /* [v1.4] لا دردشة قبل القبول: دعوة (طلب) بدل مربع الكتابة */
+        <div style={{ padding: '12px 14px max(14px, env(safe-area-inset-bottom))', borderTop: '1px solid #eee', background: '#fff', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+          {reqNote && <div dir="auto" style={{ fontSize: 13, color: '#1d4ed8', textAlign: 'center' }}>{reqNote}</div>}
+          {rel === 'in'
+            ? <button type="button" disabled={reqBusy} onClick={async () => { const r = E.incoming.find(x => x.fromId === peer.id); if (!r) return; setReqBusy(true); await respondRequest(me, r, true); setReqBusy(false); rerender(); }}
+                style={{ border: 'none', borderRadius: 999, padding: '12px 30px', fontSize: 15, fontWeight: 800, background: '#16a34a', color: '#fff', cursor: 'pointer' }}>قبول طلبه</button>
+            : rel === 'out'
+              ? <div dir="auto" style={{ fontSize: 14, color: '#6b7280' }}>⏳ تم إرسال الطلب — بانتظار القبول</div>
+              : <button type="button" disabled={reqBusy} onClick={() => void invite()}
+                  style={{ border: 'none', borderRadius: 999, padding: '12px 30px', fontSize: 15, fontWeight: 800, background: BLUE, color: '#fff', cursor: 'pointer' }}>{reqBusy ? '…' : 'إرسال طلب دردشة +'}</button>}
+        </div>
+      )}
     </>
   );
 }
@@ -703,6 +754,8 @@ function NearbyRows({ me, onOpen }: { me: Me; onOpen: (p: Peer) => void }) {
   useEffect(() => { const offs = [on('msgs', () => force(x => x + 1)), on('unread', () => force(x => x + 1)), on('peers', () => force(x => x + 1))]; return () => offs.forEach(f => f()); }, []);
   const rows = loadIndex(me.id);
   const loc = jget<Record<string, number>>(kUnread(me.id), {});
+  const missing = rows.filter(c => !c.avatar).map(c => c.id).join(',');
+  useEffect(() => { missing.split(',').filter(Boolean).slice(0, 5).forEach(id => { const mm = E.me; if (mm) void hydrateProfile(mm, id); }); }, [missing]);
   if (!rows.length) return null;
   return (
     <>
@@ -799,7 +852,19 @@ function NearbyPatch() {
     const tick = async (links = true) => {
       if (isOnline()) {
         if (links) await syncLinks(me);
-        try { const d = await net('/api/nearby/unread'); E.srvUnread = d?.bySender || {}; emit('unread'); } catch { /* */ }
+        try {
+          const d = await net('/api/nearby/unread'); E.srvUnread = d?.bySender || {}; emit('unread');
+          // [v1.4] رسالة جاتني من شخص ما عندي له مستطيل => أنزّله في القائمة (مع صورته) عشان تنشاف
+          const have = new Set(loadIndex(me.id).map(c => c.id));
+          for (const sid of Object.keys(E.srvUnread)) {
+            if (have.has(sid) || !E.accepted.has(sid)) continue;
+            touchIndex(me.id, { id: sid, name: 'User' });
+            const pr = await hydrateProfile(me, sid);
+            if (pr?.name) touchIndex(me.id, { id: sid, name: pr.name, avatar: pr.avatar });
+            void syncPeer(me, sid, pr?.name);
+            emit('msgs');
+          }
+        } catch { /* */ }
       }
       recount();
     };
@@ -836,7 +901,7 @@ function NearbyPatch() {
         document.body,
       )}
       {view?.mode === 'chat' && createPortal(
-        <Layer onEsc={() => setView(null)}><NearbyChat me={me} peer={view.peer} onClose={() => setView(null)} /></Layer>,
+        <Layer dir="ltr" onEsc={() => setView(null)}><NearbyChat me={me} peer={view.peer} onClose={() => setView(null)} /></Layer>,
         document.body,
       )}
     </>

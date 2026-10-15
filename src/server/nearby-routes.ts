@@ -86,14 +86,11 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
   const friendSet = async (req: Request): Promise<Set<string>> => {
     try { return new Set(((await Promise.resolve(o.friendIds?.(req))) || []).map(String)); } catch { return new Set(); }
   };
-  const canChat = async (req: Request, a: string, b: string): Promise<boolean> => {
-    if ((await friendSet(req)).has(b)) return true; // صديق مضاف => مسموح مباشرة
+  const canChat = async (_req: Request, a: string, b: string): Promise<boolean> => {
+    // [v1.4] لا استثناء للأصدقاء ولا للمحادثات القديمة: لازم طلب مقبول دائماً
     const [rows]: any = await pool.query(
-      `SELECT status FROM nearby_requests WHERE (from_id=? AND to_id=?) OR (from_id=? AND to_id=?)`, [a, b, b, a]);
-    if (rows?.length) return rows.some((r: any) => r.status === 'accepted');
-    const [old]: any = await pool.query(
-      `SELECT 1 FROM nearby_messages WHERE (sender_id=? AND receiver_id=?) OR (sender_id=? AND receiver_id=?) LIMIT 1`, [a, b, b, a]);
-    return !!old?.length;
+      `SELECT 1 FROM nearby_requests WHERE status='accepted' AND ((from_id=? AND to_id=?) OR (from_id=? AND to_id=?)) LIMIT 1`, [a, b, b, a]);
+    return !!rows?.length;
   };
 
   /** تحديث موقعي (يُستدعى فقط عند ضغط زر البحث). */
@@ -142,7 +139,7 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
   });
 
   /** فحص سريع: هل المسارات مربوطة؟  GET /api/nearby/health */
-  app.get('/api/nearby/health', async (_req, res) => { await ready; res.json({ ok: true, v: '1.3' }); });
+  app.get('/api/nearby/health', async (_req, res) => { await ready; res.json({ ok: true, v: '1.4' }); });
 
   /** معرّفات أصدقائي المضافين. */
   app.get('/api/nearby/friends', async (req, res) => {
@@ -154,7 +151,11 @@ export function registerNearbyRoutes(app: Express, o: Opts) {
   app.get('/api/nearby/user/:id', async (req, res) => {
     const u = await me(req, res); if (!u) return;
     const [rows]: any = await pool.query('SELECT user_id, name, username, avatar FROM nearby_profiles WHERE user_id=?', [clean(req.params.id, 64)]);
-    const p = rows?.[0];
+    let p = rows?.[0];
+    if (!p || !p.avatar) { // [v1.4] لو ما عنده صورة في البروفايل نجيبها من آخر موقع نشره
+      const [pr]: any = await pool.query('SELECT user_id, name, avatar FROM nearby_presence WHERE user_id=?', [clean(req.params.id, 64)]);
+      if (pr?.[0]) p = { ...(p || {}), user_id: pr[0].user_id, name: p?.name || pr[0].name, avatar: p?.avatar || pr[0].avatar };
+    }
     if (!p) return res.status(404).json({ error: 'not found' });
     res.json({ id: String(p.user_id), name: p.name, username: p.username || null, avatar: p.avatar || null });
   });
