@@ -27013,6 +27013,19 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
       try { window.dispatchEvent(new CustomEvent('stooorna:profile-panel', { detail: { open: false } })); } catch { /* */ }
     };
   }, [profileSlideOpen]);
+  // PROFILE-CALL-INLINE: the friends list opens under the green Call banner, on the profile page itself (no separate dark page).
+  const [profileCallListOpen, setProfileCallListOpen] = useState(false);
+  const [profileCallFriends, setProfileCallFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
+  const [profileCallLoading, setProfileCallLoading] = useState(false);
+  useEffect(() => {
+    if (!profileCallListOpen) return;
+    let off = false;
+    if (dockFriendsCache.list) setProfileCallFriends(dockFriendsCache.list); else setProfileCallLoading(true);
+    void refreshDockFriends().then(l => { if (!off && l) setProfileCallFriends(l); }).finally(() => { if (!off) setProfileCallLoading(false); });
+    return () => { off = true; };
+  }, [profileCallListOpen]);
+  useEffect(() => { if (homeCallUiActive) setProfileCallListOpen(false); }, [homeCallUiActive]); // list turns into the call buttons
+  useEffect(() => { if (!profileSlideOpen) setProfileCallListOpen(false); }, [profileSlideOpen]);
   // PERF: bubble state lives in an external store (dockSet/dockGet) — this page does NOT subscribe to it,
   // so opening/closing the bubble no longer re-renders this ~12k-line component.
   const openDockBubble = (kind: 'call' | 'live' | 'settings' | 'templates', el: HTMLElement | null) => {
@@ -30114,7 +30127,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                             return;
                           }
                           if (!profilePlusIncomingCallUi.ringing) {
-                            openDockBubble('call', e.currentTarget);
+                            // PROFILE-CALL-INLINE: names list opens right under this banner, on the profile page
+                            if (homeCallUiActive) return; // call already running: its buttons are below the banner
+                            setProfileCallListOpen(o => !o);
                             return;
                           }
                           setProfilePlusOpen(false);
@@ -30142,6 +30157,33 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       >
                         <Headphones size={24} strokeWidth={2.3} />
                       </button>
+                    </div>
+                  ) : null}
+                  {/* PROFILE-CALL-INLINE: names list under the Call banner; it turns into the call buttons (slot below) once a call starts */}
+                  {user?.id && profileCallListOpen && !homeCallUiActive ? (
+                    <div style={{ width: '100%', maxWidth: 420, marginTop: 4, display: 'flex', flexDirection: 'column', gap: 6, maxHeight: '42vh', overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
+                      {profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>Loading…</p>}
+                      {!profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>No friends to call yet</p>}
+                      {profileCallFriends.map(f => (
+                        <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1px solid rgba(0,0,0,0.1)', background: '#f6f8f8' }}>
+                          <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ display: 'block', color: '#111', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
+                            {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: '#6b7280' }}>@{f.username}</span> : null}
+                          </div>
+                          <button
+                            type="button"
+                            aria-label={`Call ${f.name || f.username || 'friend'}`}
+                            onClick={() => {
+                              setProfileCallListOpen(false);
+                              try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
+                            }}
+                            style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid rgba(34,197,94,0.55)', background: 'rgba(34,197,94,0.16)', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                          >
+                            <Phone size={16} strokeWidth={2.3} />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   ) : null}
                   {/* CALL-SLOT: the live call controls (owned by the layout) are drawn here, on this page */}
