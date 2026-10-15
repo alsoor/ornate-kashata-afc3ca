@@ -19685,6 +19685,54 @@ function TplLongPressHint() {
   );
 }
 
+// GRABBER-TPL-HINT: down arrow + bilingual text under the top grabber line (long-press = publish to Templates)
+function GrabberPublishHint() {
+  const [done, setDone] = useState(() => { try { return localStorage.getItem(TPL_HINT_DONE_KEY) === '1'; } catch { return false; } });
+  const [lang, setLang] = useState<'en' | 'ar'>('en');
+  useEffect(() => {
+    const f = () => setDone(true);
+    window.addEventListener('stooorna:tpl-hint-done', f);
+    return () => window.removeEventListener('stooorna:tpl-hint-done', f);
+  }, []);
+  useEffect(() => {
+    if (done) return;
+    const id = window.setInterval(() => setLang(l => l === 'en' ? 'ar' : 'en'), 3000);
+    return () => window.clearInterval(id);
+  }, [done]);
+  if (done || typeof document === 'undefined') return null;
+  return createPortal(
+    <div
+      aria-hidden="true"
+      style={{
+        position: 'fixed', zIndex: 12048, pointerEvents: 'none',
+        left: '50%', top: 'calc(env(safe-area-inset-top, 0px) + 78px)',
+        transform: 'translateX(-50%)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+      }}
+    >
+      <div
+        style={{
+          padding: '5px 12px', borderRadius: 999,
+          background: 'rgba(6,16,18,0.92)', border: '1px solid rgba(255,255,255,0.55)',
+          color: '#ffffff', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+          direction: lang === 'ar' ? 'rtl' : 'ltr',
+        }}
+      >
+        {lang === 'en' ? 'Long-press to publish a post' : 'اضغط مطولاً لنشر منشور'}
+      </div>
+      <svg
+        width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
+        style={{ animation: 'stooornaGrabberHintBounce 1s ease-in-out infinite' }}
+      >
+        <path d="M12 4v16" />
+        <path d="M5 13l7 7 7-7" />
+      </svg>
+      <style>{`@keyframes stooornaGrabberHintBounce { 0%,100% { transform: translateY(-3px); opacity: 0.65; } 50% { transform: translateY(4px); opacity: 1; } }`}</style>
+    </div>,
+    document.body
+  );
+}
+
 /** Film-icon screen: video-only (the old Titanic/WW2 template tab was removed on request). */
 function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
   open: boolean;
@@ -30297,6 +30345,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
           {/* ── Header show/hide grabber — sits above the content switcher.
               Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
+          <GrabberPublishHint />
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
