@@ -1,6 +1,8 @@
 /**
  * NEARBY PATCH  (ملف مستقل — لا يعدّل StooornaAiSheet.tsx ولا friendChatPatch.tsx)
  *
+ * [v1.5.1] إصلاح "Bluetooth unavailable (native plugin not installed)": البحث عن الإضافة الأصلية صار أقوى (Capacitor registerPlugin) + رسائل خطأ واضحة (بلوتوث مطفي / صلاحيات مرفوضة) + ما نعيد طلب الصلاحيات كل 8 ثواني.
+ *          أندرويد: الإضافة الأصلية الجديدة StooornaNearbyPlugin.java (Nearby Connections) بنفس واجهة نسخة آيفون — ينلقط المستخدمون عند البحث ويظهرون بالنتائج ويقدر يدردش معهم.
  * [v1.5] الدردشة داخل حجم الشيت (مثل قائمة الشات) بدل صفحة كاملة · زر رجوع واضح مثل قائمة الأصدقاء · الأصدقاء دخول مباشر والطلب لغير المضافين فقط
  *         إصلاح الصور (صور الأصدقاء من /api/friends + حفظ آخر صورة) · كل النصوص داخل النقطة الزرقاء إنجليزي (LTR).
  * [v1.3] بحث حيّ فعلياً: يتحدّث تلقائياً ويظهر المضاف وغير المضاف مع اليوزر (بلوتوث أو موقع عبر السيرفر — أندرويد وآيفون).
@@ -34,7 +36,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-export const NEARBY_PATCH_VERSION = '1.5.0';
+export const NEARBY_PATCH_VERSION = '1.5.1';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -83,6 +85,7 @@ const on = (t: string, f: () => void) => { bus.addEventListener(t, f); return ()
 const E = {
   me: null as Me | null,
   ble: 'off' as BleState,
+  bleErr: '' as string,            // [v1.5.1] سبب فشل تشغيل البلوتوث (للرسالة)
   blePeers: new Map<string, Peer & { at: number }>(),
   openPeer: '' as string,         // chat currently on screen
   srvUnread: {} as Record<string, number>, // unread per sender from the server
@@ -119,7 +122,22 @@ async function net<T = any>(path: string, init?: RequestInit): Promise<T> {
 
 /** الإضافة الأصلية (Capacitor) للبلوتوث. تُعرَّف باسم StooornaNearby. */
 function plugin(): any {
-  try { const w: any = window; return w.StooornaNearby || w.Capacitor?.Plugins?.StooornaNearby || null; } catch { return null; }
+  try {
+    const w: any = window;
+    if (w.StooornaNearby) return w.StooornaNearby;
+    const C: any = w.Capacitor;
+    if (C?.Plugins?.StooornaNearby) return C.Plugins.StooornaNearby;
+    // [v1.5.1] كابستور 3+ : الإضافات الأصلية المسجّلة ما تظهر دائماً في Capacitor.Plugins — نسجّلها صراحةً
+    const known = !!C && (
+      (Array.isArray(C.PluginHeaders) && C.PluginHeaders.some((h: any) => h && h.name === 'StooornaNearby')) ||
+      (typeof C.isPluginAvailable === 'function' && C.isPluginAvailable('StooornaNearby'))
+    );
+    if (known && typeof C.registerPlugin === 'function') {
+      if (!w.__sfcNearbyProxy) w.__sfcNearbyProxy = C.registerPlugin('StooornaNearby');
+      return w.__sfcNearbyProxy;
+    }
+  } catch { /* */ }
+  return null;
 }
 
 function touchIndex(me: string, p: { id: string; name?: string; avatar?: string | null; ble?: boolean; geo?: boolean }, last?: string) {
@@ -282,8 +300,8 @@ async function bleStart(me: Me) {
       });
     }
     const r = await p.start({ id: me.id, name: String(me.name || me.username || 'User') });
-    E.ble = r && r.granted === false ? 'denied' : 'on';
-  } catch { E.ble = 'denied'; }
+    if (r && r.granted === false) { E.ble = 'denied'; E.bleErr = 'permission'; } else { E.ble = 'on'; E.bleErr = ''; }
+  } catch (e: any) { E.ble = 'denied'; E.bleErr = String(e?.message || e?.errorMessage || e || 'error'); }
   emit('ble');
 }
 async function bleStop() {
@@ -534,7 +552,7 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
     if (scanRef.current) return; scanRef.current = true;
     if (!silent) { setScanning(true); setSel(null); }
     setSearched(true);
-    if (!hidden) void bleStart(me);
+    if (!hidden && (!silent || E.ble !== 'denied')) void bleStart(me); // [v1.5.1] التحديث التلقائي ما يعيد طلب الصلاحيات؛ الزر اليدوي يعيد المحاولة
     try {
       if (hidden) { setGeoPeers([]); setGeoNote('Your location is hidden — nobody sees you and you see nobody by location'); }
       else if (!isOnline()) setGeoNote('No internet — searching by Bluetooth only');
@@ -597,7 +615,7 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
     return <button type="button" disabled={busy} onClick={() => void doRequest(p)} style={{ ...pill, background: BLUE, color: '#fff' }}>{busy ? '…' : 'Request +'}</button>;
   };
 
-  const bleMsg = E.ble === 'unavailable' ? 'Bluetooth unavailable (native plugin not installed)' : E.ble === 'denied' ? 'Bluetooth / Nearby permission denied' : E.ble === 'on' ? 'Bluetooth is on' : E.ble === 'starting' ? 'Starting Bluetooth…' : '';
+  const bleMsg = E.ble === 'unavailable' ? 'Bluetooth unavailable (native plugin not installed)' : E.ble === 'denied' ? (/bluetooth_off/i.test(E.bleErr) ? 'Bluetooth is turned off — turn it on, then tap Refresh' : /no_bluetooth/i.test(E.bleErr) ? 'This device has no Bluetooth' : 'Bluetooth / Nearby permission denied — allow "Nearby devices" and Location for the app in phone settings' + (E.bleErr && E.bleErr !== 'permission' ? ` (${E.bleErr.slice(0, 60)})` : '')) : E.ble === 'on' ? 'Bluetooth is on' : E.ble === 'starting' ? 'Starting Bluetooth…' : '';
   const pendingOut = Object.values(E.outgoing).filter(o => o.status === 'pending');
   const reqCount = E.incoming.length;
   const tabBtn = (id: 'find' | 'requests', label: string, count?: number) => (
