@@ -30163,8 +30163,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   {user?.id && profileCallListOpen && !homeCallUiActive ? (
                     <div style={{ width: '100%', maxWidth: 420, margin: '4px auto 0' }}>
                       <div style={{
-                        margin: '0 8px', padding: 2, background: 'transparent',
-                        display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '42vh', overflowY: 'auto',
+                        margin: '0 8px calc(max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)) + 24px)', padding: 2, background: 'transparent',
+                        display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 'max(150px, min(42vh, calc(100dvh - 560px)))', overflowY: 'auto', /* PROFILE-CALL-INLINE: list ends above the Android buttons */
                         WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', boxSizing: 'border-box',
                       }}>
                         {profileCallLoading && profileCallFriends.length === 0 && <p style={{ margin: '10px 0', textAlign: 'center', fontSize: '0.78rem', color: '#6b7280' }}>Loading…</p>}
