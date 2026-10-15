@@ -19685,91 +19685,6 @@ function TplLongPressHint() {
   );
 }
 
-// GRABBER-TPL-HINT: up arrow pointing at the grabber + small English text + orange shine on the line
-function GrabberPublishHint({ headerOpen }: { headerOpen?: boolean }) {
-  const [done, setDone] = useState(false);
-  const [pos, setPos] = useState<{ top: number } | null>(null);
-  useEffect(() => {
-    const f = () => setDone(true);
-    window.addEventListener('stooorna:tpl-hint-done', f);
-    return () => window.removeEventListener('stooorna:tpl-hint-done', f);
-  }, []);
-  useEffect(() => {
-    if (done) return;
-    const update = () => {
-      const el = document.querySelector('[data-stooorna-header-grabber="1"]') as HTMLElement | null;
-      if (!el) { setPos(null); return; }
-      const r = el.getBoundingClientRect();
-      if (r.height < 2) { setPos(null); return; }
-      setPos({ top: Math.round(r.bottom + 4) });
-    };
-    update();
-    const iv = window.setInterval(update, 400);
-    window.addEventListener('resize', update);
-    return () => { window.clearInterval(iv); window.removeEventListener('resize', update); };
-  }, [done]);
-  useEffect(() => {
-    const el = document.querySelector('[data-stooorna-header-grabber="1"]') as HTMLElement | null;
-    if (!el) return;
-    if (done || headerOpen) {
-      el.removeAttribute('data-grabber-hint');
-    } else {
-      el.setAttribute('data-grabber-hint', '1');
-    }
-    return () => { el.removeAttribute('data-grabber-hint'); };
-  }, [done, headerOpen]);
-  if (done || headerOpen || !pos || typeof document === 'undefined') return null;
-  return createPortal(
-    <>
-      <style>{`
-        [data-stooorna-header-grabber="1"][data-grabber-hint="1"] span {
-          position: relative;
-          overflow: hidden;
-          background: linear-gradient(90deg, #ffffff 0%, #fb923c 40%, #f97316 60%, #ffffff 100%) !important;
-          background-size: 200% 100% !important;
-          animation: stooornaGrabberOrange 1.8s linear infinite !important;
-        }
-        @keyframes stooornaGrabberOrange {
-          0% { background-position: 100% 0; }
-          100% { background-position: -100% 0; }
-        }
-        @keyframes stooornaGrabberHintBounce {
-          0%,100% { transform: translateY(3px); opacity: 0.7; }
-          50% { transform: translateY(-4px); opacity: 1; }
-        }
-      `}</style>
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'fixed', zIndex: 13000, pointerEvents: 'none',
-          left: '50%', top: pos.top,
-          transform: 'translateX(-50%)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
-        }}
-      >
-        <svg
-          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
-          style={{ animation: 'stooornaGrabberHintBounce 1s ease-in-out infinite', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
-        >
-          <path d="M12 20V4" />
-          <path d="M5 11l7-7 7 7" />
-        </svg>
-        <div
-          style={{
-            padding: '3px 9px', borderRadius: 999,
-            background: 'rgba(6,16,18,0.94)', border: '1px solid rgba(255,255,255,0.55)',
-            color: '#ffffff', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-          }}
-        >
-          Long-press to publish a post
-        </div>
-      </div>
-    </>,
-    document.body
-  );
-}
-
 /** Film-icon screen: video-only (the old Titanic/WW2 template tab was removed on request). */
 function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
   open: boolean;
@@ -27010,40 +26925,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // also collapses it; scrolling back to the top expands it again.
   // Story sheet stays raised on entry. It only drops when the grabber is tapped,
   // or when a user story is published / a live is open (see effect below).
-  const [headerOpen, setHeaderOpen] = useState(true);
-  // Force raised (posts visible) on every entry — runs after other effects
-  useEffect(() => {
-    const t = window.setTimeout(() => setHeaderOpen(true), 0);
-    const t2 = window.setTimeout(() => setHeaderOpen(true), 120);
-    return () => { window.clearTimeout(t); window.clearTimeout(t2); };
-  }, []);
-  // Orange shine on grabber until first long-press
-  useEffect(() => {
-    const styleId = 'stooorna-grabber-orange';
-    if (!document.getElementById(styleId)) {
-      const s = document.createElement('style');
-      s.id = styleId;
-      s.textContent = `
-        [data-stooorna-header-grabber="1"][data-grabber-hint="1"] span {
-          position: relative; overflow: hidden;
-          background: linear-gradient(90deg, #ffffff 0%, #fb923c 40%, #f97316 60%, #ffffff 100%) !important;
-          background-size: 200% 100% !important;
-          animation: stooornaGrabberOrange 1.8s linear infinite !important;
-        }
-        @keyframes stooornaGrabberOrange {
-          0% { background-position: 100% 0; }
-          100% { background-position: -100% 0; }
-        }
-      `;
-      document.head.appendChild(s);
-    }
-    const el = document.querySelector('[data-stooorna-header-grabber="1"]') as HTMLElement | null;
-    if (!el) return;
-    el.setAttribute('data-grabber-hint', '1');
-    const off = () => el.removeAttribute('data-grabber-hint');
-    window.addEventListener('stooorna:tpl-hint-done', off);
-    return () => { window.removeEventListener('stooorna:tpl-hint-done', off); off(); };
-  }, []);
+  const [headerOpen, setHeaderOpen] = useState(false);
   const [profileSlideOpen, setProfileSlideOpen] = useState(false);
   useBackClose(profileSlideOpen, () => setProfileSlideOpen(false)); // HARDWARE-BACK-PATCH
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
@@ -27082,7 +26964,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     saveGuestLang(l);
   };
   // GUEST_SIGNIN_LABEL و GUEST_HEADER_LOCKED من ملف الزائر المستقل: components/GuestLive.tsx
-  useEffect(() => { /* guest lock disabled for entry: sheet starts raised */ }, [guestMode, headerOpen]);
+  useEffect(() => { if (GUEST_HEADER_LOCKED && guestMode && headerOpen) setHeaderOpen(false); }, [guestMode, headerOpen]);
 
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
