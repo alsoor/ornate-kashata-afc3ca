@@ -721,6 +721,20 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
   const [reqNote, setReqNote] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  /* keep the input row above the phone's navigation buttons: stop where the sheet's own input bar stops */
+  const [gap, setGap] = useState<number | null>(null);
+  useEffect(() => {
+    const el = panelRef.current; const inner = el?.parentElement as HTMLElement | null | undefined; if (!el || !inner) return;
+    const measure = () => {
+      const form = inner.querySelector('form') as HTMLElement | null;
+      const g = form ? inner.getBoundingClientRect().bottom - form.getBoundingClientRect().bottom : 0;
+      setGap(g > 0 && g < 220 ? Math.round(g) : null);
+    };
+    measure();
+    const ro = new ResizeObserver(measure); ro.observe(inner);
+    window.addEventListener('resize', measure); window.visualViewport?.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); };
+  }, []);
 
   /* keep touches inside the panel away from the sheet (drag-to-close etc.) */
   useEffect(() => {
@@ -767,7 +781,7 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
 
   return (
     <div ref={panelRef} data-nearby-chat="1" dir="ltr"
-      style={{ position: 'absolute', inset: 0, zIndex: 60, display: 'flex', flexDirection: 'column', background: '#fff', color: '#111', borderRadius: 'inherit', overflow: 'hidden', fontFamily: 'inherit', pointerEvents: 'auto', touchAction: 'auto' }}>
+      style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: gap != null ? gap : 'calc(env(safe-area-inset-bottom, 0px) + 44px)', zIndex: 60, display: 'flex', flexDirection: 'column', background: '#fff', color: '#111', borderRadius: 'inherit', overflow: 'hidden', fontFamily: 'inherit', pointerEvents: 'auto', touchAction: 'auto' }}>
       {/* header — same back button as the friends list: dark circle + clear white arrow */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 14px 12px', borderBottom: '1px solid #eee', background: '#fff', flexShrink: 0 }}>
         <button type="button" aria-label="Back" onClick={onClose}
@@ -848,7 +862,21 @@ function NearbyRows({ me, onOpen }: { me: Me; onOpen: (p: Peer) => void }) {
   return (
     <>
       <style>{`[data-nearby-has="1"] > div:not([role="button"]):not([data-nearby-rows]) { display: none !important; }`}</style>
-      {rows.map(c => {
+      {/* [v1.6] فواصل: قائمة الشات العادية فوق، وبعدها قسم الموقع، وبعده قسم البلوتوث */}
+      {(['geo', 'ble'] as const).map(sec => {
+        const group = rows.filter(c => (sec === 'ble' ? !!c.ble : !c.ble));
+        if (!group.length) return null;
+        const col = sec === 'ble' ? '#15803d' : '#1d4ed8';
+        return (
+          <React.Fragment key={sec}>
+            <div data-nearby-section={sec} style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '10px 2px 2px', flexShrink: 0 }}>
+              <span style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.14)' }} />
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 800, color: col, background: sec === 'ble' ? '#dcfce7' : '#dbeafe', borderRadius: 999, padding: '3px 12px', whiteSpace: 'nowrap' }}>
+                {sec === 'ble' ? '🟢 Bluetooth chats' : '🔵 Location chats'}
+              </span>
+              <span style={{ flex: 1, height: 1, background: 'rgba(0,0,0,0.14)' }} />
+            </div>
+            {group.map(c => {
         const last = loadMsgs(me.id, c.id).slice(-1)[0];
         const un = (loc[c.id] || 0) + (E.srvUnread[c.id] || 0);
         const live = bleReachable(c.id);
@@ -871,6 +899,9 @@ function NearbyRows({ me, onOpen }: { me: Me; onOpen: (p: Peer) => void }) {
               {un > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10, background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>{un}</span>}
             </div>
           </div>
+        );
+            })}
+          </React.Fragment>
         );
       })}
     </>
