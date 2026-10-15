@@ -23620,9 +23620,9 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
         aria-hidden={!active}
         onClick={e => e.stopPropagation()}
         style={{
-          position: 'fixed', zIndex: 10076, left: 0, right: 0, top: 0, bottom: 'var(--stooorna-bottom-bar-h, 96px)',
+          position: 'fixed', zIndex: dockBubble.kind === 'call' ? 16100 : 10076, left: 0, right: 0, top: 0, bottom: dockBubble.kind === 'call' ? 0 : 'var(--stooorna-bottom-bar-h, 96px)',
           display: 'flex', flexDirection: 'column',
-          padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
+          padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : dockBubble.kind === 'call' ? 'calc(env(safe-area-inset-top, 0px) + 10px) 14px env(safe-area-inset-bottom, 0px)' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
           background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
           // Slide down on close (X) — keep visible during the exit transition
           visibility: active ? 'visible' : 'hidden',
@@ -23989,13 +23989,13 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
         aria-hidden="true"
         onClick={() => { if (Date.now() - sc.at < 450) return; close(); }}
         onContextMenu={e => e.preventDefault()}
-        style={{ position: 'fixed', inset: 0, zIndex: 12060, background: 'transparent' }}
+        style={{ position: 'fixed', inset: 0, zIndex: 16110, background: 'transparent' }}
       />
       <div
         role="menu"
         onContextMenu={e => e.preventDefault()}
         style={{
-          position: 'fixed', zIndex: 12061, left: boxLeft, bottom, width: boxW,
+          position: 'fixed', zIndex: 16111, left: boxLeft, bottom, width: boxW,
           borderRadius: 18, padding: '8px 8px',
           background: 'linear-gradient(180deg, rgba(14,36,40,0.98) 0%, rgba(6,16,18,0.98) 100%)',
           border: '1.5px solid #0f4040', boxShadow: '0 10px 28px rgba(0,0,0,0.5)',
@@ -24090,7 +24090,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
       <div
         aria-hidden="true"
         style={{
-          position: 'fixed', zIndex: 12062, pointerEvents: 'none',
+          position: 'fixed', zIndex: 16112, pointerEvents: 'none',
           left: boxLeft + tailLeft - 7, bottom: bottom - 7, width: 14, height: 14,
           transform: 'rotate(45deg)', background: 'rgba(6,16,18,0.98)',
           borderRight: '1.5px solid #0f4040', borderBottom: '1.5px solid #0f4040',
@@ -30051,6 +30051,83 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       </button>
                     </div>
                   ) : null}
+
+                  {/* CALL-BANNER: green headset banner under the ON/OFF switch (moved from the bottom bar) */}
+                  {user?.id ? (
+                    <div style={{ width: '100%', maxWidth: 280, margin: '12px auto 2px', display: 'flex', justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        onContextMenu={(e) => e.preventDefault()}
+                        onPointerDown={(e) => {
+                          // not ringing: long-press shows friends above the banner; tap one to call directly
+                          if (!profilePlusIncomingCallUi.ringing) {
+                            const el = e.currentTarget;
+                            callDockLongPress.start(() => openDockShortcut('call', el));
+                            return;
+                          }
+                          // ringing: long-press declines the incoming call
+                          profilePlusCallPressRef.current.long = false;
+                          if (profilePlusCallPressRef.current.timer) clearTimeout(profilePlusCallPressRef.current.timer);
+                          profilePlusCallPressRef.current.timer = setTimeout(() => {
+                            profilePlusCallPressRef.current.long = true;
+                            void declineIncomingCallGlobally(user?.id ?? null);
+                            try { window.dispatchEvent(new CustomEvent('stooorna:decline-home-incoming')); } catch { /* ignore */ }
+                            setProfilePlusOpen(false);
+                          }, 550);
+                        }}
+                        onPointerCancel={callDockLongPress.end}
+                        onPointerUp={() => {
+                          callDockLongPress.end();
+                          if (profilePlusCallPressRef.current.timer) {
+                            clearTimeout(profilePlusCallPressRef.current.timer);
+                            profilePlusCallPressRef.current.timer = null;
+                          }
+                        }}
+                        onPointerLeave={(e) => {
+                          if ((e as any).pointerType === 'touch') return;
+                          callDockLongPress.end();
+                          if (profilePlusCallPressRef.current.timer) {
+                            clearTimeout(profilePlusCallPressRef.current.timer);
+                            profilePlusCallPressRef.current.timer = null;
+                          }
+                        }}
+                        onClick={(e) => {
+                          if (callDockLongPress.st.fired) { callDockLongPress.st.fired = false; return; }
+                          if (profilePlusCallPressRef.current.long) {
+                            profilePlusCallPressRef.current.long = false;
+                            return;
+                          }
+                          if (!profilePlusIncomingCallUi.ringing) {
+                            openDockBubble('call', e.currentTarget);
+                            return;
+                          }
+                          setProfilePlusOpen(false);
+                          try {
+                            window.dispatchEvent(new CustomEvent('stooorna:answer-home-incoming', {
+                              detail: {
+                                channel: profilePlusIncomingCallUi.channel,
+                                hostId: profilePlusIncomingCallUi.callerId,
+                                hostName: profilePlusIncomingCallUi.callerLabel,
+                              },
+                            }));
+                          } catch { /* ignore */ }
+                        }}
+                        aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
+                        title={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
+                        style={{
+                          width: '100%', maxWidth: 220, height: 44, borderRadius: 14, border: 'none',
+                          background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+                          color: '#ffffff', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                          boxShadow: profilePlusIncomingCallUi.ringing ? '0 0 16px rgba(34,197,94,0.65)' : '0 3px 10px rgba(22,163,74,0.35)',
+                          touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none',
+                          WebkitTapHighlightColor: 'transparent',
+                        }}
+                      >
+                        <Headphones size={24} strokeWidth={2.3} />
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </>,
@@ -30259,92 +30336,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
 {/* ── Speech-bubble panel: sits above the dock, tail points at the tapped icon ── */}
 {/* PERF: the dock bubble is its own component now — tapping an icon re-renders only the bubble, not this whole page */}
-                  {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
-<button
-                      type="button"
-                      onContextMenu={(e) => e.preventDefault()}
-                      onPointerDown={(e) => {
-                        // DOCK-SHORTCUTS: not ringing → long-press shows friends (avatar + name) above the icon; tap one to call directly.
-                        if (!profilePlusIncomingCallUi.ringing) {
-                          const el = e.currentTarget;
-                          callDockLongPress.start(() => openDockShortcut('call', el));
-                          return;
-                        }
-                        // Long-press no longer opens chat. Only declines incoming call when ringing.
-                        if (!profilePlusIncomingCallUi.ringing) return;
-                        profilePlusCallPressRef.current.long = false;
-                        if (profilePlusCallPressRef.current.timer) clearTimeout(profilePlusCallPressRef.current.timer);
-                        profilePlusCallPressRef.current.timer = setTimeout(() => {
-                          profilePlusCallPressRef.current.long = true;
-                          void declineIncomingCallGlobally(user?.id ?? null);
-                          try { window.dispatchEvent(new CustomEvent('stooorna:decline-home-incoming')); } catch { /* ignore */ }
-                          setProfilePlusOpen(false);
-                        }, 550);
-                      }}
-                      onPointerCancel={callDockLongPress.end}
-                      onPointerUp={() => {
-                        callDockLongPress.end();
-                        if (profilePlusCallPressRef.current.timer) {
-                          clearTimeout(profilePlusCallPressRef.current.timer);
-                          profilePlusCallPressRef.current.timer = null;
-                        }
-                      }}
-                      onPointerLeave={(e) => {
-                        // اللمس: ما نلغي المؤقت عند المغادرة (الأندرويد يطلقها مع أي حركة بسيطة) — الإلغاء عند الرفع فقط
-                        if ((e as any).pointerType === 'touch') return;
-                        callDockLongPress.end();
-                        if (profilePlusCallPressRef.current.timer) {
-                          clearTimeout(profilePlusCallPressRef.current.timer);
-                          profilePlusCallPressRef.current.timer = null;
-                        }
-                      }}
-                      onClick={(e) => {
-                        if (callDockLongPress.st.fired) { callDockLongPress.st.fired = false; return; } // DOCK-SHORTCUTS
-                        if (profilePlusCallPressRef.current.long) {
-                          profilePlusCallPressRef.current.long = false;
-                          return;
-                        }
-                        if (!profilePlusIncomingCallUi.ringing) {
-                          openDockBubble('call', e.currentTarget);
-                          return;
-                        }
-                        if (profilePlusIncomingCallUi.ringing) {
-                          setProfilePlusOpen(false);
-                          try {
-                            window.dispatchEvent(new CustomEvent('stooorna:answer-home-incoming', {
-                              detail: {
-                                channel: profilePlusIncomingCallUi.channel,
-                                hostId: profilePlusIncomingCallUi.callerId,
-                                hostName: profilePlusIncomingCallUi.callerLabel,
-                              },
-                            }));
-                          } catch { /* ignore */ }
-                          return;
-                        }
-                        setProfilePlusOpen(false);
-                        try {
-                          window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', {
-                            detail: { overPosts: true },
-                          }));
-                        } catch { /* */ }
-                      }}
-                      aria-label={profilePlusIncomingCallUi.ringing ? 'Answer call' : 'Call'}
-                      style={{
-                        width: 44, height: 44, borderRadius: '50%',
-                        border: '1.5px solid #ffffff',
-                        background: 'transparent',
-                        color: (callHistoryDotState.joined || anyInCall || profilePlusIncomingCallUi.ringing) ? '#22c55e' : '#ffffff',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: 'none',
-                        touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', WebkitUserSelect: 'none',
-                      }}
-                    >
-                      <Phone size={22} strokeWidth={2.2} />
-                    </button>
-</div>
-                  )}
 
 
                   {user?.id && (
