@@ -730,7 +730,14 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
     const t = window.setInterval(() => { void syncPeer(me, peer.id, peer.name); void flushPending(); }, 3000);
     return () => { off(); window.clearInterval(t); E.openPeer = ''; };
   }, [peer.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs.length]);
+  const firstScroll = useRef(true);
+  useEffect(() => { // don't yank the view down while reading old messages
+    const box = endRef.current?.parentElement as HTMLElement | null;
+    const near = !box || box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+    const mineLast = msgs[msgs.length - 1]?.from === me.id;
+    if (firstScroll.current || near || mineLast) endRef.current?.scrollIntoView({ block: 'end' });
+    firstScroll.current = false;
+  }, [msgs.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { const fi = E.friendInfo[peer.id]; if (!avatar && fi?.avatar) setAvatar(fi.avatar); }); // friend photo may arrive later
 
   const rel = relOf(peer.id);

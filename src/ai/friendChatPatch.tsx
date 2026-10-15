@@ -424,6 +424,46 @@ const hhmm = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digi
 const REACTIONS = ['❤️', '😂', '😍', '😮', '😢', '😡', '👍', '👎', '🙏', '🔥', '🎉', '😘'];
 const reactKey = (me: string, peer: string) => `stooorna_friend_chat_react_v1_${me}_${peer}`;
 
+/** SHATTER-DELETE: the deleted bubble (text / image / video) breaks into pieces that fly away and fade. */
+function shatterEl(el: Element | null) {
+  try {
+    if (!el || typeof document === 'undefined') return;
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const r = (el as HTMLElement).getBoundingClientRect();
+    if (r.width < 6 || r.height < 6 || r.bottom < 0 || r.top > window.innerHeight) return;
+    const cols = Math.max(3, Math.min(10, Math.round(r.width / 24)));
+    const rows = Math.max(3, Math.min(10, Math.round(r.height / 24)));
+    const cw = r.width / cols; const ch = r.height / rows;
+    const layer = document.createElement('div');
+    layer.setAttribute('data-sfc-shatter', '1');
+    layer.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;z-index:2147483600;pointer-events:none;';
+    for (let rr = 0; rr < rows; rr++) {
+      for (let c = 0; c < cols; c++) {
+        const frag = document.createElement('div');
+        frag.style.cssText = `position:fixed;left:${r.left + c * cw}px;top:${r.top + rr * ch}px;width:${cw + 0.5}px;height:${ch + 0.5}px;overflow:hidden;will-change:transform,opacity;pointer-events:none;`;
+        const inner = (el as HTMLElement).cloneNode(true) as HTMLElement;
+        inner.removeAttribute('data-sfc-bubble');
+        inner.style.cssText += `;position:absolute;left:${-c * cw}px;top:${-rr * ch}px;width:${r.width}px;height:${r.height}px;max-width:none;margin:0;box-sizing:border-box;`;
+        frag.appendChild(inner);
+        layer.appendChild(frag);
+        const dx = (Math.random() - 0.35) * 170 + (c / cols) * 50;
+        const dy = (Math.random() - 0.6) * 150 - 20;
+        const rot = (Math.random() - 0.5) * 220;
+        const sc = 0.2 + Math.random() * 0.5;
+        (frag as any).animate?.(
+          [{ transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: 1 }, { transform: `translate(${dx}px,${dy}px) rotate(${rot}deg) scale(${sc})`, opacity: 0 }],
+          { duration: 650 + Math.random() * 550, delay: (c / cols) * 140 + Math.random() * 60, easing: 'cubic-bezier(.2,.7,.35,1)', fill: 'forwards' },
+        );
+      }
+    }
+    document.body.appendChild(layer);
+    window.setTimeout(() => layer.remove(), 1700);
+  } catch { /* animation is cosmetic only */ }
+}
+function shatterById(id: string, root?: Element | null) {
+  try { shatterEl((root || document).querySelector(`[data-sfc-bubble="${String(id).replace(/"/g, '')}"]`)); } catch { /* */ }
+}
+
 /** PRESENCE: text under the friend's name / inside the chat rectangle */
 function seenText(p?: Presence): string {
   if (!p) return '';
@@ -475,6 +515,8 @@ function FriendChatPatch() {
   const [friends, setFriends] = useState<Friend[] | null>(null);
   const [unread, setUnread] = useState<Record<string, number>>({});
   const [chat, setChat] = useState<{ peerId: string; list: ChatMsg[] }>({ peerId: '', list: [] });
+  const chatRef = useRef(chat); chatRef.current = chat; // SHATTER-DELETE
+  const scrollKey = useRef(''); // SCROLL-FIX
   const [rect, setRect] = useState({ top: 58, bottom: 90 });
   const [pillLeft, setPillLeft] = useState(64);
   const [toast, setToast] = useState('');
@@ -641,6 +683,7 @@ function FriendChatPatch() {
           const ch = await adapter().changes(me, peer.id);
           if (!alive) return;
           if (ch.deleted.length || ch.edited.length) {
+            ch.deleted.forEach(id => { if (chatRef.current.list.some(m => m.id === id)) shatterById(id, sheetRef.current?.inner); }); // SHATTER-DELETE
             setChat(c => {
               if (c.peerId !== peer.id) return c;
               const need = c.list.some(m => ch.deleted.includes(m.id) || (ch.edited.includes(m.id) && !m.edited));
@@ -662,7 +705,16 @@ function FriendChatPatch() {
 
   useEffect(() => {
     if (me && chat.peerId) saveCache(me.id, chat.peerId, chat.list);
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // SCROLL-FIX: the 3s poll rebuilds `chat` every time — only scroll when the conversation really changed
+    const list = chat.list; const last = list[list.length - 1];
+    const key = `${chat.peerId}|${list.length}|${last ? (last.clientId || last.id) : ''}`;
+    if (key === scrollKey.current) return;
+    const samePeer = scrollKey.current.split('|')[0] === chat.peerId;
+    scrollKey.current = key;
+    const box = endRef.current?.parentElement as HTMLElement | null;
+    const near = !box || box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+    if (!samePeer) { const go = () => endRef.current?.scrollIntoView({ block: 'end' }); go(); window.setTimeout(go, 150); window.setTimeout(go, 600); }
+    else if (near || (!!last && last.from === me?.id)) endRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chat, me]);
 
   /* 6) layout: the chat panel sits exactly between header and input bar */
@@ -713,7 +765,7 @@ function FriendChatPatch() {
       if (alive) setPresence(prev => { const n = { ...prev }; res.forEach(([id, x]) => { n[id] = x; }); return n; });
     };
     void tick();
-    const t = window.setInterval(tick, peer ? 3000 : 15000);
+    const t = window.setInterval(tick, peer ? 1500 : 15000);
     return () => { alive = false; window.clearInterval(t); };
   }, [mode, peer?.id, me?.id, sheet, recents.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1115,6 +1167,7 @@ function FriendChatPatch() {
     if (!me || !p || m.status === 'sending') return;
     if (!window.confirm('حذف الرسالة عند الطرفين؟')) return;
     if (editRef.current?.id === m.id) cancelEdit();
+    shatterById(m.id, sheetRef.current?.inner); // SHATTER-DELETE
     const onServer = m.id.startsWith('db-');
     if (onServer) deletedRef.current.add(m.id);
     setChat(c => ({ ...c, list: c.list.filter(x => x.id !== m.id) }));
@@ -1336,19 +1389,19 @@ function FriendChatPatch() {
         sheet.inner,
       )}
 
-      {/* PRESENCE: small white tag under the friend's name (red line) */}
-      {mode === 'chat' && peer && seenText(presence[peer.id]) && createPortal(
-        <div
-          data-sfc-portal="1"
-          style={{
-            position: 'absolute', left: pillLeft + 22, bottom: 3, zIndex: 8, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 5,
-            background: '#fff', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 999, padding: '2px 9px', fontSize: 11, lineHeight: '14px', color: '#6b7280',
-          }}
-        >
-          {presence[peer.id]?.online && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />}
-          <span>{seenText(presence[peer.id])}</span>
+      {/* PRESENCE [v2]: last seen / "Type..." chip at the TOP of the chat, right under the header */}
+      {mode === 'chat' && peer && !isGroup && (presence[peer.id]?.typing || seenText(presence[peer.id])) && createPortal(
+        <div style={{ position: 'absolute', left: 0, right: 0, top: rect.top + 6, zIndex: 12, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.97)', border: '1px solid rgba(0,0,0,0.1)', borderRadius: 999, padding: '4px 12px',
+            fontSize: 12.5, lineHeight: '16px', fontWeight: 700, color: presence[peer.id]?.typing ? '#16a34a' : '#6b7280', boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+            animation: presence[peer.id]?.typing ? 'sfcPulse 1.2s ease-in-out infinite' : undefined,
+          }}>
+            {(presence[peer.id]?.online || presence[peer.id]?.typing) && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e' }} />}
+            <span>{presence[peer.id]?.typing ? 'Type...' : seenText(presence[peer.id])}</span>
+          </div>
         </div>,
-        sheet.header,
+        sheet.inner,
       )}
 
       {/* PRESENCE: "Type..." above the input box (orange line) while the friend is typing */}
@@ -1365,7 +1418,7 @@ function FriendChatPatch() {
           style={{
             position: 'absolute', left: 0, right: 0, top: rect.top + (peer && isGroup ? 66 : 0), bottom: rect.bottom, zIndex: 10,
             background: '#fff', display: 'flex', flexDirection: 'column', overflowY: 'auto',
-            padding: '16px 14px', gap: 8,
+            padding: peer && !isGroup && (presence[peer.id]?.typing || seenText(presence[peer.id])) ? '44px 14px 16px' : '16px 14px', gap: 8,
           }}
         >
           {!peer && listRows.length === 0 && (
@@ -1435,6 +1488,7 @@ function FriendChatPatch() {
                 <div
                   dir="auto"
                   {...(mine ? pressPropsMine(m.id) : pressProps(m.id))}
+                  data-sfc-bubble={m.id}
                   onClick={() => { if (m.status === 'failed') void sendRef.current(m.text, m.clientId); }}
                   style={{
                     background: mine ? DARK_GREEN : '#f1f1ef', color: mine ? '#fff' : '#111',
