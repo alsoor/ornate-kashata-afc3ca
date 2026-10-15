@@ -19686,7 +19686,7 @@ function TplLongPressHint() {
 }
 
 // GRABBER-TPL-HINT: up arrow pointing at the grabber + small English text + orange shine on the line
-function GrabberPublishHint() {
+function GrabberPublishHint({ headerOpen }: { headerOpen?: boolean }) {
   const [done, setDone] = useState(false);
   const [pos, setPos] = useState<{ top: number } | null>(null);
   useEffect(() => {
@@ -19711,14 +19711,14 @@ function GrabberPublishHint() {
   useEffect(() => {
     const el = document.querySelector('[data-stooorna-header-grabber="1"]') as HTMLElement | null;
     if (!el) return;
-    if (done) {
+    if (done || headerOpen) {
       el.removeAttribute('data-grabber-hint');
     } else {
       el.setAttribute('data-grabber-hint', '1');
     }
     return () => { el.removeAttribute('data-grabber-hint'); };
-  }, [done]);
-  if (done || !pos || typeof document === 'undefined') return null;
+  }, [done, headerOpen]);
+  if (done || headerOpen || !pos || typeof document === 'undefined') return null;
   return createPortal(
     <>
       <style>{`
@@ -30382,7 +30382,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
           {/* ── Header show/hide grabber — sits above the content switcher.
               Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
-          <GrabberPublishHint />
+          <GrabberPublishHint headerOpen={headerOpen} />
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
