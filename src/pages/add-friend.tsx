@@ -19263,6 +19263,21 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
   const [mutedForced, setMutedForced] = useState(false);
   const [prog, setProg] = useState(0);
   const isVideo = liveBaseText(c.text) !== LIVE_PHOTO_CAPTION;
+  // PHOTO-FILL-TOP: a photo that is (almost) screen-sized used to be centered with a thin black band above it, so the status bar
+  // clock sat half over the band. When the photo already fills ~88%+ of the screen height, draw it edge-to-edge from the very top
+  // (cover, anchored top). Clearly different shapes (wide / small photos) stay complete with 'contain' exactly as before.
+  const [photoFills, setPhotoFills] = useState(false);
+  const onPhotoLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    try {
+      const im = e.currentTarget;
+      const box = rootRef.current;
+      if (!box || !im.naturalWidth || !im.naturalHeight) return;
+      const boxW = box.clientWidth || window.innerWidth;
+      const boxH = box.clientHeight || window.innerHeight;
+      const shownH = Math.min(boxH, (im.naturalHeight / im.naturalWidth) * boxW); // height 'contain' would use
+      setPhotoFills(shownH / boxH >= 0.88);
+    } catch { /* keep contain */ }
+  };
 
   useEffect(() => {
     const v = vref.current;
@@ -19314,7 +19329,7 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
         {isVideo ? (
           <video ref={vref} src={c.imageUrl || ''} poster={TPL_BLANK_POSTER} loop playsInline controls={false} preload="metadata" disablePictureInPicture style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
         ) : (
-          <img src={c.imageUrl || ''} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+          <img src={c.imageUrl || ''} alt="" loading="lazy" onLoad={onPhotoLoad} style={{ width: '100%', height: '100%', objectFit: photoFills ? 'cover' : 'contain', objectPosition: photoFills ? 'center top' : 'center center', display: 'block' }} />
         )}
         {isVideo && paused ? (
           <div style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 64, height: 64, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', pointerEvents: 'none' }}>
@@ -22593,6 +22608,69 @@ function hdrIconTonePanel(active: boolean, tone: 'green' | 'orange' = 'green'): 
     boxShadow: `0 0 8px rgba(${rgb},0.45)`,
     transition: 'color 200ms ease, border-color 200ms ease, background 200ms ease, box-shadow 200ms ease',
   };
+}
+
+// LIVE-REGISTERED-COUNT: real number of accounts registered in the app (server count). Starts from the last known value so the badge
+// never flashes 0, refreshes every 5s while the app is visible, and instantly when someone signs up (event 'stooorna:user-registered').
+const REGISTERED_COUNT_KEY = 'stooorna_registered_count';
+function useRegisteredUsersCount(): number | null {
+  const [n, setN] = useState<number | null>(() => {
+    try {
+      const v = Number(localStorage.getItem(REGISTERED_COUNT_KEY));
+      return Number.isFinite(v) && v > 0 ? Math.floor(v) : null;
+    } catch { return null; }
+  });
+  useEffect(() => {
+    let stop = false;
+    const pull = async () => {
+      try {
+        const r = await fetch('/api/users/count', { credentials: 'include', cache: 'no-store' });
+        if (!r.ok) return;
+        const d = await r.json() as { count?: unknown; total?: unknown };
+        const v = Number(d?.count ?? d?.total);
+        if (!Number.isFinite(v) || v < 0 || stop) return;
+        setN(Math.floor(v));
+        try { localStorage.setItem(REGISTERED_COUNT_KEY, String(Math.floor(v))); } catch { /* ignore */ }
+      } catch { /* keep last real count */ }
+    };
+    void pull();
+    const iv = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void pull();
+    }, 5000);
+    const onVis = () => { if (document.visibilityState === 'visible') void pull(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('stooorna:user-registered', pull);
+    return () => {
+      stop = true;
+      window.clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('stooorna:user-registered', pull);
+    };
+  }, []);
+  return n;
+}
+
+// LIVE-REGISTERED-BADGE: small white pill under STOOORNA — "Live" (black) + registered-users count (999 → 1K → 1.5K → 1M).
+function LiveRegisteredBadge() {
+  const n = useRegisteredUsersCount();
+  if (n === null) return null;
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8, pointerEvents: 'none' }}>
+      <div
+        aria-label={`Live ${n}`}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, direction: 'ltr',
+          height: 22, padding: '0 11px', borderRadius: 999, background: '#ffffff', color: '#000000',
+          fontSize: '0.72rem', fontWeight: 800, lineHeight: 1, letterSpacing: '0.02em',
+          boxShadow: '0 1px 6px rgba(0,0,0,0.35)', userSelect: 'none', WebkitUserSelect: 'none',
+        }}
+      >
+        <span style={{ color: '#000000' }}>Live</span>
+        <span style={{ color: '#000000', fontVariantNumeric: 'tabular-nums' }}>{formatVisitorCount(n)}</span>
+      </div>
+    </div>
+  );
 }
 
 function useSiteVisitorCount(userId?: string | null) {
@@ -29747,6 +29825,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                 </div>
               </div>
+              <LiveRegisteredBadge /> {/* LIVE-REGISTERED-BADGE */}
             </div>
           )}
 
