@@ -2,22 +2,17 @@ import { lazy, Suspense } from 'react';
 import { Outlet, createBrowserRouter, type RouteObject } from "react-router";
 import { RouterProvider } from "react-router/dom";
 import AiroErrorBoundary from '../export-plugins/AiroErrorBoundary';
-import CookieBannerErrorBoundary from '@/components/CookieBannerErrorBoundary';
 import RootLayout from './layouts/RootLayout';
 import Spinner from './components/Spinner';
 import { GlobalCallProvider } from '@/components/GlobalCallProvider';
 import BanGuard from '@/components/BanGuard';
 import { useAppRefresh } from '@/hooks/useAppRefresh';
 import { routes } from './routes';
-const CookieBanner = lazy(() => import('@/components/CookieBanner').catch(error => {
-  console.warn('Failed to load CookieBanner:', error);
-  return {
-    default: () => null
-  };
-}));
+
 const SpinnerFallback = () => <div className="flex justify-center py-8 h-screen items-center">
     <Spinner />
   </div>;
+
 const rootElement = <Suspense fallback={<SpinnerFallback />}>
     <BanGuard>
       <GlobalCallProvider>
@@ -42,15 +37,10 @@ const routeTree: RouteObject[] = [{
   element: import.meta.env.MODE === 'development' ? <AiroErrorBoundary captureGlobalErrors={false}>{rootElement}</AiroErrorBoundary> : rootElement,
   children: routes
 }];
+
 const router = createBrowserRouter(routeTree);
+
 export default function App() {
   useAppRefresh();
-  return <>
-      <RouterProvider router={router} />
-      <CookieBannerErrorBoundary>
-        <Suspense fallback={null}>
-          <CookieBanner />
-        </Suspense>
-      </CookieBannerErrorBoundary>
-    </>;
+  return <RouterProvider router={router} />;
 }
