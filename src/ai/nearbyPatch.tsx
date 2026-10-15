@@ -608,7 +608,7 @@ function NearbyDialog({ me, onClose, onOpenChat }: { me: Me; onClose: () => void
   );
 
   return (
-    <div dir="ltr" style={{ width: 'min(92vw, 380px)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', borderRadius: 26, background: CARD_BG, color: '#fff', border: '1px solid rgba(255,255,255,.1)', boxShadow: '0 24px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(59,130,246,.18)', overflow: 'hidden' }}>
+    <div dir="ltr" style={{ width: 'min(92vw, 380px)', height: 'min(78vh, 640px)', maxHeight: '80vh', /* [v1.8] same box size on Search / Requests / profile — no growing or shrinking */ display: 'flex', flexDirection: 'column', borderRadius: 26, background: CARD_BG, color: '#fff', border: '1px solid rgba(255,255,255,.1)', boxShadow: '0 24px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(59,130,246,.18)', overflow: 'hidden' }}>
       <style>{`@keyframes snaRing { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(1.9); opacity: 0; } }`}</style>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px 8px' }}>
