@@ -1,7 +1,8 @@
 /**
  * NEARBY PATCH  (ملف مستقل — لا يعدّل StooornaAiSheet.tsx ولا friendChatPatch.tsx)
  *
- * [v1.6.0] نقطة صفراء مستقلة بجانب النقطة الزرقاء: بحث بالبلوتوث فقط (نفس مربع البحث والطلبات) — بدون موقع وبدون نطاق كيلومترات؛ يظهر كل من يلتقطه البلوتوث من متر لين أقصى مدى يدعمه الجهاز.
+ * [v1.7.0] النقطة الصفراء انلغت: النقطة الزرقاء فيها قسمين داخل البحث: "Nearby · Bluetooth" و"Nearby · GPS" — كل قسم له حالته ونتائجه ورسائله (البلوتوث للبلوتوث فقط، والموقع للموقع فقط، مع أزرار المسافة وإخفاء موقعي في قسم GPS).
+ * [v1.6.0] (سابقاً) نقطة صفراء مستقلة بجانب النقطة الزرقاء: بحث بالبلوتوث فقط (نفس مربع البحث والطلبات) — بدون موقع وبدون نطاق كيلومترات؛ يظهر كل من يلتقطه البلوتوث من متر لين أقصى مدى يدعمه الجهاز.
  * [v1.5.1] إصلاح "Bluetooth unavailable (native plugin not installed)": البحث عن الإضافة الأصلية صار أقوى (Capacitor registerPlugin) + رسائل خطأ واضحة (بلوتوث مطفي / صلاحيات مرفوضة) + ما نعيد طلب الصلاحيات كل 8 ثواني.
  *          أندرويد: الإضافة الأصلية الجديدة StooornaNearbyPlugin.java (Nearby Connections) بنفس واجهة نسخة آيفون — ينلقط المستخدمون عند البحث ويظهرون بالنتائج ويقدر يدردش معهم.
  * [v1.5] الدردشة داخل حجم الشيت (مثل قائمة الشات) بدل صفحة كاملة · زر رجوع واضح مثل قائمة الأصدقاء · الأصدقاء دخول مباشر والطلب لغير المضافين فقط
@@ -37,7 +38,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-export const NEARBY_PATCH_VERSION = '1.6.0';
+export const NEARBY_PATCH_VERSION = '1.7.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -521,8 +522,9 @@ function PersonRow({ p, sub, right, onClick }: { p: { name: string; avatar?: str
   );
 }
 
-function NearbyDialog({ me, onClose, onOpenChat, mode = 'all' }: { me: Me; onClose: () => void; onOpenChat: (p: Peer) => void; mode?: 'all' | 'ble' }) {
-  const bleOnly = mode === 'ble'; // [v1.6] النقطة الصفراء: بلوتوث فقط
+function NearbyDialog({ me, onClose, onOpenChat, mode = 'ble' }: { me: Me; onClose: () => void; onOpenChat: (p: Peer) => void; mode?: 'all' | 'ble' | 'geo' }) {
+  const [src, setSrc] = useState<'ble' | 'geo'>(mode === 'geo' ? 'geo' : 'ble'); // [v1.7] قسمين: Bluetooth | GPS
+  const bleOnly = src === 'ble'; // true = قسم البلوتوث، false = قسم الموقع
   const [, force] = useState(0);
   const rerender = useCallback(() => force(x => x + 1), []);
   const [geoPeers, setGeoPeers] = useState<Peer[]>([]);
@@ -545,7 +547,7 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'all' }: { me: Me; onClo
   const peers = useMemo(() => {
     const map = new Map<string, Peer>();
     if (!bleOnly) geoPeers.forEach(p => map.set(p.id, { ...p }));
-    E.blePeers.forEach(p => { const c = map.get(p.id); map.set(p.id, { ...(c || p), ...p, ble: true, geo: c?.geo, dist: c?.dist, username: c?.username }); });
+    if (bleOnly) E.blePeers.forEach(p => { const c = map.get(p.id); map.set(p.id, { ...(c || p), ...p, ble: true, geo: c?.geo, dist: c?.dist, username: c?.username }); });
     return [...map.values()].filter(p => p.id !== me.id).sort((a, b) => (a.ble === b.ble ? (a.dist ?? 1e9) - (b.dist ?? 1e9) : a.ble ? -1 : 1));
   }, [geoPeers, me.id, E.blePeers.size, E.ble, bleOnly]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -559,7 +561,7 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'all' }: { me: Me; onClo
     try {
       if (bleOnly) { setGeoPeers([]); setGeoNote(''); }
       else if (hidden) { setGeoPeers([]); setGeoNote('Your location is hidden — nobody sees you and you see nobody by location'); }
-      else if (!isOnline()) setGeoNote('No internet — searching by Bluetooth only');
+      else if (!isOnline()) setGeoNote('No internet — GPS search needs internet');
       else { try { setGeoPeers(await geoSearch(radius)); setGeoNote(''); } catch (e) { setGeoNote(geoErr(e)); } }
       if (!silent) await new Promise(r => setTimeout(r, 1200));
     } finally { scanRef.current = false; setScanning(false); rerender(); }
@@ -634,8 +636,8 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'all' }: { me: Me; onClo
       <style>{`@keyframes snaRing { 0% { transform: scale(1); opacity: .8; } 100% { transform: scale(1.9); opacity: 0; } }`}</style>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px 8px' }}>
-        <span style={{ width: 10, height: 10, borderRadius: '50%', background: bleOnly ? YELLOW : BLUE, boxShadow: bleOnly ? '0 0 10px rgba(250,204,21,.9)' : '0 0 10px rgba(59,130,246,.9)' }} />
-        <div style={{ flex: 1, fontWeight: 800, fontSize: 18 }}>{bleOnly ? 'Nearby · Bluetooth' : 'Nearby'}</div>
+        <span style={{ width: 10, height: 10, borderRadius: '50%', background: BLUE, boxShadow: '0 0 10px rgba(59,130,246,.9)' }} />
+        <div style={{ flex: 1, fontWeight: 800, fontSize: 18 }}>Nearby</div>
         <button type="button" aria-label="Close" onClick={onClose} style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,.1)', color: '#fff', fontSize: 16, cursor: 'pointer', padding: 0 }}>✕</button>
       </div>
 
@@ -671,6 +673,13 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'all' }: { me: Me; onClo
 
         {tab === 'find' && !sel && (
           <>
+            {/* [v1.7] قسمين: Bluetooth | GPS — كل قسم مستقل */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 6, padding: 3, borderRadius: 14, background: 'rgba(255,255,255,.05)' }}>
+              {([['ble', 'Nearby · Bluetooth'], ['geo', 'Nearby · GPS']] as const).map(([id, label]) => (
+                <button key={id} type="button" onClick={() => { if (src !== id) { setSrc(id); setSel(null); setNote(''); } }}
+                  style={{ flex: 1, height: 32, border: 'none', borderRadius: 11, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, background: src === id ? (id === 'ble' ? 'rgba(250,204,21,.18)' : 'rgba(59,130,246,.22)') : 'transparent', color: src === id ? (id === 'ble' ? '#fde047' : '#93c5fd') : '#94a3b8' }}>{label}</button>
+              ))}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '6px 0 12px' }}>
               <button type="button" onClick={() => void search()} disabled={scanning} aria-label="Search nearby"
                 style={{ position: 'relative', width: 88, height: 88, borderRadius: '50%', border: 'none', background: `linear-gradient(145deg, ${BLUE}, #1d4ed8)`, color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer', boxShadow: '0 0 28px rgba(59,130,246,.55)' }}>
@@ -682,7 +691,7 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'all' }: { me: Me; onClo
                   <button key={v} type="button" onClick={() => setRadius(Number(v))} style={{ border: '1px solid ' + (radius === v ? BLUE : 'rgba(255,255,255,.18)'), background: radius === v ? 'rgba(59,130,246,.2)' : 'transparent', color: radius === v ? '#93c5fd' : '#cbd5e1', borderRadius: 999, padding: '4px 12px', fontSize: 12, cursor: 'pointer' }}>{l}</button>
                 ))}
               </div>}
-              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>{[bleMsg, geoNote].filter(Boolean).join(' · ') || (bleOnly ? 'Bluetooth only — finds app users from about 1 m up to the maximum range your phone supports' : 'Auto-refresh — people appear live via Bluetooth or location (app users only)')}</div>
+              <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>{bleOnly ? (bleMsg || 'Finds app users from about 1 m up to the maximum range your phone supports') : (geoNote || 'Finds app users near you by GPS within the selected distance')}</div>
               {!bleOnly && <label style={{ fontSize: 12, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <input type="checkbox" checked={hidden} onChange={toggleHidden} /> Hide my location from others
               </label>}
@@ -691,7 +700,7 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'all' }: { me: Me; onClo
             {searched && (
               <div>
                 <div style={{ fontWeight: 800, fontSize: 13, margin: '2px 2px 8px', color: '#cbd5e1' }}>Results ({peers.length}) — tap a person to view their profile</div>
-                {peers.length === 0 && !scanning && <div style={{ color: '#64748b', fontSize: 14, padding: 10, textAlign: 'center', lineHeight: 1.7 }}>{bleOnly ? 'Nobody in Bluetooth range right now — people appear here as soon as they open Stooorna Ai with Bluetooth on' : 'Nobody nearby right now — people appear here as soon as they open Stooorna Ai with location or Bluetooth on'}</div>}
+                {peers.length === 0 && !scanning && <div style={{ color: '#64748b', fontSize: 14, padding: 10, textAlign: 'center', lineHeight: 1.7 }}>{bleOnly ? 'Nobody in Bluetooth range right now — people appear here as soon as they open Stooorna Ai with Bluetooth on' : 'Nobody nearby by GPS right now — people appear here as soon as they open Stooorna Ai with location on'}</div>}
                 {peers.map(p => (
                   <PersonRow key={p.id} p={p} onClick={() => pickPerson(p)}
                     sub={<>{p.friend || E.friends.has(p.id) ? '⭐ Friend' : 'Not added'}{p.username ? ` · @${String(p.username).replace(/^@/, '')}` : ''} · {p.ble ? '🟢 Bluetooth' : ''}{p.ble && p.geo ? ' · ' : ''}{p.geo ? `🔵 ${fmtDist(p.dist) || 'Same area'}` : ''}</>}
@@ -1068,19 +1077,9 @@ function NearbyPatch() {
         </div>,
         sheet.header,
       )}
-      {/* [v1.6] النقطة الصفراء: بحث بالبلوتوث فقط — بجانب النقطة الزرقاء (على يسارها) بنفس الحجم */}
-      {listBox && !selecting && createPortal(
-        <div data-sfc-portal="1" data-nearby-ble-dot="1" style={{ position: 'absolute', right: 117, top: 0, bottom: 0, display: 'flex', alignItems: 'center', zIndex: 9, pointerEvents: 'none' }}>
-          <button type="button" aria-label="Nearby Bluetooth" title="Nearby · Bluetooth" onClick={() => setView({ mode: 'search', src: 'ble' })}
-            style={{ pointerEvents: 'auto', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}>
-            <span style={{ width: 10, height: 10, borderRadius: '50%', background: YELLOW, position: 'relative', display: 'block' }} />
-          </button>
-        </div>,
-        sheet.header,
-      )}
       {host && createPortal(<NearbyRows me={me} selecting={selecting} onOpen={(p) => setView({ mode: 'chat', peer: p })} />, host)}
       {view?.mode === 'search' && createPortal(
-        <Layer modal onEsc={() => setView(null)}><NearbyDialog me={me} mode={view.src === 'ble' ? 'ble' : 'all'} onClose={() => setView(null)} onOpenChat={(p) => setView({ mode: 'chat', peer: p })} /></Layer>,
+        <Layer modal onEsc={() => setView(null)}><NearbyDialog me={me} onClose={() => setView(null)} onOpenChat={(p) => setView({ mode: 'chat', peer: p })} /></Layer>,
         document.body,
       )}
       {/* [v1.5] الدردشة داخل الشيت نفسه (بنفس حجم قائمة الشات) وليست صفحة كاملة */}
