@@ -5,10 +5,12 @@ import android.view.KeyEvent;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.PluginHandle;
+import com.stooorna.nearby.StooornaNearbyPlugin; // NEARBY
 
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(StooornaNearbyPlugin.class); // NEARBY (Bluetooth/Wi-Fi chat)
         registerPlugin(ScreenShieldPlugin.class); // SCREEN-SHIELD (keep any other registerPlugin lines you already have)
         super.onCreate(savedInstanceState);
     }
