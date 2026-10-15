@@ -554,6 +554,12 @@ function FriendChatPatch() {
   const [recents, setRecents] = useState<Recent[]>([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [nearSel, setNearSel] = useState(0); // NEARBY-SELECT: location / Bluetooth rows ticked in the same selection mode
+  useEffect(() => {
+    const f = () => setNearSel(Number((window as any).__sfcNearbySel?.count) || 0);
+    window.addEventListener('sfc-nearby-sel', f); f();
+    return () => window.removeEventListener('sfc-nearby-sel', f);
+  }, []);
   const selectModeRef = useRef(selectMode); selectModeRef.current = selectMode;
   const [presence, setPresence] = useState<Record<string, Presence>>({});
   const meRef = useRef(me); meRef.current = me;
@@ -1217,10 +1223,13 @@ function FriendChatPatch() {
   })();
   /** delete whole conversations from your side (no server change): hides everything up to now, removes the rectangle */
   const deleteChats = async (ids: string[]) => {
-    if (!me || !ids.length) return;
+    const nb = (window as any).__sfcNearbySel; const nn = Number(nb?.count) || 0; // NEARBY-SELECT
+    const total = ids.length + nn;
+    if (!me || !total) return;
     if (!window.confirm(ids.some(isGroupId)
-      ? `Delete ${ids.length > 1 ? ids.length + ' chats' : 'this chat'}? Groups will be left, other chats are cleared from your side only.`
-      : `Delete ${ids.length > 1 ? ids.length + ' chats' : 'this chat'}? It will be cleared from your side only.`)) return;
+      ? `Delete ${total > 1 ? total + ' chats' : 'this chat'}? Groups will be left, other chats are cleared from your side only.`
+      : `Delete ${total > 1 ? total + ' chats' : 'this chat'}? It will be cleared from your side only.`)) return;
+    if (nn) { try { nb.deleteAll(); } catch { /* */ } } // NEARBY-SELECT: Location / Bluetooth chats go too
     for (const id of ids) {
       if (isGroupId(id)) { // GROUP-CHAT: deleting a group from the list = leaving it
         try { await gapi(`/${gid(id)}/leave`, { method: 'POST' }); } catch { /* already gone */ }
@@ -1278,9 +1287,9 @@ function FriendChatPatch() {
           {selectMode ? (
             <>
               <button
-                type="button" disabled={selected.length === 0} onClick={() => void deleteChats(selected)}
-                style={{ pointerEvents: 'auto', border: 'none', cursor: selected.length ? 'pointer' : 'default', background: selected.length ? '#ef4444' : '#d1d5db', color: '#fff', borderRadius: 999, padding: '9px 16px', fontWeight: 800, fontSize: 14 }}
-              >{selected.length ? `Delete (${selected.length})` : 'Delete'}</button>
+                type="button" disabled={selected.length + nearSel === 0} onClick={() => void deleteChats(selected)}
+                style={{ pointerEvents: 'auto', border: 'none', cursor: selected.length + nearSel ? 'pointer' : 'default', background: selected.length + nearSel ? '#ef4444' : '#d1d5db', color: '#fff', borderRadius: 999, padding: '9px 16px', fontWeight: 800, fontSize: 14 }}
+              >{selected.length + nearSel ? `Delete (${selected.length + nearSel})` : 'Delete'}</button>
               <button
                 type="button" aria-label="Cancel selection" onClick={() => { setSelectMode(false); setSelected([]); }}
                 style={{ pointerEvents: 'auto', width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#0a0a0a', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}

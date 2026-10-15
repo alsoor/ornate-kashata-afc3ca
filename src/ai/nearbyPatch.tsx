@@ -95,6 +95,19 @@ const E = {
   friends: new Set<string>(),                // الأصدقاء المضافون (من السيرفر) — دردشتهم مباشرة بدون طلب               // من قبلوا => مسموح الدردشة معهم
 };
 
+/* [v1.7] تحديد/حذف: مستطيلات الموقع والبلوتوث تنضاف لوضع التحديد حق قائمة الشات، وزر Delete يحذفها معها */
+const NSEL = new Set<string>();
+function nselEmit() {
+  try {
+    (window as any).__sfcNearbySel = {
+      count: NSEL.size,
+      deleteAll: () => { const m = E.me; if (m) NSEL.forEach(id => removeConv(m.id, id)); NSEL.clear(); nselEmit(); },
+      clear: () => { NSEL.clear(); nselEmit(); },
+    };
+    window.dispatchEvent(new Event('sfc-nearby-sel'));
+  } catch { /* */ }
+}
+
 const newId = () => `n_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 const isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false);
 
@@ -721,19 +734,30 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
   const [reqNote, setReqNote] = useState('');
   const endRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  /* keep the input row above the phone's navigation buttons: stop where the sheet's own input bar stops */
+  /* [v1.7] الصفحة تمتد لتحت وتوقف بالضبط عند شريط الكتابة الأصلي في الشيت: مربع الكتابة + الإرسال بنفس مكانه وارتفاعه */
   const [gap, setGap] = useState<number | null>(null);
+  const [barH, setBarH] = useState(0);
   useEffect(() => {
     const el = panelRef.current; const inner = el?.parentElement as HTMLElement | null | undefined; if (!el || !inner) return;
     const measure = () => {
-      const form = inner.querySelector('form') as HTMLElement | null;
-      const g = form ? inner.getBoundingClientRect().bottom - form.getBoundingClientRect().bottom : 0;
-      setGap(g > 0 && g < 220 ? Math.round(g) : null);
+      const ir = inner.getBoundingClientRect();
+      let bar: HTMLElement | null = null;
+      let cur = inner.querySelector('textarea') as HTMLElement | null;
+      for (let i = 0; cur && cur !== inner && i < 7; i++, cur = cur.parentElement) {
+        const rr = cur.getBoundingClientRect(); const rad = parseFloat(getComputedStyle(cur).borderTopLeftRadius) || 0;
+        if (rad >= 16 && rr.width > ir.width * 0.7) { bar = cur; break; }
+      }
+      if (!bar) { setGap(null); setBarH(0); return; }
+      const br = bar.getBoundingClientRect();
+      const g = ir.bottom - (br.bottom + 10);
+      setGap(g >= 0 && g < 260 ? Math.round(g) : null);
+      setBarH(Math.max(44, Math.min(58, Math.round(br.height))));
     };
     measure();
+    const iv = window.setInterval(measure, 400); // keyboard / sheet animations
     const ro = new ResizeObserver(measure); ro.observe(inner);
     window.addEventListener('resize', measure); window.visualViewport?.addEventListener('resize', measure);
-    return () => { ro.disconnect(); window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); };
+    return () => { window.clearInterval(iv); ro.disconnect(); window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); };
   }, []);
 
   /* keep touches inside the panel away from the sheet (drag-to-close etc.) */
@@ -826,10 +850,10 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
       </div>
 
       {accepted ? (
-        <div style={{ display: 'flex', gap: 8, padding: '10px 12px 12px', borderTop: '1px solid #eee', background: '#fff', flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 8, padding: '10px 12px 10px', borderTop: '1px solid #eee', background: '#fff', flexShrink: 0 }}>
           <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') submit(); }} dir="auto" placeholder="Type a message…"
-            style={{ flex: 1, minWidth: 0, height: 46, borderRadius: 23, border: 'none', background: GREEN, color: '#fff', padding: '0 18px', fontSize: 15, outline: 'none' }} />
-          <button type="button" onClick={submit} aria-label="Send" style={{ width: 46, height: 46, borderRadius: '50%', border: 'none', background: BLUE, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
+            style={{ flex: 1, minWidth: 0, height: barH || 46, borderRadius: (barH || 46) / 2, border: 'none', background: GREEN, color: '#fff', padding: '0 18px', fontSize: 15, outline: 'none' }} />
+          <button type="button" onClick={submit} aria-label="Send" style={{ width: barH || 46, height: barH || 46, borderRadius: '50%', border: 'none', background: BLUE, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0, flexShrink: 0 }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
           </button>
         </div>
@@ -851,9 +875,10 @@ function NearbyChat({ me, peer, onClose }: { me: Me; peer: Peer; onClose: () => 
 }
 
 /* ───────────────────────── مستطيلات القريبين تحت قائمة الشات ───────────────────────── */
-function NearbyRows({ me, onOpen }: { me: Me; onOpen: (p: Peer) => void }) {
+function NearbyRows({ me, onOpen, selecting }: { me: Me; onOpen: (p: Peer) => void; selecting?: boolean }) {
   const [, force] = useState(0);
   useEffect(() => { const offs = [on('msgs', () => force(x => x + 1)), on('unread', () => force(x => x + 1)), on('peers', () => force(x => x + 1))]; return () => offs.forEach(f => f()); }, []);
+  useEffect(() => { const f = () => force(x => x + 1); window.addEventListener('sfc-nearby-sel', f); return () => window.removeEventListener('sfc-nearby-sel', f); }, []);
   const rows = loadIndex(me.id);
   const loc = jget<Record<string, number>>(kUnread(me.id), {});
   const missing = rows.filter(c => !c.avatar).map(c => c.id).join(',');
@@ -881,8 +906,13 @@ function NearbyRows({ me, onOpen }: { me: Me; onOpen: (p: Peer) => void }) {
         const un = (loc[c.id] || 0) + (E.srvUnread[c.id] || 0);
         const live = bleReachable(c.id);
         return (
-          <div key={c.id} role="button" data-nearby-row="1" onClick={() => onOpen({ id: c.id, name: c.name, avatar: c.avatar, ble: c.ble, geo: c.geo })}
+          <div key={c.id} role="button" data-nearby-row="1" onClick={() => { if (selecting) { if (NSEL.has(c.id)) NSEL.delete(c.id); else NSEL.add(c.id); nselEmit(); force(x => x + 1); } else onOpen({ id: c.id, name: c.name, avatar: c.avatar, ble: c.ble, geo: c.geo }); }}
             style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 16, cursor: 'pointer', border: '1px solid rgba(0,0,0,0.14)', background: '#fff' }}>
+            {selecting && (
+              <span style={{ width: 22, height: 22, borderRadius: '50%', border: `2px solid ${GREEN}`, background: NSEL.has(c.id) ? GREEN : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxSizing: 'border-box' }}>
+                {NSEL.has(c.id) && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>}
+              </span>
+            )}
             <Avatar p={c} size={38} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 800, fontSize: 15, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
@@ -944,6 +974,8 @@ function NearbyPatch() {
     const u = findUser(sheet.btn); setMe(u); E.me = u;
     if (u) { loadAccepted(u.id); void syncLinks(u); if (!jget(kHidden(u.id), false)) void bleStart(u); } // الاستقبال بالبلوتوث طالما صفحة Stooorna Ai مفتوحة
   }, [sheet]);
+
+  useEffect(() => { if (!selecting && NSEL.size) { NSEL.clear(); nselEmit(); } }, [selecting]);
 
   /* مكان المستطيلات: عنصر خاص بنا داخل صندوق القائمة (order:999 => دائماً تحت الأصدقاء) */
   useEffect(() => {
@@ -1014,7 +1046,7 @@ function NearbyPatch() {
         </div>,
         sheet.header,
       )}
-      {host && createPortal(<NearbyRows me={me} onOpen={(p) => setView({ mode: 'chat', peer: p })} />, host)}
+      {host && createPortal(<NearbyRows me={me} selecting={selecting} onOpen={(p) => setView({ mode: 'chat', peer: p })} />, host)}
       {view?.mode === 'search' && createPortal(
         <Layer modal onEsc={() => setView(null)}><NearbyDialog me={me} onClose={() => setView(null)} onOpenChat={(p) => setView({ mode: 'chat', peer: p })} /></Layer>,
         document.body,
@@ -1042,4 +1074,5 @@ export function installNearbyPatch() {
   if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount, { once: true });
 }
 
+nselEmit();
 installNearbyPatch();
