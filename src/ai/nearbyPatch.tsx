@@ -592,8 +592,8 @@ function PersonRow({ p, sub, right, onClick }: { p: { name: string; avatar?: str
 }
 
 function NearbyDialog({ me, onClose, onOpenChat, mode = 'ble' }: { me: Me; onClose: () => void; onOpenChat: (p: Peer) => void; mode?: 'all' | 'ble' | 'geo' }) {
-  const [src, setSrc] = useState<'ble' | 'geo'>(mode === 'geo' ? 'geo' : 'ble'); // [v1.7] قسمين: Bluetooth | GPS
-  const bleOnly = src === 'ble'; // true = قسم البلوتوث، false = قسم الموقع
+  const [src, setSrc] = useState<'ble' | 'geo'>('geo'); // GPS ONLY: Bluetooth section removed
+  const bleOnly = false; // GPS only — Bluetooth tab removed
   const [, force] = useState(0);
   const rerender = useCallback(() => force(x => x + 1), []);
   const [geoPeers, setGeoPeers] = useState<Peer[]>([]);
@@ -743,12 +743,9 @@ function NearbyDialog({ me, onClose, onOpenChat, mode = 'ble' }: { me: Me; onClo
 
         {tab === 'find' && !sel && (
           <>
-            {/* [v1.7] قسمين: Bluetooth | GPS — كل قسم مستقل */}
+            {/* GPS ONLY: Bluetooth section removed — only Nearby · GPS */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 6, padding: 3, borderRadius: 14, background: 'rgba(255,255,255,.05)' }}>
-              {([['ble', 'Nearby · Bluetooth'], ['geo', 'Nearby · GPS']] as const).map(([id, label]) => (
-                <button key={id} type="button" onClick={() => { if (src !== id) { setSrc(id); setSel(null); setNote(''); } }}
-                  style={{ flex: 1, height: 32, border: 'none', borderRadius: 11, cursor: 'pointer', fontWeight: 800, fontSize: 12.5, background: src === id ? (id === 'ble' ? 'rgba(250,204,21,.18)' : 'rgba(59,130,246,.22)') : 'transparent', color: src === id ? (id === 'ble' ? '#fde047' : '#93c5fd') : '#94a3b8' }}>{label}</button>
-              ))}
+              <div style={{ flex: 1, height: 32, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12.5, background: 'rgba(59,130,246,.22)', color: '#93c5fd' }}>Nearby · GPS</div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '6px 0 12px' }}>
               <button type="button" onClick={() => void search()} disabled={scanning} aria-label="Search nearby"
