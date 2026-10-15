@@ -27010,7 +27010,34 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // also collapses it; scrolling back to the top expands it again.
   // Story sheet stays raised on entry. It only drops when the grabber is tapped,
   // or when a user story is published / a live is open (see effect below).
-  const [headerOpen, setHeaderOpen] = useState(false);
+  const [headerOpen, setHeaderOpen] = useState(true);
+  // Orange shine on grabber until first long-press
+  useEffect(() => {
+    const styleId = 'stooorna-grabber-orange';
+    if (!document.getElementById(styleId)) {
+      const s = document.createElement('style');
+      s.id = styleId;
+      s.textContent = `
+        [data-stooorna-header-grabber="1"][data-grabber-hint="1"] span {
+          position: relative; overflow: hidden;
+          background: linear-gradient(90deg, #ffffff 0%, #fb923c 40%, #f97316 60%, #ffffff 100%) !important;
+          background-size: 200% 100% !important;
+          animation: stooornaGrabberOrange 1.8s linear infinite !important;
+        }
+        @keyframes stooornaGrabberOrange {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
+        }
+      `;
+      document.head.appendChild(s);
+    }
+    const el = document.querySelector('[data-stooorna-header-grabber="1"]') as HTMLElement | null;
+    if (!el) return;
+    el.setAttribute('data-grabber-hint', '1');
+    const off = () => el.removeAttribute('data-grabber-hint');
+    window.addEventListener('stooorna:tpl-hint-done', off);
+    return () => { window.removeEventListener('stooorna:tpl-hint-done', off); off(); };
+  }, []);
   const [profileSlideOpen, setProfileSlideOpen] = useState(false);
   useBackClose(profileSlideOpen, () => setProfileSlideOpen(false)); // HARDWARE-BACK-PATCH
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
@@ -30382,7 +30409,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
           {/* ── Header show/hide grabber — sits above the content switcher.
               Tap toggles header open/closed. Swipe-up on posts also collapses it. ── */}
-          <GrabberPublishHint headerOpen={headerOpen} />
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
