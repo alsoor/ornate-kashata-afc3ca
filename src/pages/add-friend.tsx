@@ -15116,7 +15116,7 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
     if (waveTimerRef.current) window.clearTimeout(waveTimerRef.current);
     waveTimerRef.current = window.setTimeout(() => { setWaving(false); waveTimerRef.current = null; }, 1700);
   };
-  const visitorCount = useSiteVisitorCount(uid || null);
+  // LIVE-REGISTERED-BADGE: the old connected-users number above STOOORNA was removed (the white Live badge under it shows the registered count)
   const [open, setOpen] = useState(false);
   const [hapticOff, setHapticOff] = useState(() => {
     try { return localStorage.getItem('stooorna_haptic_off') === '1'; } catch { return false; }
@@ -15264,22 +15264,6 @@ function HeaderAdminBell({ userId, size = 30, onSoftRefresh }: { userId?: string
           ))}
         </span>
       </button>
-      <span
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: -28,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          color: '#ffffff',
-          fontSize: '0.78rem',
-          fontWeight: 800,
-          lineHeight: 1,
-          fontVariantNumeric: 'tabular-nums',
-          pointerEvents: 'none',
-          zIndex: 6,
-        }}
-      >{formatVisitorCount(visitorCount)}</span>
       {noteToast && ownerNote && noteActive && typeof document !== 'undefined' && createPortal(
         <button
           type="button"
@@ -19267,17 +19251,31 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
   // clock sat half over the band. When the photo already fills ~88%+ of the screen height, draw it edge-to-edge from the very top
   // (cover, anchored top). Clearly different shapes (wide / small photos) stay complete with 'contain' exactly as before.
   const [photoFills, setPhotoFills] = useState(false);
-  const onPhotoLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  const photoRef = useRef<HTMLImageElement | null>(null);
+  const measurePhoto = (im0?: HTMLImageElement | null) => {
     try {
-      const im = e.currentTarget;
+      const im = im0 || photoRef.current;
       const box = rootRef.current;
-      if (!box || !im.naturalWidth || !im.naturalHeight) return;
+      if (!im || !box || !im.naturalWidth || !im.naturalHeight) return;
       const boxW = box.clientWidth || window.innerWidth;
       const boxH = box.clientHeight || window.innerHeight;
+      if (!boxW || !boxH) return;
       const shownH = Math.min(boxH, (im.naturalHeight / im.naturalWidth) * boxW); // height 'contain' would use
-      setPhotoFills(shownH / boxH >= 0.88);
+      setPhotoFills(shownH / boxH >= 0.85);
     } catch { /* keep contain */ }
   };
+  const onPhotoLoad = (e: React.SyntheticEvent<HTMLImageElement>) => { measurePhoto(e.currentTarget); };
+  // PHOTO-FILL-TOP-2: also measure cached images (onLoad may already have fired) and again after layout / rotation, so a screen-sized photo always starts at the very top
+  useEffect(() => {
+    if (isVideo) return;
+    measurePhoto();
+    const raf = window.requestAnimationFrame(() => measurePhoto());
+    const t = window.setTimeout(() => measurePhoto(), 350);
+    const onR = () => measurePhoto();
+    window.addEventListener('resize', onR);
+    return () => { window.cancelAnimationFrame(raf); window.clearTimeout(t); window.removeEventListener('resize', onR); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.imageUrl, isVideo]);
 
   useEffect(() => {
     const v = vref.current;
@@ -19329,7 +19327,7 @@ function LiveMediaFeedItem({ c, liked, fav, name, commentCount, onLike, onCommen
         {isVideo ? (
           <video ref={vref} src={c.imageUrl || ''} poster={TPL_BLANK_POSTER} loop playsInline controls={false} preload="metadata" disablePictureInPicture style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }} />
         ) : (
-          <img src={c.imageUrl || ''} alt="" loading="lazy" onLoad={onPhotoLoad} style={{ width: '100%', height: '100%', objectFit: photoFills ? 'cover' : 'contain', objectPosition: photoFills ? 'center top' : 'center center', display: 'block' }} />
+          <img ref={photoRef} src={c.imageUrl || ''} alt="" loading="lazy" onLoad={onPhotoLoad} style={{ width: '100%', height: '100%', objectFit: photoFills ? 'cover' : 'contain', objectPosition: photoFills ? 'center top' : 'center center', display: 'block' }} />
         )}
         {isVideo && paused ? (
           <div style={{ position: 'absolute', display: 'flex', alignItems: 'center', justifyContent: 'center', width: 64, height: 64, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', pointerEvents: 'none' }}>
@@ -22732,6 +22730,8 @@ function useSiteVisitorCount(userId?: string | null) {
   }, [userId]);
   return count;
 }
+
+void useSiteVisitorCount; // kept (no longer shown above STOOORNA)
 
 function homeLiveSameEntries(a: HomeLiveEntry[], b: HomeLiveEntry[]): boolean {
   if (a.length !== b.length) return false;

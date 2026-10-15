@@ -2412,6 +2412,29 @@ app.post("/api/support/complete", support_complete_post_139);
 app.delete("/api/support/thread", support_thread_delete_140);
 app.get("/api/typing", typing_get_141);
 app.post("/api/typing", typing_post_142);
+// LIVE-REGISTERED-COUNT: real number of accounts registered in the app (shown in the white "Live" badge under STOOORNA).
+// Registered BEFORE "/api/users/:id" so "count" is never treated as a user id. Public, read-only, no personal data.
+let registeredUsersTable: string | null = null;
+app.get("/api/users/count", async (_req: Request, res: Response) => {
+	res.setHeader("Cache-Control", "no-store");
+	try {
+		if (!templatesPool) { res.status(503).json({ error: "db unavailable" }); return; }
+		if (!registeredUsersTable) {
+			const [tables] = await (templatesPool as any).query(
+				"SELECT table_name AS t FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('users','user','app_users')",
+			);
+			const names = (tables as Array<{ t?: string; T?: string }>).map((r) => String(r.t ?? r.T ?? ""));
+			registeredUsersTable = ["users", "user", "app_users"].find((n) => names.includes(n)) ?? null;
+		}
+		if (!registeredUsersTable) { res.status(404).json({ error: "users table not found" }); return; }
+		const [rows] = await (templatesPool as any).query(`SELECT COUNT(*) AS c FROM \`${registeredUsersTable}\``);
+		const count = Number((rows as Array<{ c: unknown }>)[0]?.c ?? 0);
+		res.json({ count: Number.isFinite(count) ? count : 0 });
+	} catch (e) {
+		console.error("[users/count]", e);
+		res.status(500).json({ error: "count failed" });
+	}
+});
 app.post("/api/users/block", users_block_post_143);
 app.get("/api/users/blocks", users_blocks_get_144);
 app.get("/api/users/by-username", users_by_username_get_145);
