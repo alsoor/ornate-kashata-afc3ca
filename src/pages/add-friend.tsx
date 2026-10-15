@@ -22649,28 +22649,6 @@ function useRegisteredUsersCount(): number | null {
   return n;
 }
 
-// LIVE-REGISTERED-BADGE: small white pill under STOOORNA — "Live" (black) + registered-users count (999 → 1K → 1.5K → 1M).
-function LiveRegisteredBadge() {
-  const n = useRegisteredUsersCount();
-  if (n === null) return null;
-  return (
-    <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8, pointerEvents: 'none' }}>
-      <div
-        aria-label={`Live ${n}`}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6, direction: 'ltr',
-          height: 22, padding: '0 11px', borderRadius: 999, background: '#ffffff', color: '#000000',
-          fontSize: '0.72rem', fontWeight: 800, lineHeight: 1, letterSpacing: '0.02em',
-          boxShadow: '0 1px 6px rgba(0,0,0,0.35)', userSelect: 'none', WebkitUserSelect: 'none',
-        }}
-      >
-        <span style={{ color: '#000000' }}>Live</span>
-        <span style={{ color: '#000000', fontVariantNumeric: 'tabular-nums' }}>{formatVisitorCount(n)}</span>
-      </div>
-    </div>
-  );
-}
-
 function useSiteVisitorCount(userId?: string | null) {
   const [count, setCount] = useState(0);
   useEffect(() => {
@@ -29825,7 +29803,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   </div>
                 </div>
               </div>
-              <LiveRegisteredBadge /> {/* LIVE-REGISTERED-BADGE */}
             </div>
           )}
 
