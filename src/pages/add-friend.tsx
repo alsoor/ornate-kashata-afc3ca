@@ -30239,7 +30239,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           left: Math.max(8, Math.min(window.innerWidth - 220, downCallBubble.x - 106)),
                           top: downCallBubble.top + 8,
                           width: 212,
-                          maxHeight: 'min(52vh, 420px)',
+                          maxHeight: `calc(100dvh - ${downCallBubble.top + 8}px - max(80px, env(safe-area-inset-bottom, 0px) + 56px))`,
                           overflowY: 'auto',
                           background: 'rgba(6,16,18,0.98)',
                           border: '1.5px solid #0f4040',
