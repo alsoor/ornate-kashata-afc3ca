@@ -2,11 +2,12 @@
  * NEARBY PATCH  (ملف مستقل — لا يعدّل StooornaAiSheet.tsx ولا friendChatPatch.tsx)
  *
  * ماذا يسوي:
- *  - يضيف زر نقطة زرقاء أعلى صفحة Stooorna Ai (بجانب زر القائمة) — يظهر لكل مستخدمي التطبيق.
- *  - الضغط عليها يفتح صفحة "القريبون" فيها زر بحث واحد (Hybrid Local Discovery):
+ *  - يضيف نقطة زرقاء صغيرة في صفحة "قائمة الشات" فقط (اللي فيها زر اختر صديقاً) — لا تظهر في رئيسية Stooorna Ai ولا داخل الشات.
+ *  - الضغط عليها يفتح صفحة البحث (Hybrid Local Discovery) بزر واحد:
  *      المسار 1 — البلوتوث (BLE / Nearby): أشخاص حولك مباشرة، بدون إنترنت.        🟢
  *      المسار 2 — الموقع الجغرافي (GPS): مستخدمو التطبيق في نفس الحي/المنطقة.       🔵
- *    النتيجة قائمة موحدة؛ كل اسم بجانبه مؤشر طريقة الاتصال. الضغط على اسم يفتح دردشة مباشرة.
+ *  - اختيار شخص من النتائج => ينزل مباشرة تحت قائمة الشات (نفس المستطيلات) قبل الدخول عليه،
+ *    وعليه علامة "من البلوتوث" أو "من الموقع"؛ والعلامة تظهر أيضاً أعلى الدردشة نفسها.
  *  - الدردشة تشتغل كأنها بإنترنت: إرسال/استقبال مباشر بين الطرفين.
  *      * قريب بالبلوتوث  => ترسل مباشرة جهاز-لجهاز (تعمل بدون إنترنت) وتظهر ✓✓
  *      * فيه إنترنت       => ترسل عبر السيرفر /api/nearby/messages وتظهر ✓
@@ -26,14 +27,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-export const NEARBY_PATCH_VERSION = '1.0.0';
+export const NEARBY_PATCH_VERSION = '1.1.0';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
 interface Peer { id: string; name: string; avatar?: string | null; ble?: boolean; geo?: boolean; dist?: number }
 type MsgStatus = 'pending' | 'sent' | 'ble' | 'failed';
 interface Msg { id: string; clientId: string; from: string; to: string; text: string; ts: number; status?: MsgStatus }
-interface ConvMeta { id: string; name: string; avatar?: string | null; ts: number; last?: string }
+interface ConvMeta { id: string; name: string; avatar?: string | null; ts: number; last?: string; ble?: boolean; geo?: boolean } // ble/geo = how I met this person
 type BleState = 'off' | 'unavailable' | 'starting' | 'on' | 'denied';
 
 const GREEN = '#0a1f1a';
@@ -75,6 +76,7 @@ const E = {
   ble: 'off' as BleState,
   blePeers: new Map<string, Peer & { at: number }>(),
   openPeer: '' as string,         // chat currently on screen
+  srvUnread: {} as Record<string, number>, // unread per sender from the server
   listeners: false,
   flushing: false,
 };
@@ -93,11 +95,19 @@ function plugin(): any {
   try { const w: any = window; return w.StooornaNearby || w.Capacitor?.Plugins?.StooornaNearby || null; } catch { return null; }
 }
 
-function touchIndex(me: string, p: { id: string; name?: string; avatar?: string | null }, last?: string) {
+function touchIndex(me: string, p: { id: string; name?: string; avatar?: string | null; ble?: boolean; geo?: boolean }, last?: string) {
   const list = loadIndex(me);
   const cur = list.find(x => x.id === p.id);
-  const next: ConvMeta = { id: p.id, name: p.name || cur?.name || 'User', avatar: p.avatar ?? cur?.avatar ?? null, ts: Date.now(), last: last ?? cur?.last };
+  const next: ConvMeta = {
+    id: p.id, name: p.name || cur?.name || 'User', avatar: p.avatar ?? cur?.avatar ?? null, ts: Date.now(), last: last ?? cur?.last,
+    ble: !!(p.ble || cur?.ble), geo: !!(p.geo || cur?.geo), // العلامة تبقى: عرفته من البلوتوث / من الموقع
+  };
   jset(kIndex(me), [next, ...list.filter(x => x.id !== p.id)].slice(0, 100));
+}
+function removeConv(me: string, peer: string) {
+  jset(kIndex(me), loadIndex(me).filter(x => x.id !== peer));
+  try { localStorage.removeItem(kMsgs(me, peer)); } catch { /* */ }
+  clearUnread(me, peer); emit('msgs');
 }
 
 function bumpUnread(me: string, peer: string, n = 1) {
@@ -113,7 +123,7 @@ const localUnreadTotal = (me: string) => Object.values(jget<Record<string, numbe
 function storeIncoming(me: Me, m: Msg, peerName?: string) {
   const peer = m.from === me.id ? m.to : m.from;
   saveMsgs(me.id, peer, mergeMsgs(loadMsgs(me.id, peer), [m]));
-  touchIndex(me.id, { id: peer, name: peerName || E.blePeers.get(peer)?.name }, previewOf(m.text));
+  touchIndex(me.id, { id: peer, name: peerName || E.blePeers.get(peer)?.name, ble: E.blePeers.has(peer) || undefined }, previewOf(m.text));
   if (m.from !== me.id && E.openPeer !== peer) bumpUnread(me.id, peer);
   emit('msgs');
 }
@@ -277,8 +287,22 @@ function Layer({ children, onEsc }: { children: React.ReactNode; onEsc: () => vo
   );
 }
 
-/* ───────────────────────── صفحة القريبون ───────────────────────── */
-function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
+/* ───────────────────────── علامة المصدر: بلوتوث / موقع ───────────────────────── */
+function Origin({ ble, geo, long }: { ble?: boolean; geo?: boolean; long?: boolean }) {
+  if (!ble && !geo) return null;
+  const chip = (bg: string, fg: string, t: string) => (
+    <span style={{ display: 'inline-block', background: bg, color: fg, borderRadius: 999, padding: '1px 8px', fontSize: long ? 12.5 : 11, fontWeight: 700, whiteSpace: 'nowrap' }}>{t}</span>
+  );
+  return (
+    <span style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap' }}>
+      {ble && chip('#dcfce7', '#15803d', long ? '🟢 هذا الشخص من البلوتوث' : '🟢 من البلوتوث')}
+      {geo && chip('#dbeafe', '#1d4ed8', long ? '🔵 هذا الشخص كلمته من الموقع' : '🔵 من الموقع')}
+    </span>
+  );
+}
+
+/* ───────────────────────── صفحة البحث + الدردشة (طبقة كاملة) ───────────────────────── */
+function NearbyPage({ me, onClose, initialChat }: { me: Me; onClose: () => void; initialChat?: Peer }) {
   const [, force] = useState(0);
   const rerender = useCallback(() => force(x => x + 1), []);
   const [geoPeers, setGeoPeers] = useState<Peer[]>([]);
@@ -294,7 +318,6 @@ function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
 
   useEffect(() => { const offs = [on('peers', rerender), on('ble', rerender), on('msgs', rerender)]; return () => offs.forEach(f => f()); }, [rerender]);
 
-  /* القائمة الموحدة */
   const peers = useMemo(() => {
     const map = new Map<string, Peer>();
     geoPeers.forEach(p => map.set(p.id, { ...p }));
@@ -305,14 +328,14 @@ function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
   const search = async () => {
     if (scanning) return;
     setScanning(true); setSearched(true); setGeoNote('');
-    void bleStart(me); // البلوتوث يبقى شغّال أثناء فتح الصفحة (الأسماء تظهر مباشرة)
+    void bleStart(me);
     const geo = (async () => {
-      if (hidden) { setGeoNote('الموقع مخفي — تم تفعيل إخفاء موقعي'); return; }
+      if (hidden) { setGeoNote('الموقع مخفي — فعّلت إخفاء موقعي'); return; }
       if (!isOnline()) { setGeoNote('لا يوجد إنترنت — البحث بالبلوتوث فقط'); return; }
       try { setGeoPeers(await geoSearch(radius)); }
       catch (e: any) { setGeoNote(e?.code === 1 ? 'صلاحية الموقع مرفوضة — فعّلها من إعدادات الجهاز' : 'تعذّر تحديد الموقع'); }
     })();
-    await Promise.all([geo, new Promise(r => setTimeout(r, 6000))]); // 6 ثوانٍ لاكتشاف البلوتوث
+    await Promise.all([geo, new Promise(r => setTimeout(r, 6000))]);
     setScanning(false); rerender();
   };
 
@@ -321,16 +344,22 @@ function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
     if (v) { try { await net('/api/nearby/ping', { method: 'DELETE' }); } catch { /* */ } setGeoPeers([]); }
   };
 
+  /** اختيار شخص من النتائج => ينزل مباشرة تحت قائمة الشات (بنفس شكل المستطيلات) قبل الدخول عليه. */
+  const pick = (p: Peer) => {
+    touchIndex(me.id, { id: p.id, name: p.name, avatar: p.avatar, ble: !!p.ble, geo: !!p.geo });
+    emit('msgs'); onClose();
+  };
+
   /* الدردشة */
   const openChat = (p: Peer) => {
     E.openPeer = p.id; clearUnread(me.id, p.id);
-    touchIndex(me.id, p); setChat(p); setMsgs(loadMsgs(me.id, p.id)); emit('msgs');
+    setChat(p); setMsgs(loadMsgs(me.id, p.id)); emit('msgs');
     void syncPeer(me, p.id, p.name);
   };
-  const closeChat = () => { E.openPeer = ''; setChat(null); setText(''); };
+  useEffect(() => { if (initialChat) openChat(initialChat); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!chat) return; const refresh = () => { setMsgs(loadMsgs(me.id, chat.id)); clearUnread(me.id, chat.id); }; refresh(); return on('msgs', refresh); }, [chat?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs.length, chat?.id]);
-  useEffect(() => { // استقبال مباشر: مزامنة كل 3 ثوانٍ مع السيرفر (بدون إنترنت يكتفي بالاستقبال عبر البلوتوث)
+  useEffect(() => {
     if (!chat) return;
     const t = window.setInterval(() => { void syncPeer(me, chat.id, chat.name); void flushPending(); }, 3000);
     return () => window.clearInterval(t);
@@ -338,26 +367,25 @@ function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
   useEffect(() => () => { E.openPeer = ''; }, []);
 
   const submit = () => { const t = text.trim(); if (!t || !chat) return; setText(''); void sendText(me, chat, t); };
-
-  const conv = loadIndex(me.id);
-  const unreadMap = jget<Record<string, number>>(kUnread(me.id), {});
   const reach = chat ? (bleReachable(chat.id) ? 'ble' : isOnline() ? 'net' : 'off') : 'off';
-
+  const meta = chat ? loadIndex(me.id).find(c => c.id === chat.id) : undefined;
   const bleMsg = E.ble === 'unavailable' ? 'البلوتوث غير متاح (الإضافة الأصلية غير مثبتة)' : E.ble === 'denied' ? 'صلاحية البلوتوث/القريبين مرفوضة' : E.ble === 'on' ? 'البلوتوث شغّال' : E.ble === 'starting' ? 'جارٍ تشغيل البلوتوث…' : '';
 
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 'max(12px, env(safe-area-inset-top)) 14px 12px', borderBottom: '1px solid #eee', background: '#fff' }}>
-      <button type="button" aria-label="Back" onClick={chat ? closeChat : onClose}
-        style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: GREEN, color: '#fff', fontSize: 20, cursor: 'pointer', padding: 0 }}>{chat ? '→' : '✕'}</button>
+      <button type="button" aria-label="Back" onClick={onClose}
+        style={{ width: 42, height: 42, borderRadius: '50%', border: 'none', background: GREEN, color: '#fff', fontSize: 20, cursor: 'pointer', padding: 0 }}>→</button>
       {chat ? (
         <>
           <Avatar p={chat} size={38} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 800, fontSize: 16, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chat.name}</div>
             <div style={{ fontSize: 12, color: reach === 'ble' ? '#16a34a' : reach === 'net' ? BLUE : '#9ca3af' }}>
-              {reach === 'ble' ? '🟢 متصل بالبلوتوث — مباشر' : reach === 'net' ? '🔵 عبر الإنترنت' : '⏳ لا يوجد اتصال — تُحفظ وتُرسل تلقائياً'}
+              {reach === 'ble' ? 'متصل بالبلوتوث — مباشر' : reach === 'net' ? 'عبر الإنترنت' : '⏳ لا يوجد اتصال — تُحفظ وتُرسل تلقائياً'}
             </div>
           </div>
+          <button type="button" aria-label="Delete chat" onClick={() => { if (window.confirm('حذف هذه المحادثة من جهازك؟')) { removeConv(me.id, chat.id); onClose(); } }}
+            style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', background: '#f3f4f6', cursor: 'pointer', padding: 0, fontSize: 16 }}>🗑</button>
         </>
       ) : (
         <div style={{ flex: 1, fontWeight: 800, fontSize: 18 }}>القريبون</div>
@@ -369,7 +397,12 @@ function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
     return (
       <>
         {header}
-        <div style={{ flex: 1, overflowY: 'auto', padding: 14, display: 'flex', flexDirection: 'column', gap: 6, background: '#f7f8f8' }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 6, background: '#f7f8f8' }}>
+          {(meta?.ble || meta?.geo || chat.ble || chat.geo) && (
+            <div style={{ position: 'sticky', top: 0, zIndex: 2, alignSelf: 'center', margin: '8px 0 4px', background: '#f7f8f8', padding: '2px 0' }}>
+              <Origin ble={meta?.ble || chat.ble} geo={meta?.geo || chat.geo} long />
+            </div>
+          )}
           {msgs.length === 0 && <div style={{ margin: 'auto', color: '#9ca3af', fontSize: 14 }}>ابدأ الدردشة مع {chat.name}</div>}
           {msgs.map(m => {
             const mine = m.from === me.id;
@@ -397,7 +430,6 @@ function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
     <>
       {header}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 24px' }}>
-        {/* زر البحث الموحد */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '8px 0 14px' }}>
           <style>{`@keyframes snaPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(59,130,246,.55); } 50% { box-shadow: 0 0 0 16px rgba(59,130,246,0); } }
                    @keyframes snaSpin { to { transform: rotate(360deg); } }`}</style>
@@ -418,13 +450,12 @@ function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
           </label>
         </div>
 
-        {/* النتائج */}
         {searched && (
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ fontWeight: 800, fontSize: 14, margin: '4px 2px 8px' }}>النتائج ({peers.length})</div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14, margin: '4px 2px 8px' }}>النتائج ({peers.length}) — اختر شخصاً لإضافته لقائمة الشات</div>
             {peers.length === 0 && !scanning && <div style={{ color: '#9ca3af', fontSize: 14, padding: 10 }}>ما لقينا أحد قريب الآن</div>}
             {peers.map(p => (
-              <button key={p.id} type="button" onClick={() => openChat(p)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', marginBottom: 8, border: '1px solid #e5e7eb', borderRadius: 22, background: '#fff', cursor: 'pointer', textAlign: 'start' }}>
+              <button key={p.id} type="button" onClick={() => pick(p)} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', marginBottom: 8, border: '1px solid #e5e7eb', borderRadius: 22, background: '#fff', cursor: 'pointer', textAlign: 'start' }}>
                 <Avatar p={p} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontWeight: 800, fontSize: 16, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
@@ -436,60 +467,109 @@ function NearbyPage({ me, onClose }: { me: Me; onClose: () => void }) {
             ))}
           </div>
         )}
-
-        {/* المحادثات المحفوظة محلياً */}
-        {conv.length > 0 && (
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 14, margin: '4px 2px 8px' }}>المحادثات</div>
-            {conv.map(c => (
-              <button key={c.id} type="button" onClick={() => openChat({ id: c.id, name: c.name, avatar: c.avatar })} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', marginBottom: 8, border: '1px solid #e5e7eb', borderRadius: 22, background: '#fff', cursor: 'pointer', textAlign: 'start' }}>
-                <Avatar p={c} />
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span style={{ display: 'block', fontWeight: 800, fontSize: 16, color: '#111' }}>{c.name}</span>
-                  <span dir="auto" style={{ display: 'block', fontSize: 13, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.last || ''}</span>
-                </span>
-                {unreadMap[c.id] ? <span style={{ minWidth: 22, height: 22, borderRadius: 11, background: '#ef4444', color: '#fff', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 6px' }}>{unreadMap[c.id]}</span> : null}
-                <span style={{ fontSize: 12, color: '#9ca3af' }}>{hhmm(c.ts)}</span>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </>
   );
 }
 
-/* ───────────────────────── النقطة الزرقاء + الربط بالـSheet ───────────────────────── */
+/* ───────────────────────── مستطيلات القريبين تحت قائمة الشات ───────────────────────── */
+function NearbyRows({ me, onOpen }: { me: Me; onOpen: (p: Peer) => void }) {
+  const [, force] = useState(0);
+  useEffect(() => { const offs = [on('msgs', () => force(x => x + 1)), on('unread', () => force(x => x + 1)), on('peers', () => force(x => x + 1))]; return () => offs.forEach(f => f()); }, []);
+  const rows = loadIndex(me.id);
+  const loc = jget<Record<string, number>>(kUnread(me.id), {});
+  if (!rows.length) return null;
+  return (
+    <>
+      <style>{`[data-nearby-has="1"] > div:not([role="button"]):not([data-nearby-rows]) { display: none !important; }`}</style>
+      {rows.map(c => {
+        const last = loadMsgs(me.id, c.id).slice(-1)[0];
+        const un = (loc[c.id] || 0) + (E.srvUnread[c.id] || 0);
+        const live = bleReachable(c.id);
+        return (
+          <div key={c.id} role="button" data-nearby-row="1" onClick={() => onOpen({ id: c.id, name: c.name, avatar: c.avatar, ble: c.ble, geo: c.geo })}
+            style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 16, cursor: 'pointer', border: '1px solid rgba(0,0,0,0.14)', background: '#fff' }}>
+            <Avatar p={c} size={38} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#111', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+              <div dir="auto" style={{ fontSize: 13, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                {last ? `${last.from === me.id ? 'You: ' : ''}${previewOf(last.text)}` : 'Tap to chat'}
+              </div>
+              <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Origin ble={c.ble} geo={c.geo} />
+                {live && <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e' }} />}
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+              <span style={{ fontSize: 11, color: '#9ca3af' }}>{hhmm(last?.ts || c.ts)}</span>
+              {un > 0 && <span style={{ minWidth: 20, height: 20, padding: '0 6px', borderRadius: 10, background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}>{un}</span>}
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/* ───────────────────────── الربط بصفحة قائمة الشات (النقطة + المستطيلات) ───────────────────────── */
+/** صندوق القائمة داخل friendChatPatch: div مطلق، z-index 10، فيه scroll عمودي. */
+function findListBox(inner: HTMLElement): HTMLElement | null {
+  const el = Array.from(inner.children).find(c => c instanceof HTMLElement && c.style.zIndex === '10' && c.style.overflowY === 'auto' && c.style.position === 'absolute' && !c.hasAttribute('data-nearby-rows'));
+  return (el as HTMLElement) || null;
+}
+
 function NearbyPatch() {
   const [sheet, setSheet] = useState<SheetEls | null>(null);
+  const [listBox, setListBox] = useState<HTMLElement | null>(null); // موجود فقط في صفحة قائمة الشات (ليس الرئيسية وليس داخل شات)
+  const [selecting, setSelecting] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
-  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<null | { peer?: Peer }>(null);
   const [badge, setBadge] = useState(0);
+  const [host, setHost] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     let raf = 0;
     const scan = () => {
       raf = 0; const next = scanSheet();
       setSheet(prev => (!next ? (prev ? null : prev) : prev && prev.inner === next.inner && prev.header === next.header ? prev : next));
+      const onList = !!next && next.header.getAttribute('data-sfc') === 'chat' && String((window as any).__sfcOpenPeer || '') === '*';
+      setListBox(prev => { const box = onList && next ? findListBox(next.inner) : null; return prev === box ? prev : box; });
+      setSelecting(!!next?.header.querySelector('button[aria-label="Cancel selection"]'));
     };
     const mo = new MutationObserver(() => { if (!raf) raf = requestAnimationFrame(scan); });
-    mo.observe(document.body, { childList: true, subtree: true }); scan();
-    return () => { mo.disconnect(); if (raf) cancelAnimationFrame(raf); };
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-sfc'] }); scan();
+    const iv = window.setInterval(scan, 600);
+    return () => { mo.disconnect(); window.clearInterval(iv); if (raf) cancelAnimationFrame(raf); };
   }, []);
 
   useEffect(() => {
-    if (!sheet) { setMe(null); setOpen(false); E.me = null; void bleStop(); return; }
+    if (!sheet) { setMe(null); setView(null); E.me = null; void bleStop(); return; }
     const u = findUser(sheet.btn); setMe(u); E.me = u;
-    if (u) void bleStart(u); // الاستقبال بالبلوتوث يعمل طالما صفحة Stooorna Ai مفتوحة
+    if (u) void bleStart(u); // الاستقبال بالبلوتوث طالما صفحة Stooorna Ai مفتوحة
   }, [sheet]);
 
-  /* عدّاد الرسائل غير المقروءة + إعادة إرسال المعلّق عند عودة الإنترنت */
+  /* مكان المستطيلات: عنصر خاص بنا داخل صندوق القائمة (order:999 => دائماً تحت الأصدقاء) */
+  useEffect(() => {
+    if (!listBox) { setHost(null); return; }
+    const h = document.createElement('div');
+    h.setAttribute('data-nearby-rows', '1');
+    h.style.cssText = 'order:999;flex-shrink:0;display:flex;flex-direction:column;gap:8px;';
+    listBox.appendChild(h); setHost(h);
+    return () => { h.remove(); listBox.removeAttribute('data-nearby-has'); setHost(null); };
+  }, [listBox]);
+  useEffect(() => {
+    if (!listBox || !me) return;
+    const mark = () => { if (loadIndex(me.id).length) listBox.setAttribute('data-nearby-has', '1'); else listBox.removeAttribute('data-nearby-has'); };
+    mark(); return on('msgs', mark);
+  }, [listBox, me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* عدّاد غير المقروء + إعادة إرسال المعلّق عند عودة الإنترنت */
   useEffect(() => {
     if (!me) return;
     let alive = true;
     const tick = async () => {
-      let n = localUnreadTotal(me.id);
-      if (isOnline() && !open) { try { const d = await net('/api/nearby/unread'); n += Object.values(d?.bySender || {}).reduce((a: number, b: any) => a + (Number(b) || 0), 0); } catch { /* */ } }
+      if (isOnline()) { try { const d = await net('/api/nearby/unread'); E.srvUnread = d?.bySender || {}; emit('unread'); } catch { /* */ } }
+      const n = localUnreadTotal(me.id) + Object.values(E.srvUnread).reduce((a, b) => a + (Number(b) || 0), 0);
       if (alive) setBadge(n);
     };
     void tick();
@@ -498,22 +578,28 @@ function NearbyPatch() {
     const onNet = () => { void flushPending(); void tick(); };
     window.addEventListener('online', onNet);
     return () => { alive = false; window.clearInterval(t); offMsgs(); window.removeEventListener('online', onNet); };
-  }, [me?.id, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!sheet || !me) return null;
   return (
     <>
-      {createPortal(
-        <button type="button" aria-label="Nearby" title="القريبون" onClick={() => setOpen(true)}
-          style={{ position: 'absolute', right: 92, top: 0, bottom: 0, margin: 'auto 0', width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', zIndex: 9, touchAction: 'manipulation' }}>
-          <style>{`@keyframes snaDot { 0%,100% { box-shadow: 0 0 0 0 rgba(59,130,246,.55); } 50% { box-shadow: 0 0 0 9px rgba(59,130,246,0); } }`}</style>
-          <span style={{ width: 24, height: 24, borderRadius: '50%', background: BLUE, animation: 'snaDot 1.8s ease-in-out infinite', position: 'relative' }}>
-            {badge > 0 && <span style={{ position: 'absolute', top: -9, right: -11, minWidth: 18, height: 18, borderRadius: 9, background: '#ef4444', color: '#fff', fontSize: 11, fontWeight: 800, lineHeight: '18px', textAlign: 'center', padding: '0 4px', border: '2px solid #fff', boxSizing: 'content-box' }}>{badge > 99 ? '99+' : badge}</span>}
-          </span>
-        </button>,
+      {/* النقطة الزرقاء الصغيرة: فقط في صفحة قائمة الشات، بجانب زر القائمة (مكانها في الصورة ≈ 100px من اليمين) */}
+      {listBox && !selecting && createPortal(
+        <div data-sfc-portal="1" style={{ position: 'absolute', right: 83, top: 0, bottom: 0, display: 'flex', alignItems: 'center', zIndex: 9, pointerEvents: 'none' }}>
+          <button type="button" aria-label="Nearby" title="القريبون" onClick={() => setView({})}
+            style={{ pointerEvents: 'auto', width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: BLUE, position: 'relative', display: 'block' }}>
+              {badge > 0 && <span style={{ position: 'absolute', top: -9, left: 7, minWidth: 14, height: 14, borderRadius: 7, background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 800, lineHeight: '14px', textAlign: 'center', padding: '0 3px', boxSizing: 'border-box' }}>{badge > 99 ? '99+' : badge}</span>}
+            </span>
+          </button>
+        </div>,
         sheet.header,
       )}
-      {open && createPortal(<Layer onEsc={() => setOpen(false)}><NearbyPage me={me} onClose={() => setOpen(false)} /></Layer>, document.body)}
+      {host && createPortal(<NearbyRows me={me} onOpen={(p) => setView({ peer: p })} />, host)}
+      {view && createPortal(
+        <Layer onEsc={() => setView(null)}><NearbyPage me={me} initialChat={view.peer} onClose={() => setView(null)} /></Layer>,
+        document.body,
+      )}
     </>
   );
 }
