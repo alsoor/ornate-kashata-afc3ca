@@ -28,6 +28,7 @@ import { registerAiIconRoutes } from "./ai-icon-patch.js"; // AI-ICON-PATCH (own
 import { registerImageProxyRoutes } from "./image-proxy-patch.js"; // IMAGE-PROXY-PATCH (save photos from the Ai chat)
 import { registerAiFreeRoutes } from "./ai-free-routes.js"; // AI-FREE (free chat / search / image / file routes for Stooorna Ai)
 import { registerFriendChatRoutes } from "./friend-chat-routes.js"; // FRIEND-CHAT-ROUTES (dedicated table, no hidden marker)
+import { registerFriendChatEditRoutes } from "./friend-chat-edit-routes.js"; // FRIEND-CHAT-EDIT (edit + delete for both)
 import { registerFriendGroupChatRoutes } from "./friend-group-chat-routes.js"; // FRIEND-GROUP-CHAT (groups inside friend chat)
 import { registerNearbyRoutes } from "./nearby-routes.js"; // NEARBY (blue dot: location/Bluetooth discovery + requests + chat)
 import { createLiveBoxRouter } from "./liveBox.server.js"; // TREASURE-BOX
@@ -1325,6 +1326,8 @@ registerFriendChatRoutes(app, {
   },
   push: (toId, fromName, text) => { const tp = tplPostPush(text); return sendFcmToUser({ userId: toId, title: fromName, body: tp ? tp.body : text, ...(tp?.image ? { image: tp.image } : {}), url: `/?openChat=1&peerName=${encodeURIComponent(fromName || "")}`, type: "message" as any }); }, // TPL-POST-TO-CHAT
 });
+// ── FRIEND-CHAT-EDIT: تعديل الرسالة + حذفها عند الطرفين (جدول friend_chat_changes) ──
+registerFriendChatEditRoutes(app, { pool: templatesPool, getUser: (req) => session.user(req) });
 // ── FRIEND-GROUP-CHAT: قروبات داخل شات الأصدقاء (جداول fgc_*) — إضافة مستقلة، لا تلمس مسارات الشات القديمة ──
 registerFriendGroupChatRoutes(app, {
   pool: templatesPool,

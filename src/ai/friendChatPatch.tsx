@@ -21,7 +21,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
-import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X, Plus, Image as ImageIcon } from 'lucide-react';
+import { MessageCircle, Check, CheckCheck, AlertCircle, ArrowLeft, ChevronDown, ListChecks, X, Plus, Image as ImageIcon, Pencil as EditIcon, Trash2 as TrashIcon, Copy as CopyIcon } from 'lucide-react';
 import { loadDashboard } from './appAssistant';
 // FRIEND-VOICE-LIVE: بث صوتي مباشر على المايك الأحمر داخل شات الصديق (ملف مستقل)
 import FriendVoiceLive, { FRIEND_VOICE_TAP_EVENT } from './FriendVoiceLive';
@@ -30,10 +30,11 @@ import { useSession } from '@/lib/auth/auth-client'; // PUSH-TAP
 // FRIEND-CHAT-MEDIA: نفس نظام شات المحفوظات بالضبط (اللوكيشن + إرسال الصور) — نفس المكونات ونفس التشفير
 import { LocationChatCard } from '@/components/LocationPickerPatch';
 import { encodeSavedLocation, decodeSavedLocation, encodeSavedMediaLink, decodeSavedMediaLink, prepareSavedMediaWithin } from '@/lib/savedMediaPatch';
+import ImageMarkup from './ImageMarkup'; // IMAGE-MARKUP: علّم على الصورة (سهم/دائرة/قلم/نص) قبل الإرسال
 const LocationPickerSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationPickerSheet })));
 const LocationViewSheet = React.lazy(() => import('@/components/LocationPickerPatch').then(m => ({ default: m.LocationViewSheet })));
 
-export const FRIEND_CHAT_PATCH_VERSION = '1.9.0'; // 1.9.0: GROUP-CHAT
+export const FRIEND_CHAT_PATCH_VERSION = '2.0.0'; // 2.0.0: MSG-EDIT-DELETE + IMAGE-MARKUP · 1.9.0: GROUP-CHAT
 
 /**
  * LOCATION-FREEZE-FIX: full-screen layer that lives on document.body (outside the Ai sheet).
@@ -90,6 +91,7 @@ interface ChatMsg {
   id: string; clientId?: string; from: string; to?: string; text: string; ts: number;
   status?: 'sending' | 'sent' | 'failed'; read?: boolean; reaction?: string;
   fromName?: string; kind?: 'text' | 'system'; // GROUP-CHAT
+  edited?: boolean; // MSG-EDIT
 }
 interface Adapter {
   listFriends(me: Me): Promise<Friend[]>;
@@ -100,6 +102,12 @@ interface Adapter {
   presence(me: Me, peerId: string): Promise<Presence>;
   typing(me: Me, peerId: string): Promise<void>;
   react(me: Me, peerId: string, messageId: string, emoji: string): Promise<void>;
+  /** MSG-EDIT: تعديل نص رسالتي (السيرفر) */
+  edit(me: Me, peerId: string, messageId: string, text: string): Promise<void>;
+  /** MSG-DELETE: حذف رسالتي عند الطرفين (السيرفر) */
+  remove(me: Me, peerId: string, messageId: string): Promise<void>;
+  /** MSG-EDIT/DELETE: ما تغيّر عند الطرف الثاني (ids بصيغة db-N) */
+  changes(me: Me, peerId: string): Promise<{ deleted: string[]; edited: string[] }>;
 }
 
 /* ───────────────────────── ADAPTER (الجزء المرتبط بالسيرفر) ───────────────────────── */
@@ -153,6 +161,7 @@ const toMsg = (o: any): ChatMsg => ({
   ts: asTs(o.ts ?? o.createdAt ?? o.timestamp),
   read: !!(o.read ?? o.readAt),
   ...(o.reaction ? { reaction: String(o.reaction) } : {}),
+  ...(o.edited || o.editedAt ? { edited: true } : {}), // MSG-EDIT
   status: 'sent',
 });
 
@@ -238,6 +247,21 @@ const restAdapter: Adapter = {
   async typing(_me, peerId) {
     try { await local('/api/friend-chat/typing', { method: 'POST', body: JSON.stringify({ receiverId: peerId }) }); } catch { /* */ }
   },
+  /** MSG-EDIT: PATCH /api/friend-chat/messages/:id { body } (friend-chat-edit-routes.ts) */
+  async edit(_me, _peerId, messageId, text) {
+    await local(`/api/friend-chat/messages/${encodeURIComponent(messageId.replace(/^db-/, ''))}`, { method: 'PATCH', body: JSON.stringify({ body: text }) });
+  },
+  /** MSG-DELETE: DELETE /api/friend-chat/messages/:id => يختفي عند الطرفين */
+  async remove(_me, _peerId, messageId) {
+    await local(`/api/friend-chat/messages/${encodeURIComponent(messageId.replace(/^db-/, ''))}`, { method: 'DELETE' });
+  },
+  /** MSG-EDIT/DELETE: GET /api/friend-chat/changes?with=<id> */
+  async changes(_me, peerId) {
+    try {
+      const d = await local(`/api/friend-chat/changes?with=${encodeURIComponent(peerId)}`);
+      return { deleted: (d?.deleted || []).map((x: any) => `db-${x}`), edited: (d?.edited || []).map((x: any) => `db-${x}`) };
+    } catch { return { deleted: [], edited: [] }; }
+  },
   /** REACTIONS: POST /api/friend-chat/react { receiverId, messageId, emoji } (emoji '' = remove). Best effort: the reaction is always kept on this device. */
   async react(_me, peerId, messageId, emoji) {
     try { await local('/api/friend-chat/react', { method: 'POST', body: JSON.stringify({ receiverId: peerId, messageId: messageId.replace(/^db-/, ''), emoji }) }); } catch { /* */ }
@@ -286,6 +310,9 @@ const adapter = (): Adapter => {
     presence: (me, pid) => (isGroupId(pid) ? Promise.resolve({}) : b.presence(me, pid)),
     typing: (me, pid) => (isGroupId(pid) ? Promise.resolve() : b.typing(me, pid)),
     react: (me, pid, mid, em) => (isGroupId(pid) ? Promise.resolve() : b.react(me, pid, mid, em)),
+    edit: (me, pid, mid, t) => (isGroupId(pid) ? Promise.reject(new Error('group')) : b.edit(me, pid, mid, t)), // MSG-EDIT
+    remove: (me, pid, mid) => (isGroupId(pid) ? Promise.reject(new Error('group')) : b.remove(me, pid, mid)), // MSG-DELETE
+    changes: (me, pid) => (isGroupId(pid) ? Promise.resolve({ deleted: [], edited: [] }) : b.changes(me, pid)),
   };
 };
 
@@ -524,6 +551,25 @@ function FriendChatPatch() {
   const [inviteBusy, setInviteBusy] = useState(false);
   const isGroup = isGroupId(peer?.id);
   const photoRef = useRef<HTMLInputElement>(null);
+  // MSG-EDIT / MSG-DELETE / IMAGE-MARKUP
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{ id: string; text: string; edited: boolean } | null>(null);
+  const editRef = useRef<{ id: string; text: string; edited: boolean } | null>(null); editRef.current = editing;
+  const commitEditRef = useRef<(t: string) => void>(() => { /* set below */ });
+  const deletedRef = useRef<Set<string>>(new Set());
+  const [markup, setMarkup] = useState<{ file: File; target: Friend } | null>(null);
+  /** يكتب نصاً في مربع الكتابة الأصلي للـSheet (نفس طريقة التفريغ المستخدمة عند الإرسال) */
+  const setComposer = (v: string) => {
+    const ta = sheetRef.current?.inner.querySelector('textarea') as HTMLTextAreaElement | null;
+    if (!ta) return;
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(ta, v);
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    if (v) { try { ta.focus(); } catch { /* */ } }
+  };
+  useEffect(() => { // تغيير المحادثة/الخروج => ألغِ التعديل والقوائم المفتوحة
+    setActionMsg(null); setMarkup(null);
+    if (editRef.current) { setEditing(null); editRef.current = null; setComposer(''); }
+  }, [peer?.id, mode, sheet]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (!sheet || mode !== 'chat' || !peer) { setPlusOpen(false); setLocPickerOpen(false); setLocView(null); setImgView(null); } }, [sheet, mode, peer?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* 1) find the sheet whenever it opens / closes */
@@ -590,7 +636,19 @@ function FriendChatPatch() {
       try {
         const inc = await adapter().fetchMessages(me, peer.id);
         if (!alive) return;
-        setChat(c => (c.peerId === peer.id ? { peerId: c.peerId, list: merge(c.list, inc.filter(m => m.ts > getClearedAt(me.id, peer.id))) } : c));
+        setChat(c => (c.peerId === peer.id ? { peerId: c.peerId, list: merge(c.list, inc.filter(m => m.ts > getClearedAt(me.id, peer.id) && !deletedRef.current.has(m.id))) } : c));
+        if (!isGroupId(peer.id)) { // MSG-EDIT/DELETE: ما حذفه/عدّله الطرف الثاني ينعكس عندي (والعكس)
+          const ch = await adapter().changes(me, peer.id);
+          if (!alive) return;
+          if (ch.deleted.length || ch.edited.length) {
+            setChat(c => {
+              if (c.peerId !== peer.id) return c;
+              const need = c.list.some(m => ch.deleted.includes(m.id) || (ch.edited.includes(m.id) && !m.edited));
+              if (!need) return c;
+              return { peerId: c.peerId, list: c.list.filter(m => !ch.deleted.includes(m.id)).map(m => (ch.edited.includes(m.id) && !m.edited ? { ...m, edited: true } : m)) };
+            });
+          }
+        }
         if (inc.some(m => m.from === peer.id && !m.read)) {
           void adapter().markRead(me, peer.id);
           setUnread(u => { const n = { ...u }; delete n[peer.id]; return n; });
@@ -802,6 +860,9 @@ function FriendChatPatch() {
     const target = peerRef.current;
     if (!file || !target) return;
     if (!/^image\//i.test(file.type || 'image/jpeg')) { flash('اختر صورة فقط'); return; }
+    setMarkup({ file, target }); // IMAGE-MARKUP: علّم على الصورة ثم أرسل (بدون علامات = الأصلية)
+  };
+  const sendPhotoFile = async (file: File, target: Friend) => {
     setBusy(true); flash('جاري المعاينة…');
     try {
       const prep = await prepareSavedMediaWithin(file, 'image', async (f: File) => await uploadPhoto(f), 40000);
@@ -841,6 +902,7 @@ function FriendChatPatch() {
       const v = ta.value;
       if (!v.trim()) return;
       if (!peerRef.current) { flash('اختر صديقاً من الزر بالأعلى أولاً'); return; }
+      if (editRef.current) { clearTextarea(ta); void commitEditRef.current(v); return; } // MSG-EDIT
       clearTextarea(ta); void sendRef.current(v);
     };
     const onClick = (e: Event) => {
@@ -879,7 +941,7 @@ function FriendChatPatch() {
     };
     const onInput = (e: Event) => {
       const m = meRef.current; const pr = peerRef.current;
-      if (modeRef.current !== 'chat' || !pr || !m) return;
+      if (modeRef.current !== 'chat' || !pr || !m || editRef.current) return;
       const t = e.target as HTMLTextAreaElement | null;
       if (!t || t.tagName !== 'TEXTAREA' || !sheet.inner.contains(t) || !t.value.trim()) return;
       const now = Date.now();
@@ -1006,6 +1068,64 @@ function FriendChatPatch() {
     // fallback: the native long-press (context menu) opens the same emoji bubble
     onContextMenu: (e: React.SyntheticEvent) => { e.preventDefault(); clearPress(); openPicker(id); },
   });
+  /* MSG-EDIT / MSG-DELETE: long-press (0.45s) on MY message -> small menu (copy / edit / delete for both) */
+  const openActions = (id: string) => {
+    if (Date.now() - pickerAt.current < 700) return;
+    pickerAt.current = Date.now();
+    try { navigator.vibrate?.(15); } catch { /* */ }
+    setActionMsg(id);
+  };
+  const pressPropsMine = (id: string) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      clearPress();
+      pressXY.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+      pressTimer.current = window.setTimeout(() => { pressTimer.current = 0; openActions(id); }, 450);
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      if (pressTimer.current && Math.hypot(e.clientX - pressXY.current.x, e.clientY - pressXY.current.y) > 12) clearPress();
+    },
+    onPointerUp: clearPress,
+    onPointerCancel: () => { if (Date.now() - pressXY.current.t < 250) clearPress(); },
+    onContextMenu: (e: React.SyntheticEvent) => { e.preventDefault(); clearPress(); openActions(id); },
+  });
+  const actionM = actionMsg ? chat.list.find(x => x.id === actionMsg) : undefined;
+  const isPlainText = (m: ChatMsg) => !decodeSavedLocation(m.text) && !decodeSavedMediaLink(m.text) && !decodeTplPost(m.text);
+  const startEdit = (m: ChatMsg) => {
+    setActionMsg(null);
+    const e = { id: m.id, text: m.text, edited: !!m.edited };
+    editRef.current = e; setEditing(e);
+    window.setTimeout(() => setComposer(m.text), 30);
+  };
+  const cancelEdit = () => { editRef.current = null; setEditing(null); setComposer(''); };
+  const commitEdit = async (raw: string) => {
+    const ed = editRef.current; const p = peerRef.current; const t = raw.trim();
+    if (!ed || !me || !p) return;
+    editRef.current = null; setEditing(null);
+    if (!t || t === ed.text) return;
+    setChat(c => ({ ...c, list: c.list.map(x => (x.id === ed.id ? { ...x, text: t, edited: true } : x)) }));
+    try { await adapter().edit(me, p.id, ed.id, t); }
+    catch {
+      setChat(c => ({ ...c, list: c.list.map(x => (x.id === ed.id ? { ...x, text: ed.text, edited: ed.edited } : x)) }));
+      flash('تعذر تعديل الرسالة');
+    }
+  };
+  commitEditRef.current = commitEdit;
+  const deleteMsg = async (m: ChatMsg) => {
+    const p = peerRef.current; setActionMsg(null);
+    if (!me || !p || m.status === 'sending') return;
+    if (!window.confirm('حذف الرسالة عند الطرفين؟')) return;
+    if (editRef.current?.id === m.id) cancelEdit();
+    const onServer = m.id.startsWith('db-');
+    if (onServer) deletedRef.current.add(m.id);
+    setChat(c => ({ ...c, list: c.list.filter(x => x.id !== m.id) }));
+    if (!onServer) return; // رسالة فاشلة لم تصل: تُحذف محلياً فقط
+    try { await adapter().remove(me, p.id, m.id); }
+    catch {
+      deletedRef.current.delete(m.id);
+      setChat(c => ({ ...c, list: merge(c.list, [m]) }));
+      flash('تعذر حذف الرسالة');
+    }
+  };
   const pickerMsg = picker ? chat.list.find(x => x.id === picker) : undefined;
   const pickReaction = (emoji: string) => {
     const id = picker;
@@ -1314,14 +1434,14 @@ function FriendChatPatch() {
                 <div style={{ position: 'relative', maxWidth: '100%', marginBottom: reactionOf(m) ? 12 : 0 }}>
                 <div
                   dir="auto"
-                  {...(mine ? {} : pressProps(m.id))}
+                  {...(mine ? pressPropsMine(m.id) : pressProps(m.id))}
                   onClick={() => { if (m.status === 'failed') void sendRef.current(m.text, m.clientId); }}
                   style={{
                     background: mine ? DARK_GREEN : '#f1f1ef', color: mine ? '#fff' : '#111',
                     padding: media ? 4 : '9px 13px', overflow: media ? 'hidden' : undefined, minWidth: loc ? 230 : undefined, borderRadius: 18, borderBottomRightRadius: mine ? 6 : 18, borderBottomLeftRadius: mine ? 18 : 6,
                     fontSize: 15, lineHeight: '21px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                     opacity: m.status === 'sending' ? 0.7 : 1, cursor: m.status === 'failed' ? 'pointer' : 'default',
-                    ...(mine ? {} : { userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' } as React.CSSProperties),
+                    ...({ userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none', touchAction: 'manipulation' } as React.CSSProperties),
                   }}
                 >{loc ? (
                   <LocationChatCard
@@ -1349,6 +1469,7 @@ function FriendChatPatch() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 3, fontSize: 11, color: m.status === 'failed' ? '#ef4444' : '#9ca3af' }}>
                   <span>{hhmm(m.ts)}</span>
+                  {m.edited && <span>· معدّلة</span>}
                   {mine && (m.status === 'failed'
                     ? <><AlertCircle size={13} /><span>فشل — اضغط للإعادة</span></>
                     : m.status === 'sending' ? <span>…</span>
@@ -1422,6 +1543,66 @@ function FriendChatPatch() {
 
       {/* FRIEND-VOICE-LIVE: ذبذبات + بث صوتي على المايك الأحمر (داخل شات الصديق فقط) */}
       <FriendVoiceLive me={me} peer={peer} active={mode === 'chat' && !!peer} formEl={sheet.form} onFlash={flash} />
+
+      {/* MSG-EDIT / MSG-DELETE: menu on long-press of my message */}
+      {mode === 'chat' && peer && actionMsg && actionM && actionM.from === myId && createPortal(
+        <div
+          role="presentation"
+          onClick={() => { if (Date.now() - pickerAt.current > 350) setActionMsg(null); }}
+          style={{ position: 'absolute', inset: 0, zIndex: 46, background: 'rgba(0,0,0,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'sfcPop 0.15s ease-out' }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 22, padding: 8, minWidth: 220, boxShadow: '0 12px 36px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {(() => {
+              const plain = isPlainText(actionM);
+              const onServer = actionM.id.startsWith('db-');
+              const item: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 14, border: 'none', background: '#f7f7f8', color: '#111', fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer', textAlign: 'start', width: '100%' };
+              return (
+                <>
+                  {plain && (
+                    <button type="button" style={item} onClick={() => { try { void navigator.clipboard?.writeText(actionM.text); } catch { /* */ } setActionMsg(null); flash('تم النسخ'); }}>
+                      <CopyIcon size={18} />نسخ
+                    </button>
+                  )}
+                  {plain && onServer && !isGroup && actionM.status !== 'failed' && (
+                    <button type="button" style={item} onClick={() => startEdit(actionM)}><EditIcon size={18} />تعديل</button>
+                  )}
+                  {!isGroup && actionM.status !== 'sending' && (
+                    <button type="button" style={{ ...item, background: '#fef2f2', color: '#dc2626' }} onClick={() => void deleteMsg(actionM)}>
+                      <TrashIcon size={18} />حذف عند الطرفين
+                    </button>
+                  )}
+                </>
+              );
+            })()}
+          </div>
+        </div>,
+        sheet.inner,
+      )}
+
+      {/* MSG-EDIT: banner above the input bar while editing (the normal input box holds the text; Send saves it) */}
+      {mode === 'chat' && peer && editing && createPortal(
+        <div style={{ position: 'absolute', left: 12, right: 12, bottom: rect.bottom + 6, zIndex: 43, display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 14, background: '#fff', border: '1px solid #e5e7eb', boxShadow: '0 8px 22px rgba(0,0,0,0.14)', animation: 'sfcPop 0.15s ease-out' }}>
+          <EditIcon size={16} color="#0b3a82" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: '#0b3a82' }}>تعديل الرسالة</div>
+            <div dir="auto" style={{ fontSize: 13, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{editing.text}</div>
+          </div>
+          <button type="button" aria-label="Cancel edit" onClick={cancelEdit} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#f3f4f6', color: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', padding: 0 }}><X size={16} /></button>
+        </div>,
+        sheet.inner,
+      )}
+
+      {/* IMAGE-MARKUP: mark things on the photo before sending it */}
+      {markup && createPortal(
+        <ModalLayer onEsc={() => setMarkup(null)}>
+          <ImageMarkup
+            file={markup.file}
+            onCancel={() => setMarkup(null)}
+            onDone={(f) => { const t = markup.target; setMarkup(null); void sendPhotoFile(f, t); }}
+          />
+        </ModalLayer>,
+        document.body,
+      )}
 
       {/* FRIEND-CHAT-MEDIA: hidden photo input (opened from the "+" menu) */}
       <input ref={photoRef} type="file" accept="image/*" hidden onChange={onPickPhoto} />
