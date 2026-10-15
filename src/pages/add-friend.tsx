@@ -19685,10 +19685,9 @@ function TplLongPressHint() {
   );
 }
 
-// GRABBER-TPL-HINT: down arrow + bilingual text under the top grabber line (long-press = publish to Templates)
+// GRABBER-TPL-HINT: up arrow pointing at the grabber + small English text + orange shine on the line
 function GrabberPublishHint() {
-  const [done, setDone] = useState(false); // always show until first long-press in this session
-  const [lang, setLang] = useState<'en' | 'ar'>('en');
+  const [done, setDone] = useState(false);
   const [pos, setPos] = useState<{ top: number } | null>(null);
   useEffect(() => {
     const f = () => setDone(true);
@@ -19697,54 +19696,76 @@ function GrabberPublishHint() {
   }, []);
   useEffect(() => {
     if (done) return;
-    const id = window.setInterval(() => setLang(l => l === 'en' ? 'ar' : 'en'), 3000);
-    return () => window.clearInterval(id);
-  }, [done]);
-  useEffect(() => {
-    if (done) return;
     const update = () => {
       const el = document.querySelector('[data-stooorna-header-grabber="1"]') as HTMLElement | null;
       if (!el) { setPos(null); return; }
       const r = el.getBoundingClientRect();
       if (r.height < 2) { setPos(null); return; }
-      setPos({ top: Math.round(r.bottom + 6) });
+      setPos({ top: Math.round(r.bottom + 4) });
     };
     update();
     const iv = window.setInterval(update, 400);
     window.addEventListener('resize', update);
     return () => { window.clearInterval(iv); window.removeEventListener('resize', update); };
   }, [done]);
+  useEffect(() => {
+    const el = document.querySelector('[data-stooorna-header-grabber="1"]') as HTMLElement | null;
+    if (!el) return;
+    if (done) {
+      el.removeAttribute('data-grabber-hint');
+    } else {
+      el.setAttribute('data-grabber-hint', '1');
+    }
+    return () => { el.removeAttribute('data-grabber-hint'); };
+  }, [done]);
   if (done || !pos || typeof document === 'undefined') return null;
   return createPortal(
-    <div
-      aria-hidden="true"
-      style={{
-        position: 'fixed', zIndex: 13000, pointerEvents: 'none',
-        left: '50%', top: pos.top,
-        transform: 'translateX(-50%)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-      }}
-    >
-      <svg
-        width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"
-        style={{ animation: 'stooornaGrabberHintBounce 1s ease-in-out infinite', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.6))' }}
-      >
-        <path d="M12 4v16" />
-        <path d="M5 13l7 7 7-7" />
-      </svg>
+    <>
+      <style>{`
+        [data-stooorna-header-grabber="1"][data-grabber-hint="1"] span {
+          position: relative;
+          overflow: hidden;
+          background: linear-gradient(90deg, #ffffff 0%, #fb923c 40%, #f97316 60%, #ffffff 100%) !important;
+          background-size: 200% 100% !important;
+          animation: stooornaGrabberOrange 1.8s linear infinite !important;
+        }
+        @keyframes stooornaGrabberOrange {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
+        }
+        @keyframes stooornaGrabberHintBounce {
+          0%,100% { transform: translateY(3px); opacity: 0.7; }
+          50% { transform: translateY(-4px); opacity: 1; }
+        }
+      `}</style>
       <div
+        aria-hidden="true"
         style={{
-          padding: '6px 14px', borderRadius: 999,
-          background: 'rgba(6,16,18,0.95)', border: '1.5px solid rgba(255,255,255,0.7)',
-          color: '#ffffff', fontSize: 12.5, fontWeight: 800, whiteSpace: 'nowrap',
-          direction: lang === 'ar' ? 'rtl' : 'ltr',
-          boxShadow: '0 4px 14px rgba(0,0,0,0.45)',
+          position: 'fixed', zIndex: 13000, pointerEvents: 'none',
+          left: '50%', top: pos.top,
+          transform: 'translateX(-50%)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
         }}
       >
-        {lang === 'en' ? 'Long-press to publish a post' : 'اضغط مطولاً لنشر منشور'}
+        <svg
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"
+          style={{ animation: 'stooornaGrabberHintBounce 1s ease-in-out infinite', filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
+        >
+          <path d="M12 20V4" />
+          <path d="M5 11l7-7 7 7" />
+        </svg>
+        <div
+          style={{
+            padding: '3px 9px', borderRadius: 999,
+            background: 'rgba(6,16,18,0.94)', border: '1px solid rgba(255,255,255,0.55)',
+            color: '#ffffff', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          }}
+        >
+          Long-press to publish a post
+        </div>
       </div>
-      <style>{`@keyframes stooornaGrabberHintBounce { 0%,100% { transform: translateY(-4px); opacity: 0.75; } 50% { transform: translateY(5px); opacity: 1; } }`}</style>
-    </div>,
+    </>,
     document.body
   );
 }
