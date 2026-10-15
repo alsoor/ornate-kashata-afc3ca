@@ -1,6 +1,9 @@
 /**
  * NEARBY PATCH  (ملف مستقل — لا يعدّل StooornaAiSheet.tsx ولا friendChatPatch.tsx)
  *
+ * [v1.10.1] مفتاح GPS Live مقفول => ما يبين لأحد لا داخل التطبيق ولا خارجه: الخدمة تتوقف ويُمسح موقعي من السيرفر (clear) تلقائياً؛ مفتوح => يبين داخل وخارج التطبيق.
+ * [v1.10.0] GPS Live بالخلفية: إذا مفتاح المشاركة في صفحة GPS Live شغّال (stooorna_live_gps_share ≠ '0') تنشر الخدمة الأمامية موقعي على /api/live-gps كل ~45 ث حتى لو خارج التطبيق أو أغلقته،
+ *           فيظهر أونلاين على خريطة GPS Live عند الجميع (الخريطة تعتبر أونلاين من نشر خلال دقيقتين). إيقاف المفتاح يوقف النشر. (لا تعديل على add-friend.tsx)
  * [v1.9.0] الظهور بالخلفية (بلوتوث + GPS): الإضافة الأصلية تشغّل خدمة أمامية (إشعار دائم) فيظل المستخدم ظاهراً حتى لو طلع من التطبيق أو أغلق صفحة Stooorna Ai ·
  *          إغلاق الصفحة ما يوقف البلوتوث ولا يمسح الموقع من السيرفر (فقط "Hide my location from others" يخفيك) · المستخدم يُحفظ محلياً فيشتغل المحرّك من أول فتح التطبيق ·
  *          البلوتوث يمر عبر السيرفر أيضاً (ble-seen): من لقطك أو لقطته يظهر في قسم Bluetooth حتى لو جهازك ما لقطه مباشرة · عند الرجوع للتطبيق: تفريغ الرسائل المحفوظة + إعادة تشغيل + نشر الموقع.
@@ -41,7 +44,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 
-export const NEARBY_PATCH_VERSION = '1.9.0';
+export const NEARBY_PATCH_VERSION = '1.10.1';
 
 /* ───────────────────────── Types ───────────────────────── */
 interface Me { id: string; name?: string | null; username?: string | null; avatarUrl?: string | null; image?: string | null }
@@ -337,6 +340,25 @@ async function pullBleSeen(me: Me) {
     E.srvBle = next; emit('peers');
   } catch { /* */ }
 }
+/** [v1.10] GPS Live بالخلفية: مزامنة مفتاح المشاركة (نفس مفتاح صفحة GPS Live) مع الخدمة الأصلية. تُستدعى فقط عند التغيير. */
+let liveSig = '';
+const liveShareOn = () => { try { return localStorage.getItem('stooorna_live_gps_share') !== '0'; } catch { return true; } }; // نفس منطق مفتاح الصفحة
+async function syncLiveNative(me: Me, force = false) {
+  const on = liveShareOn();
+  const payload = { serverUrl: location.origin, on, id: me.id, name: String(me.name || me.username || 'User'), username: String(me.username || '').replace(/^@/, ''), avatarUrl: String(me.avatarUrl || me.image || '') };
+  const sig = JSON.stringify(payload);
+  if (!force && sig === liveSig) return;
+  const p = plugin();
+  // 1) الخدمة الأصلية: المفتاح شغّال => تنشر بالخلفية، مقفول => توقف النشر فوراً
+  if (p && typeof p.setLive === 'function') { try { await p.setLive(payload); } catch { /* */ } }
+  // 2) [v1.10.1] المفتاح مقفول => امسح موقعي من السيرفر (حتى ما يبين لأحد، داخل أو خارج التطبيق) — بعد إيقاف الخدمة عشان ما ترجّعه
+  if (!on) {
+    try { await net('/api/live-gps', { method: 'POST', body: JSON.stringify({ clear: true, id: me.id }) }); }
+    catch (e: any) { if (!/HTTP 4\d\d/.test(String(e?.message))) return; /* خطأ شبكة => نعيد المحاولة بالدورة الجاية */ }
+  }
+  liveSig = sig;
+}
+
 /** [v1.9] تفريغ الرسائل اللي وصلت بالبلوتوث والتطبيق بالخلفية + التأكد أن البلوتوث لسه شغّال. */
 async function resumeNative(me: Me) {
   const p = plugin(); if (!p) return;
@@ -1030,10 +1052,11 @@ function activate(u: Me) {
   E.me = u;
   if (activatedFor !== u.id) { activatedFor = u.id; loadAccepted(u.id); }
   void syncLinks(u);
+  void syncLiveNative(u); // [v1.10] GPS Live بالخلفية
   if (!jget(kHidden(u.id), false)) void bleStart(u); // الاستقبال بالبلوتوث طالما التطبيق شغّال (حتى بالخلفية)
 }
 /** [v1.9] الجلسة انتهت (تسجيل خروج) => نوقف كل شيء وننسى المستخدم. */
-function deactivate() { activatedFor = ''; clearSavedMe(); void bleStop(); E.me = null; emit('logout'); }
+function deactivate() { liveSig = ''; try { void plugin()?.setLive?.({ on: false }); } catch { /* */ } activatedFor = ''; clearSavedMe(); void bleStop(); E.me = null; emit('logout'); }
 
 function NearbyPatch() {
   const [sheet, setSheet] = useState<SheetEls | null>(null);
@@ -1133,14 +1156,16 @@ function NearbyPatch() {
     // [v1.9] الرجوع للتطبيق من الخلفية: فرّغ رسائل البلوتوث المحفوظة + أعد تشغيل البلوتوث لو انقطع + انشر الموقع + زامن
     const onVis = () => {
       if (document.visibilityState !== 'visible') return;
-      void resumeNative(me); lastPos = null; beat(); void flushPending(); void tick();
+      void resumeNative(me); void syncLiveNative(me, true); lastPos = null; beat(); void flushPending(); void tick();
     };
     document.addEventListener('visibilitychange', onVis);
+    const liveIv = window.setInterval(() => { void syncLiveNative(me); }, 4000); // [v1.10] تغيير مفتاح المشاركة في GPS Live ينعكس على الخدمة خلال ثوانٍ
+    void syncLiveNative(me);
     const offMsgs = on('msgs', () => { void tick(false); });
     const offLinks = on('links', recount);
     const onNet = () => { void flushPending(); void tick(); };
     window.addEventListener('online', onNet);
-    return () => { document.removeEventListener('visibilitychange', onVis); alive = false; window.clearInterval(t); window.clearInterval(hb); offMsgs(); offLinks(); void net('/api/nearby/ping', { method: 'DELETE' }).catch(() => { /* */ }); window.removeEventListener('online', onNet); };
+    return () => { window.clearInterval(liveIv); document.removeEventListener('visibilitychange', onVis); alive = false; window.clearInterval(t); window.clearInterval(hb); offMsgs(); offLinks(); void net('/api/nearby/ping', { method: 'DELETE' }).catch(() => { /* */ }); window.removeEventListener('online', onNet); };
   }, [me?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!sheet || !me) return null;

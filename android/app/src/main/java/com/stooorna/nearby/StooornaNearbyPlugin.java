@@ -61,7 +61,8 @@ import java.util.Set;
  * ملاحظات:
  *  - [v2] يعمل بالخلفية: عند start() تبدأ NearbyKeepAliveService (إشعار دائم) فيظل المستخدم ظاهراً بالبلوتوث والـGPS حتى لو طلع من التطبيق.
  *    الرسائل الواردة والتطبيق بالخلفية تُحفظ وتظهر كإشعار، وتُسلَّم للواجهة عند الرجوع (drainPending).
- *    الدوال الجديدة: status() · drainPending() · batterySettings() — و start() تقبل {serverUrl, geo}.
+ *    [v3] setLive({serverUrl,on,id,name,username,avatarUrl}) — يشغّل/يوقف نشر GPS Live بالخلفية (حتى لو البلوتوث مطفي أو التطبيق انقفل)
+ *    الدوال الجديدة: status() · drainPending() · batterySettings() · setLive() — و start() تقبل {serverUrl, geo}.
  *    يلزم في AndroidManifest: الخدمة + صلاحيات FOREGROUND_SERVICE (انظر ملف المانيفست المرفق).
  *  - أندرويد↔أندرويد فقط (آيفون يستخدم MultipeerConnectivity وهو بروتوكول مختلف).
  *  - لازم خدمات Google Play على الجهاز.
@@ -89,6 +90,9 @@ public class StooornaNearbyPlugin extends Plugin {
     private String serverUrl = "";      // [v2] لتبليغ السيرفر بمن لقطهم البلوتوث
     private boolean geoWanted = false;  // [v2] هل الخدمة تنشر الموقع؟
     private boolean paused = false;     // [v2] الواجهة بالخلفية
+    // [v3] GPS Live: نشر موقعي على /api/live-gps من الخدمة نفسها (أونلاين حتى لو خارج التطبيق)
+    private boolean liveOn = false;
+    private String liveId = "", liveName = "User", liveUser = "", liveAvatar = "";
     private final List<JSObject> bgMsgs = new ArrayList<>(); // [v2] رسائل وصلت والواجهة بالخلفية
     private static final String MSG_CHANNEL = "stooorna_nearby_msg";
     private int notifSeq = 0;
@@ -131,7 +135,32 @@ public class StooornaNearbyPlugin extends Plugin {
 
     @PluginMethod
     public void stop(PluginCall call) {
-        main.post(() -> { stopAll(); stopService(); call.resolve(); });
+        main.post(() -> { stopAll(); if (liveOn) startService(); else stopService(); call.resolve(); }); // [v3] لو GPS Live شغّال تبقى الخدمة لنشر الموقع فقط
+    }
+
+    /** [v3] تشغيل/إيقاف نشر GPS Live بالخلفية (يُستدعى من الواجهة عند تغيير مفتاح المشاركة أو بداية التطبيق). */
+    @PluginMethod
+    public void setLive(PluginCall call) {
+        final String su = call.getString("serverUrl", "");
+        final boolean on = Boolean.TRUE.equals(call.getBoolean("on", false));
+        final String id = call.getString("id", "");
+        final String name = call.getString("name", "User");
+        final String user = call.getString("username", "");
+        final String av = call.getString("avatarUrl", "");
+        main.post(() -> {
+            if (su != null && !su.isEmpty()) serverUrl = su;
+            liveOn = on && id != null && !id.isEmpty();
+            liveId = id == null ? "" : id;
+            liveName = name == null || name.isEmpty() ? "User" : name;
+            liveUser = user == null ? "" : user;
+            liveAvatar = av == null ? "" : av;
+            if (liveOn) startService();                       // يبدأ/يحدّث الخدمة
+            else if (!running) stopService();                 // لا بلوتوث ولا نشر => نوقفها
+            else startService();                              // البلوتوث شغّال: حدّث الخدمة بدون live
+            JSObject r = new JSObject();
+            r.put("live", liveOn);
+            call.resolve(r);
+        });
     }
 
     /** [v2] هل البلوتوث شغّال فعلاً؟ (الواجهة تستدعيها عند الرجوع للتطبيق لإعادة التشغيل لو لزم). */
@@ -208,7 +237,7 @@ public class StooornaNearbyPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
-        main.post(() -> { stopAll(); stopService(); });
+        main.post(() -> { stopAll(); if (liveOn) startService(); else stopService(); }); // [v3] الخدمة تكمل نشر GPS Live حتى بعد إغلاق التطبيق
     }
 
     /* ───────────── [v2] الخدمة الأمامية ───────────── */
@@ -218,7 +247,13 @@ public class StooornaNearbyPlugin extends Plugin {
             Context c = getContext();
             Intent i = new Intent(c, NearbyKeepAliveService.class);
             i.putExtra(NearbyKeepAliveService.EXTRA_SERVER, serverUrl);
-            i.putExtra(NearbyKeepAliveService.EXTRA_GEO, geoWanted);
+            i.putExtra(NearbyKeepAliveService.EXTRA_GEO, geoWanted && running);
+            i.putExtra(NearbyKeepAliveService.EXTRA_BLE, running);
+            i.putExtra(NearbyKeepAliveService.EXTRA_LIVE, liveOn);
+            i.putExtra(NearbyKeepAliveService.EXTRA_LIVE_ID, liveId);
+            i.putExtra(NearbyKeepAliveService.EXTRA_LIVE_NAME, liveName);
+            i.putExtra(NearbyKeepAliveService.EXTRA_LIVE_USER, liveUser);
+            i.putExtra(NearbyKeepAliveService.EXTRA_LIVE_AVATAR, liveAvatar);
             ContextCompat.startForegroundService(c, i);
         } catch (Exception ignored) { /* نكمل بدون خدمة: يشتغل والتطبيق مفتوح فقط */ }
     }
@@ -299,7 +334,7 @@ public class StooornaNearbyPlugin extends Plugin {
                 })
                 .addOnFailureListener(e -> {
                     stopAll();
-                    stopService();
+                    if (liveOn) startService(); else stopService();
                     call.reject(String.valueOf(e.getMessage()));
                 });
         });

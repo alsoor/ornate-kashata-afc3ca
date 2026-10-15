@@ -21,6 +21,8 @@ import android.webkit.CookieManager;
 
 import androidx.core.content.ContextCompat;
 
+import org.json.JSONObject;
+
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -35,11 +37,20 @@ import java.util.Locale;
  *  3) [v2] تبليغ السيرفر بمن لقطهم البلوتوث (/api/nearby/ble-seen) حتى يظهروا عبر السيرفر أيضاً.
  * تبدأ مع start() في StooornaNearbyPlugin وتتوقف مع stop().
  *
- * Extras: serverUrl (مثل https://example.com) · geo (boolean — انشر الموقع أم لا)
+ *  4) [v3] GPS Live: إذا مفعّل مشاركة الموقع في صفحة GPS Live ننشر موقعي أيضاً على POST /api/live-gps (id/name/username/avatarUrl)
+ *     فيظهر أونلاين على خريطة بقية المستخدمين حتى لو أنا خارج التطبيق (السيرفر يختم at بوقت كل نشر، والخريطة تعتبر أونلاين من نشر خلال دقيقتين).
+ *
+ * Extras: serverUrl · geo (نشر /api/nearby/ping) · ble (البلوتوث شغّال) · live + liveId/liveName/liveUser/liveAvatar (نشر /api/live-gps)
  */
 public class NearbyKeepAliveService extends Service {
     public static final String EXTRA_SERVER = "serverUrl";
     public static final String EXTRA_GEO = "geo";
+    public static final String EXTRA_BLE = "ble";
+    public static final String EXTRA_LIVE = "live";
+    public static final String EXTRA_LIVE_ID = "liveId";
+    public static final String EXTRA_LIVE_NAME = "liveName";
+    public static final String EXTRA_LIVE_USER = "liveUser";
+    public static final String EXTRA_LIVE_AVATAR = "liveAvatar";
 
     private static final String CHANNEL_ID = "stooorna_nearby";
     private static final int NOTIF_ID = 7431;
@@ -55,6 +66,10 @@ public class NearbyKeepAliveService extends Service {
     private volatile String serverUrl = "";
     private volatile boolean geo = false;
     private boolean listening = false;
+    private volatile boolean ble = true;
+    private volatile boolean live = false;
+    private volatile String liveId = "", liveName = "User", liveUser = "", liveAvatar = "";
+    private volatile long lastPost = 0L;
 
     @Override
     public IBinder onBind(Intent intent) { return null; }
@@ -65,6 +80,17 @@ public class NearbyKeepAliveService extends Service {
             String s = intent.getStringExtra(EXTRA_SERVER);
             if (s != null && !s.isEmpty()) serverUrl = s.endsWith("/") ? s.substring(0, s.length() - 1) : s;
             geo = intent.getBooleanExtra(EXTRA_GEO, false);
+            ble = intent.getBooleanExtra(EXTRA_BLE, true);
+            live = intent.getBooleanExtra(EXTRA_LIVE, false);
+            String lid = intent.getStringExtra(EXTRA_LIVE_ID);
+            if (lid != null) liveId = lid;
+            String ln = intent.getStringExtra(EXTRA_LIVE_NAME);
+            if (ln != null && !ln.isEmpty()) liveName = ln;
+            String lu = intent.getStringExtra(EXTRA_LIVE_USER);
+            if (lu != null) liveUser = lu;
+            String la = intent.getStringExtra(EXTRA_LIVE_AVATAR);
+            if (la != null) liveAvatar = la;
+            if (liveId.isEmpty()) live = false;
         }
         try {
             NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
@@ -73,7 +99,7 @@ public class NearbyKeepAliveService extends Service {
             }
             Notification.Builder b = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CHANNEL_ID) : new Notification.Builder(this);
             Notification n = b.setContentTitle("Stooorna Nearby")
-                .setContentText("Visible to people nearby via Bluetooth" + (geo ? " & GPS" : ""))
+                .setContentText((ble ? "Visible to people nearby via Bluetooth" : "Sharing your live location") + ((geo || live) && ble ? " & GPS" : ""))
                 .setSmallIcon(getApplicationInfo().icon)
                 .setOngoing(true)
                 .build();
@@ -85,11 +111,12 @@ public class NearbyKeepAliveService extends Service {
         running = true;
         ensureThread();
         bg.removeCallbacksAndMessages(null);
-        if (geo && !serverUrl.isEmpty()) {
+        if ((geo || live) && !serverUrl.isEmpty()) {
             startLocation();
             bg.post(beat);
         } else {
             stopLocation();
+            if (!ble) { stopSelf(); return START_NOT_STICKY; } // لا بلوتوث ولا نشر => ما في سبب نبقى
         }
         return START_NOT_STICKY; // لو العملية انقتلت، ما نرجّع إشعار بدون بلوتوث
     }
@@ -98,11 +125,12 @@ public class NearbyKeepAliveService extends Service {
     private void startFg(Notification n) {
         if (Build.VERSION.SDK_INT >= 29) {
             int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE;
-            if (geo && hasLoc()) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+            if ((geo || live) && hasLoc()) type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+            if (!ble) type = ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION; // نشر موقع فقط
             try { startForeground(NOTIF_ID, n, type); return; }
             catch (Exception e) {
                 startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE);
-                geo = false; // ما قدرنا نأخذ نوع الموقع => بلوتوث فقط
+                geo = false; live = false; // ما قدرنا نأخذ نوع الموقع => بلوتوث فقط
             }
         } else {
             startForeground(NOTIF_ID, n);
@@ -124,7 +152,7 @@ public class NearbyKeepAliveService extends Service {
     /* ───────────── الموقع ───────────── */
 
     private final LocationListener listener = new LocationListener() {
-        @Override public void onLocationChanged(Location l) { if (l != null) last = l; }
+        @Override public void onLocationChanged(Location l) { if (l != null) { last = l; maybePost(); } } // يصحّي المعالج عند كل تحديث => ينشر حتى مع نوم الجهاز
         @Override public void onProviderEnabled(String p) { }
         @Override public void onProviderDisabled(String p) { }
         @Override public void onStatusChanged(String p, int s, Bundle b) { }
@@ -159,19 +187,40 @@ public class NearbyKeepAliveService extends Service {
         @Override public void run() {
             try {
                 if (!running) return;
-                if (geo && !serverUrl.isEmpty()) {
+                if ((geo || live) && !serverUrl.isEmpty()) {
                     if (!listening) startLocation();
-                    Location l = last;
-                    // لا ننشر موقعاً أقدم من 10 دقائق
-                    if (l != null && System.currentTimeMillis() - l.getTime() < 10 * 60_000L) {
-                        String body = String.format(Locale.US, "{\"lat\":%.6f,\"lng\":%.6f,\"accuracy\":%.1f}", l.getLatitude(), l.getLongitude(), l.hasAccuracy() ? l.getAccuracy() : 0f);
-                        postJson(serverUrl, "/api/nearby/ping", body, true);
-                    }
+                    maybePost();
                 }
             } catch (Throwable ignored) { /* */ }
             if (running && bg != null) bg.postDelayed(this, BEAT_MS);
         }
     };
+
+    /** ينشر الموقع (nearby ping و/أو live-gps) كل ~40 ث على الأقل بين نشرتين. */
+    private synchronized void maybePost() {
+        long now = System.currentTimeMillis();
+        if (now - lastPost < 40_000L) return;
+        Location l = last;
+        // لا ننشر موقعاً أقدم من 10 دقائق
+        if (l == null || now - l.getTime() > 10 * 60_000L || serverUrl.isEmpty()) return;
+        lastPost = now;
+        try {
+            if (geo) {
+                String body = String.format(Locale.US, "{\"lat\":%.6f,\"lng\":%.6f,\"accuracy\":%.1f}", l.getLatitude(), l.getLongitude(), l.hasAccuracy() ? l.getAccuracy() : 0f);
+                postJson(serverUrl, "/api/nearby/ping", body, true);
+            }
+            if (live && !liveId.isEmpty()) {
+                JSONObject o = new JSONObject();
+                o.put("id", liveId);
+                o.put("name", liveName);
+                o.put("username", liveUser);
+                if (!liveAvatar.isEmpty()) o.put("avatarUrl", liveAvatar);
+                o.put("lat", l.getLatitude());
+                o.put("lng", l.getLongitude());
+                postJson(serverUrl, "/api/live-gps", o.toString(), true); // السيرفر يختم at بوقت النشر => أونلاين
+            }
+        } catch (Exception ignored) { /* */ }
+    }
 
     /** POST بجلسة المستخدم (كوكيز الـWebView). يرجع كود الاستجابة أو -1. */
     private int postJson(String base, String path, String json, boolean stopOn401) {
