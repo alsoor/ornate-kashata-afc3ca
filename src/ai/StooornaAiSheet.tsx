@@ -549,6 +549,22 @@ function CameraCapture({ onClose, onCapture }: { onClose: () => void; onCapture:
 }
 
 export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheetProps) {
+  // SHEET-HANDLE: white top handle; tap or swipe down = sheet slides down, then closes
+  const [sheetClosing, setSheetClosing] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const dragStartRef = useRef<number | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const closeWithSlide = useCallback(() => {
+    if (closeTimerRef.current) return;
+    setSheetClosing(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      setSheetClosing(false);
+      setDragY(0);
+      onClose();
+    }, 300);
+  }, [onClose]);
+  useEffect(() => () => { if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current); }, []);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -1292,7 +1308,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         alignItems: 'flex-end',
         justifyContent: 'center',
       }}
-      onClick={onClose}
+      onClick={closeWithSlide}
     >
       <div
         onClick={e => e.stopPropagation()}
@@ -1307,18 +1323,57 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           flexDirection: 'column',
           overflow: 'hidden',
           boxShadow: '0 -12px 40px rgba(0,0,0,0.35)',
-          animation: 'stooornaAiSheetUp 0.38s cubic-bezier(0.22,1,0.36,1)',
+          animation: sheetClosing
+            ? 'stooornaAiSheetDown 0.3s cubic-bezier(0.4,0,1,1) forwards'
+            : dragStartRef.current !== null ? 'none' : 'stooornaAiSheetUp 0.38s cubic-bezier(0.22,1,0.36,1)',
+          transform: !sheetClosing && dragY > 0 ? `translateY(${dragY}px)` : undefined,
           position: 'relative',
         }}
       >
+        {/* SHEET-HANDLE: white strip at the top; tap or swipe down to close */}
+        <div
+          role="button"
+          aria-label="Close"
+          onClick={closeWithSlide}
+          onTouchStart={e => { dragStartRef.current = e.touches[0].clientY; }}
+          onTouchMove={e => {
+            if (dragStartRef.current === null) return;
+            setDragY(Math.max(0, e.touches[0].clientY - dragStartRef.current));
+          }}
+          onTouchEnd={() => {
+            const moved = dragY;
+            dragStartRef.current = null;
+            if (moved > 80) closeWithSlide(); else setDragY(0);
+          }}
+          style={{
+            flexShrink: 0,
+            width: '100%',
+            height: 26,
+            background: '#ffffff',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            touchAction: 'none',
+            position: 'relative',
+            zIndex: 6,
+          }}
+        >
+          <span
+            style={{
+              width: 44, height: 5, borderRadius: 3, background: 'rgba(0,0,0,0.22)',
+              animation: dragY > 0 ? 'none' : 'stooornaAiHandleHint 1.8s ease-in-out infinite', // gentle "pull me down" hint
+            }}
+          />
+        </div>
+
         {/* Header */}
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: '12px 16px',
-            paddingTop: 'max(12px, env(safe-area-inset-top))',
+            padding: '4px 16px 12px',
             borderBottom: '1px solid rgba(0,0,0,0.06)',
             background: '#fff',
             position: 'relative',
@@ -2218,6 +2273,14 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
         @keyframes stooornaAiSheetUp {
           from { transform: translateY(100%); }
           to { transform: translateY(0); }
+        }
+        @keyframes stooornaAiHandleHint {
+          0%, 100% { transform: translateY(-2px) scaleX(1); opacity: 0.7; }
+          50% { transform: translateY(4px) scaleX(1.18); opacity: 1; }
+        }
+        @keyframes stooornaAiSheetDown {
+          from { transform: translateY(0); }
+          to { transform: translateY(100%); }
         }
         @keyframes stooornaAiShine {
           0% { transform: translateX(-120%) skewX(-18deg); }
