@@ -30145,9 +30145,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </div>
                   ) : null}
                   {/* CALL-SLOT: the live call controls (owned by the layout) are drawn here, on this page */}
-                  {homeCallUiActive ? (
-                    <div id="stooorna-call-slot" style={{ width: '100%', maxWidth: 420, minHeight: 200, margin: '14px auto 0', flexShrink: 0 }} />
-                  ) : null}
+                  <div id="stooorna-call-slot" data-call-slot-ready={homeCallUiActive ? '1' : '0'} style={{ width: '100%', maxWidth: 420, flexShrink: 0 }} />
                 </div>
               </div>
             </>,
