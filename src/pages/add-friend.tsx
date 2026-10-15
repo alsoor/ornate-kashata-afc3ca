@@ -27011,8 +27011,12 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Story sheet stays raised on entry. It only drops when the grabber is tapped,
   // or when a user story is published / a live is open (see effect below).
   const [headerOpen, setHeaderOpen] = useState(true);
-  // Force raised (posts visible) on every entry
-  useEffect(() => { setHeaderOpen(true); }, []);
+  // Force raised (posts visible) on every entry — runs after other effects
+  useEffect(() => {
+    const t = window.setTimeout(() => setHeaderOpen(true), 0);
+    const t2 = window.setTimeout(() => setHeaderOpen(true), 120);
+    return () => { window.clearTimeout(t); window.clearTimeout(t2); };
+  }, []);
   // Orange shine on grabber until first long-press
   useEffect(() => {
     const styleId = 'stooorna-grabber-orange';
@@ -27078,7 +27082,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     saveGuestLang(l);
   };
   // GUEST_SIGNIN_LABEL و GUEST_HEADER_LOCKED من ملف الزائر المستقل: components/GuestLive.tsx
-  useEffect(() => { if (GUEST_HEADER_LOCKED && guestMode && headerOpen) setHeaderOpen(false); }, [guestMode, headerOpen]);
+  useEffect(() => { /* guest lock disabled for entry: sheet starts raised */ }, [guestMode, headerOpen]);
 
   // Once true, the grabber's attention-drawing bounce animation stops for good.
   const [headerHintSeen, setHeaderHintSeen] = useState(false);
