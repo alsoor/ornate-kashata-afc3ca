@@ -2,6 +2,7 @@ import './imageEditPatch'; // IMAGE-PATCH: fixes 404 on image edit + image under
 import './aiCapabilities'; // AI-CAPABILITIES: context, web search, image creation, saved chats (no change to the sheet)
 import './friendChatPatch'; // FRIEND-CHAT: avatar tap -> friends list -> chat inside the sheet (no change to the sheet)
 import './nearbyPatch'; // NEARBY: blue dot -> Bluetooth + GPS discovery -> direct chat (works offline over Bluetooth)
+import './offlineMeshPatch'; // OFFLINE-MESH: chat keeps working when internet drops (Out internet) + offline requests/location search + relay (no change to existing patches)
 export { default as StooornaAiSheet } from './StooornaAiSheet';
 export { default as StooornaAiIcon } from './StooornaAiIcon';
 export { default as MediaEditor } from './MediaEditor'; // MEDIA-EDITOR
@@ -16,3 +17,4 @@ export { default as MergeMedia } from './MergeMedia'; // MERGE-MEDIA
 export { installFriendChatPatch, FRIEND_CHAT_PATCH_VERSION } from './friendChatPatch'; // FRIEND-CHAT
 export { default as FriendVoiceLive, FRIEND_VOICE_LIVE_VERSION } from './FriendVoiceLive'; // FRIEND-VOICE-LIVE
 export { installNearbyPatch, NEARBY_PATCH_VERSION } from './nearbyPatch'; // NEARBY
+export { installOfflineMeshPatch, OFFLINE_MESH_PATCH_VERSION } from './offlineMeshPatch'; // OFFLINE-MESH

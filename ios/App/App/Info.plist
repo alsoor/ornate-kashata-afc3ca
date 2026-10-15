@@ -78,5 +78,14 @@
 	<false/>
 	<key>UIBackgroundModes</key>
 	<array><string>remote-notification</string></array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>نحتاج الشبكة المحلية للدردشة مع من حولك بدون إنترنت</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>نحتاج البلوتوث للدردشة مع من حولك بدون إنترنت</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_stooorna-nb._tcp</string>
+		<string>_stooorna-nb._udp</string>
+	</array>
 </dict>
 </plist>
