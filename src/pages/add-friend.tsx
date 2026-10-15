@@ -27011,6 +27011,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // Story sheet stays raised on entry. It only drops when the grabber is tapped,
   // or when a user story is published / a live is open (see effect below).
   const [headerOpen, setHeaderOpen] = useState(true);
+  // Force raised (posts visible) on every entry
+  useEffect(() => { setHeaderOpen(true); }, []);
   // Orange shine on grabber until first long-press
   useEffect(() => {
     const styleId = 'stooorna-grabber-orange';
