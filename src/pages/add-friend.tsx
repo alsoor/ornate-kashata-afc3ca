@@ -26997,6 +26997,22 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     return () => window.removeEventListener('stooorna:public-chat-switch', onSw as EventListener);
   }, [publicChatSwitchOn]);
   const [publicVoiceMini, setPublicVoiceMini] = useState(false);
+  // CALL-IN-PANEL: the layout owns the call. This page tells it when the profile panel is open and draws the slot
+  // (under the green headset banner) where the live call controls are placed.
+  const [homeCallUiActive, setHomeCallUiActive] = useState<boolean>(() => typeof window !== 'undefined' && !!(window as any).__stooornaHomeCallActive);
+  useEffect(() => {
+    const h = (e: Event) => setHomeCallUiActive(!!(e as CustomEvent).detail?.active);
+    window.addEventListener('stooorna:home-call-ui', h as EventListener);
+    return () => window.removeEventListener('stooorna:home-call-ui', h as EventListener);
+  }, []);
+  useEffect(() => {
+    (window as any).__stooornaProfilePanelOpen = profileSlideOpen;
+    try { window.dispatchEvent(new CustomEvent('stooorna:profile-panel', { detail: { open: profileSlideOpen } })); } catch { /* */ }
+    return () => {
+      (window as any).__stooornaProfilePanelOpen = false;
+      try { window.dispatchEvent(new CustomEvent('stooorna:profile-panel', { detail: { open: false } })); } catch { /* */ }
+    };
+  }, [profileSlideOpen]);
   // PERF: bubble state lives in an external store (dockSet/dockGet) — this page does NOT subscribe to it,
   // so opening/closing the bubble no longer re-renders this ~12k-line component.
   const openDockBubble = (kind: 'call' | 'live' | 'settings' | 'templates', el: HTMLElement | null) => {
@@ -30127,6 +30143,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         <Headphones size={24} strokeWidth={2.3} />
                       </button>
                     </div>
+                  ) : null}
+                  {/* CALL-SLOT: the live call controls (owned by the layout) are drawn here, on this page */}
+                  {homeCallUiActive ? (
+                    <div id="stooorna-call-slot" style={{ width: '100%', maxWidth: 420, minHeight: 320, margin: '14px auto 0', flexShrink: 0 }} />
                   ) : null}
                 </div>
               </div>
