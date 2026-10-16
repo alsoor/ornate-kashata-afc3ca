@@ -4733,6 +4733,15 @@ function GlobalBottomNavigation() {
             <span style={{ color: '#ffffff', fontSize: 13, fontWeight: 500, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{label}</span>
           </div>
         ) : node;
+        // CALL-PANEL-UP: member / add lists open upward so they stay visible
+        const openUp = inPanel || homeCallDock === 'bottom';
+        const panelPos: React.CSSProperties = openUp
+          ? { position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '100%', marginTop: 0, marginBottom: 8, zIndex: 40, boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }
+          : {};
+        // CALL-BOX-CLOSED: inside the profile page the call controls sit in a closed box (top, bottom, left and right lines)
+        const boxWrap = (kids: React.ReactNode): React.ReactNode => inPanel ? (
+          <div style={{ width: '100%', maxWidth: 420, border: '2px solid #111', borderRadius: 6, boxSizing: 'border-box', padding: '8px 0' }}>{kids}</div>
+        ) : kids;
         const callBarEl = (
         <div
           ref={homeCallBarRef}
@@ -4775,10 +4784,10 @@ function GlobalBottomNavigation() {
                 .stooorna-call-light [data-scl="inner"] button[aria-label="Answer"] { background: #22c55e !important; color: #ffffff !important; }
                 .stooorna-call-light > p { background: transparent !important; border: none !important; color: #444444 !important; }
               `}</style>
-              <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '0 8px 8px', width: '100%', maxWidth: 420, boxSizing: 'border-box' }} />
             </>
           )}
           {/* Outer ring: rotating cyan shine around the pill — اسحبه بالإصبع للأعلى/الأسفل */}
+          {boxWrap(<>
           <div
             data-scl="ring"
             {...homeCallDragProps}
@@ -5051,7 +5060,7 @@ function GlobalBottomNavigation() {
             )}
             </div>
           </div>
-          {inPanel && <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '8px 8px 0', width: '100%', maxWidth: 420, boxSizing: 'border-box' }} />}
+          </>)}
           <p {...homeCallDragProps} style={{
             touchAction: 'none',
             margin: 0, color: 'rgba(180,220,220,0.85)', fontSize: 12, fontWeight: 600,
@@ -5073,6 +5082,7 @@ function GlobalBottomNavigation() {
               background: 'rgba(6,16,20,0.96)', border: '1px solid rgba(0,188,212,0.25)',
               borderRadius: 16, padding: '10px 12px', boxSizing: 'border-box',
               maxHeight: 220, overflowY: 'auto',
+              ...panelPos,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                 <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: 13 }}>
@@ -5151,6 +5161,7 @@ function GlobalBottomNavigation() {
               background: 'rgba(6,16,20,0.96)', border: '1px solid rgba(0,188,212,0.25)',
               borderRadius: 16, padding: '10px 12px', boxSizing: 'border-box',
               maxHeight: 240, overflowY: 'auto',
+              ...panelPos,
             }}>
               <p style={{ margin: '0 0 8px', color: '#00BCD4', fontWeight: 800, fontSize: 13 }}>Add people</p>
               {homeCallFriends.filter(f => !homeCallMembers.some(m => m.id === f.id)).length === 0 && (
