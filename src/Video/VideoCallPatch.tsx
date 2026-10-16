@@ -32,12 +32,24 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 /** الشاشة الصغيرة للمتصل: تتحرك بالإصبع في كامل الشاشة */
-function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera }: { localRef: DivRef; cameraOn: boolean; anchorRef: MutableRefObject<HTMLDivElement | null>; onSwitchCamera?: () => void }) {
+function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera, onToggleCamera }: { localRef: DivRef; cameraOn: boolean; anchorRef: MutableRefObject<HTMLDivElement | null>; onSwitchCamera?: () => void; onToggleCamera?: () => void }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const drag = useRef<{ dx: number; dy: number; id: number; sx: number; sy: number; moved: boolean } | null>(null);
-  const lastTap = useRef(0); // نقرتين ورا بعض = تبديل الكاميرا (أمامية / خلفية)
+  // نقرة = فتح/إغلاق الكاميرا ، نقرتين ورا بعض = تبديل الكاميرا (أمامية / خلفية)
+  const tapTimer = useRef<number | null>(null);
+  const lastToggle = useRef(0);
   const switchRef = useRef(onSwitchCamera);
   switchRef.current = onSwitchCamera;
+  const toggleRef = useRef(onToggleCamera);
+  toggleRef.current = onToggleCamera;
+  const camOnRef = useRef(cameraOn);
+  camOnRef.current = cameraOn;
+  const fireToggle = () => {
+    const now = Date.now();
+    if (now - lastToggle.current < 900) return; // حماية من الضغط المتكرر أثناء فتح الكاميرا
+    lastToggle.current = now;
+    try { toggleRef.current?.(); } catch { /* */ }
+  };
 
   useEffect(() => {
     // تبدأ في الزاوية العلوية (أعلى يمين الصفحة) ويمكن سحبها لأي مكان
@@ -53,7 +65,10 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera }: { 
       y: clamp(p.y, EDGE, window.innerHeight - SELF_H - EDGE),
     } : p));
     window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      if (tapTimer.current != null) { window.clearTimeout(tapTimer.current); tapTimer.current = null; }
+    };
   }, []);
 
   if (!pos || typeof document === 'undefined') return null;
@@ -77,9 +92,18 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera }: { 
         const d = drag.current;
         drag.current = null;
         if (d && !d.moved) {
-          const now = Date.now();
-          if (now - lastTap.current < 380) { lastTap.current = 0; try { switchRef.current?.(); } catch { /* */ } }
-          else lastTap.current = now;
+          if (!camOnRef.current) {
+            // الكاميرا مغلقة: نقرة وحدة تفتحها
+            fireToggle();
+          } else if (tapTimer.current != null) {
+            // نقرتين ورا بعض: تبديل أمامية / خلفية
+            window.clearTimeout(tapTimer.current);
+            tapTimer.current = null;
+            try { switchRef.current?.(); } catch { /* */ }
+          } else {
+            // نقرة وحدة: ننتظر شوي، إذا ما جت نقرة ثانية نقفل الكاميرا
+            tapTimer.current = window.setTimeout(() => { tapTimer.current = null; fireToggle(); }, 300);
+          }
         }
         try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch { /* */ }
       }}
@@ -96,7 +120,9 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera }: { 
           position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
           justifyContent: 'center', gap: 6, background: '#10181b', color: '#fff', pointerEvents: 'none',
         }}>
-          <VideoOff size={22} strokeWidth={2.2} />
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Video size={26} strokeWidth={2.2} />
+          </div>
           <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5 }}>Off</span>
         </div>
       )}
@@ -119,13 +145,16 @@ export type VideoCallStageProps = {
   onLeavePage: () => void;
   /** يُستدعى عند النقر مرتين على الشاشة الصغيرة: تبديل الكاميرا أمامية / خلفية */
   onSwitchCamera?: () => void;
+  /** يُستدعى عند نقرة وحدة على الشاشة الصغيرة: فتح / إغلاق الكاميرا */
+  onToggleCamera?: () => void;
   /** أزرار تظهر ثابتة أسفل الشاشة المربعة (Mute / Video Off / End) */
   controls?: ReactNode;
 };
 
-export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage, onSwitchCamera, controls }: VideoCallStageProps) {
+export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage, onSwitchCamera, onToggleCamera, controls }: VideoCallStageProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const aliveRef = useRef(true);
+  const [showControls, setShowControls] = useState(true); // نقرة على الشاشة = إخفاء/إظهار الأزرار
   const leaveRef = useRef(onLeavePage);
   leaveRef.current = onLeavePage;
 
@@ -144,6 +173,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
       <div
         ref={stageRef}
         data-vstage="1"
+        onClick={() => setShowControls(v => !v)}
         style={{
           gridColumn: '1 / -1', order: -1, width: '100%', aspectRatio: '1 / 1', borderRadius: 22,
           overflow: 'hidden', background: '#0b1417', position: 'relative', boxSizing: 'border-box',
@@ -158,15 +188,19 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
         {/* شاشة الشخص المتصل عليه — ثابتة */}
         <div ref={remoteRef} style={{ position: 'absolute', inset: 0 }} />
         {controls && (
-          <div style={{
-            position: 'absolute', left: 0, right: 0, bottom: 16, zIndex: 3, display: 'flex',
-            justifyContent: 'center', alignItems: 'center', gap: 22,
-          }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              position: 'absolute', left: 0, right: 0, bottom: 16, zIndex: 3, display: 'flex',
+              justifyContent: 'center', alignItems: 'center', gap: 22,
+              opacity: showControls ? 1 : 0, pointerEvents: showControls ? 'auto' : 'none', transition: 'opacity 0.18s ease',
+            }}
+          >
             {controls}
           </div>
         )}
       </div>
-      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} onSwitchCamera={onSwitchCamera} />
+      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} onSwitchCamera={onSwitchCamera} onToggleCamera={onToggleCamera} />
     </>
   );
 }

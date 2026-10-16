@@ -1552,6 +1552,7 @@ function GlobalBottomNavigation() {
   const homeCallCamRef = useRef<any>(null);
   const homeCallFacingRef = useRef<'user' | 'environment'>('user'); // VIDEO-PATCH: السيلفي = user ، الخلفية = environment
   const [homeCallIsVideo, setHomeCallIsVideo] = useState(false);
+  const [homeCallStageKeep, setHomeCallStageKeep] = useState(false); // VIDEO-PATCH: أبقِ شاشة الفيديو ظاهرة بعد إغلاق كاميرتي من الشاشة الصغيرة
   const [homeCallVideoDismissed, setHomeCallVideoDismissed] = useState(false); // VIDEO-PATCH: I closed the video screen while the other side still has video
   const [homeCallRemoteVideo, setHomeCallRemoteVideo] = useState(false); // VIDEO-PATCH: someone else in the call has their camera on
   const [pipPos, setPipPos] = useState({ x: 16, y: 80 });
@@ -2376,6 +2377,7 @@ function GlobalBottomNavigation() {
     setHomeCallNoiseCancel(true);
     setHomeIncomingExpanded(false);
     setHomeCallIsVideo(false);
+    setHomeCallStageKeep(false);
     homeCallVideoRef.current = false;
     try { homeCallCamRef.current?.stop?.(); homeCallCamRef.current?.close?.(); } catch { /* */ }
     homeCallCamRef.current = null;
@@ -3974,42 +3976,75 @@ function GlobalBottomNavigation() {
     }
   }
 
+  // VIDEO-PATCH: نقرة على الشاشة الصغيرة = فتح / إغلاق كاميرتي (وشاشة الفيديو تبقى ظاهرة)
+  const homeCallSelfBusyRef = useRef(false);
+  async function toggleSelfCamFromStage() {
+    if (homeCallSelfBusyRef.current) return;
+    homeCallSelfBusyRef.current = true;
+    try {
+      if (homeCallIsVideo) {
+        setHomeCallStageKeep(true);
+        await toggleHomeCallVideo();
+      } else {
+        setHomeCallVideoDismissed(false);
+        await toggleHomeCallVideo();
+      }
+    } finally {
+      homeCallSelfBusyRef.current = false;
+    }
+  }
+
   // VIDEO-PATCH: نقرتين على الشاشة الصغيرة = تبديل بين الكاميرا الأمامية (سيلفي) والخلفية
+  // الطريقة الأساسية: cam.setDevice (تبديل داخل نفس المسار بدون إغلاقه) — هذا اللي يمنع الشاشة السودا
   const homeCallFlipBusyRef = useRef(false);
   async function flipHomeCallCamera() {
+    const cam0 = homeCallCamRef.current;
     const client = homeCallAgoraRef.current;
-    const old = homeCallCamRef.current;
-    if (!client || !old || homeCallFlipBusyRef.current) return;
+    if (!cam0 || !client || homeCallFlipBusyRef.current) return;
     homeCallFlipBusyRef.current = true;
-    const next: 'user' | 'environment' = homeCallFacingRef.current === 'user' ? 'environment' : 'user';
+    const want: 'user' | 'environment' = homeCallFacingRef.current === 'user' ? 'environment' : 'user';
+    const isBack = (c: any) => /back|rear|environment|world|خلف/i.test(c?.label || '');
+    const isFront = (c: any) => /front|user|selfie|facetime|أمام/i.test(c?.label || '');
     try {
       const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
-      try { await client.unpublish([old]); } catch { /* */ }
-      try { old.stop?.(); old.close?.(); } catch { /* */ }
-      let cam: any = null;
       try {
-        cam = await AgoraRTC.createCameraVideoTrack({ facingMode: next } as any);
+        const cams: any[] = await (AgoraRTC as any).getCameras();
+        if (!cams || cams.length < 2) throw new Error('single-camera');
+        let curId = '';
+        try { curId = cam0.getMediaStreamTrack?.()?.getSettings?.()?.deviceId || ''; } catch { /* */ }
+        const curIdx = Math.max(0, cams.findIndex((c) => c.deviceId === curId));
+        let target = cams.find((c) => (want === 'environment' ? isBack(c) : isFront(c)));
+        if (!target || target.deviceId === curId) target = cams[(curIdx + 1) % cams.length];
+        await cam0.setDevice(target.deviceId);
+        let fm = '';
+        try { fm = cam0.getMediaStreamTrack?.()?.getSettings?.()?.facingMode || ''; } catch { /* */ }
+        homeCallFacingRef.current = fm === 'environment' ? 'environment' : fm === 'user' ? 'user' : (isBack(target) ? 'environment' : isFront(target) ? 'user' : want);
+        try { cam0.play(localVideoRef.current || undefined, { mirror: homeCallFacingRef.current === 'user' }); } catch { /* */ }
       } catch {
-        // احتياط: اختيار الكاميرا بالاسم من قائمة الأجهزة
-        try {
-          const cams: any[] = await (AgoraRTC as any).getCameras();
-          const re = next === 'environment' ? /back|rear|environment|خلف/i : /front|user|selfie|أمام/i;
-          const pick = cams.find((c) => re.test(c.label || '')) || (next === 'environment' ? cams[cams.length - 1] : cams[0]);
-          cam = await AgoraRTC.createCameraVideoTrack(pick ? { cameraId: pick.deviceId } : undefined);
-        } catch { /* */ }
+        // احتياط: نعيد إنشاء الكاميرا (مع مهلة صغيرة ليتحرر الجهاز) — وما نخلي الشاشة سودا أبداً
+        try { await client.unpublish([cam0]); } catch { /* */ }
+        try { cam0.stop?.(); cam0.close?.(); } catch { /* */ }
+        await new Promise((r) => window.setTimeout(r, 350));
+        let cam: any = null;
+        try { cam = await AgoraRTC.createCameraVideoTrack({ facingMode: want } as any); homeCallFacingRef.current = want; } catch { /* */ }
+        if (!cam) {
+          await new Promise((r) => window.setTimeout(r, 300));
+          try { cam = await AgoraRTC.createCameraVideoTrack(); homeCallFacingRef.current = 'user'; } catch { /* */ }
+        }
+        if (cam) {
+          homeCallCamRef.current = cam;
+          try { await client.publish([cam]); } catch { /* */ }
+          requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined, { mirror: homeCallFacingRef.current === 'user' }); } catch { /* */ } });
+        } else {
+          homeCallCamRef.current = null;
+          homeCallVideoRef.current = false;
+          setHomeCallStageKeep(true);
+          setHomeCallIsVideo(false);
+        }
       }
-      if (!cam) {
-        // فشل التبديل: ارجع للكاميرا السابقة
-        cam = await AgoraRTC.createCameraVideoTrack();
-        homeCallFacingRef.current = 'user';
-      } else {
-        homeCallFacingRef.current = next;
-      }
-      homeCallCamRef.current = cam;
-      await client.publish([cam]);
-      requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined, { mirror: homeCallFacingRef.current === 'user' }); } catch { /* */ } });
-    } catch { /* */ }
-    homeCallFlipBusyRef.current = false;
+    } finally {
+      homeCallFlipBusyRef.current = false;
+    }
   }
 
   // VIDEO-PATCH: leaving the profile page (X) turns the camera Off — the video only lives on that page
@@ -4965,7 +5000,7 @@ function GlobalBottomNavigation() {
             />
             <div
               data-scl="inner"
-              data-video-mode={inPanel && !isIncomingRinging && (homeCallIsVideo || (homeCallRemoteVideo && !homeCallVideoDismissed)) ? '1' : undefined}
+              data-video-mode={inPanel && !isIncomingRinging && (homeCallIsVideo || homeCallStageKeep || (homeCallRemoteVideo && !homeCallVideoDismissed)) ? '1' : undefined}
               style={{
                 position: 'relative',
                 zIndex: 1,
@@ -4984,14 +5019,15 @@ function GlobalBottomNavigation() {
               }}
             >
             {/* VIDEO-PATCH: square screen of the person on the call (fixed) + draggable self view */}
-            {inPanel && !isIncomingRinging && (homeCallIsVideo || (homeCallRemoteVideo && !homeCallVideoDismissed)) && (
+            {inPanel && !isIncomingRinging && (homeCallIsVideo || homeCallStageKeep || (homeCallRemoteVideo && !homeCallVideoDismissed)) && (
               <VideoCallStage
                 remoteRef={remoteVideoRef}
                 localRef={localVideoRef}
                 cameraOn={homeCallIsVideo}
                 peerName={peerOnCall?.name || peerOnCall?.username || null}
                 peerAvatarUrl={(peerOnCall as any)?.avatarUrl || null}
-                onLeavePage={() => { void stopHomeCallCamera(); }}
+                onLeavePage={() => { setHomeCallStageKeep(false); void stopHomeCallCamera(); }}
+                onToggleCamera={() => homeCallAction(() => { void toggleSelfCamFromStage(); })}
                 onSwitchCamera={() => { void flipHomeCallCamera(); }}
                 controls={(
                   <>
@@ -5007,7 +5043,7 @@ function GlobalBottomNavigation() {
                       type="button"
                       aria-label={homeCallIsVideo ? 'Video off' : 'Video'}
                       onClick={() => homeCallAction(() => {
-                        if (homeCallIsVideo) { setHomeCallVideoDismissed(true); void stopHomeCallCamera(); }
+                        if (homeCallIsVideo) { setHomeCallVideoDismissed(true); setHomeCallStageKeep(false); void stopHomeCallCamera(); }
                         else { setHomeCallVideoDismissed(false); void toggleHomeCallVideo(); }
                       })}
                       style={{ borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
