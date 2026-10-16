@@ -1,6 +1,7 @@
 import { Helmet } from '@dr.pogodin/react-helmet';
 import { type ReactElement, lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ScrollRestoration, useLocation, useNavigate } from "react-router";
+import { createPortal } from 'react-dom';
 
 // True on the profile/story tab of /add-friend (the "+" lives inline there, so the bottom nav bar must never show).
 // Works from the URL alone so the very first render (refresh / coming back) is already correct — no flash of the bar.
@@ -4485,6 +4486,40 @@ function GlobalBottomNavigation() {
     el.style.transform = 'translateY(0px)';
   }, [homeCallDock]);
 
+  // CALL-IN-PANEL: while the profile panel is open, the call pill sits on that white page (in the slot under the
+  // green headset banner) instead of floating at the top. Same pill, same buttons, same state.
+  const [profilePanelOpen, setProfilePanelOpen] = useState<boolean>(() => typeof window !== 'undefined' && !!(window as any).__stooornaProfilePanelOpen);
+  const [panelSlotEl, setPanelSlotEl] = useState<HTMLElement | null>(null);
+  const homeCallUiActiveNow = homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live' || !!(homeIncoming && homeCallPhase === 'idle');
+  useEffect(() => {
+    const h = (e: Event) => setProfilePanelOpen(!!(e as CustomEvent).detail?.open);
+    window.addEventListener('stooorna:profile-panel', h as EventListener);
+    return () => window.removeEventListener('stooorna:profile-panel', h as EventListener);
+  }, []);
+  useEffect(() => {
+    (window as any).__stooornaHomeCallActive = homeCallUiActiveNow;
+    try { window.dispatchEvent(new CustomEvent('stooorna:home-call-ui', { detail: { active: homeCallUiActiveNow } })); } catch { /* */ }
+  }, [homeCallUiActiveNow]);
+  useEffect(() => {
+    if (!homeCallUiActiveNow) { setPanelSlotEl(null); return; }
+    const find = () => {
+      const el = document.getElementById('stooorna-call-slot');
+      let ok = false;
+      if (el) {
+        const r = el.getBoundingClientRect();
+        // PROFILE-CALL-INLINE: while the profile page is open the slot is accepted even if it is scrolled
+        // out of view, so the call buttons always draw inside the profile page (never as a floating bar).
+        ok = r.width > 0 && window.getComputedStyle(el).visibility !== 'hidden'
+          && (profilePanelOpen || (r.bottom > 0 && r.top < window.innerHeight));
+      }
+      const next = ok ? el : null;
+      setPanelSlotEl(cur => (cur === next ? cur : next));
+    };
+    find();
+    const id = window.setInterval(find, 100);
+    return () => window.clearInterval(id);
+  }, [homeCallUiActiveNow, profilePanelOpen]);
+
   if (isPrivacyPage || isVoiceRoom || postComposerOpen || shareSheetOpen || storyCameraOpen || supportChatOpen || companyAuthOpen) return null;
 
   const itemStyle = (active: boolean): React.CSSProperties => ({
@@ -4608,12 +4643,14 @@ function GlobalBottomNavigation() {
       setHomeCallDock(next);
     }
   }
-  const homeCallDragProps = {
+  const homeCallDragPropsBase = {
     onPointerDown: homeCallDragStart,
     onPointerMove: homeCallDragMove,
     onPointerUp: homeCallDragEnd,
     onPointerCancel: homeCallDragEnd,
   };
+  const inPanel = !!panelSlotEl;
+  const homeCallDragProps = inPanel ? {} : homeCallDragPropsBase;
   const isIncomingRinging = !!(homeIncoming && homeCallPhase === 'idle');
 
 
@@ -4621,7 +4658,7 @@ function GlobalBottomNavigation() {
     <div style={{
       position: 'fixed',
       inset: 0,
-      zIndex: 10950,
+      zIndex: 16200,
       background: homeCallPickerOpen && homeCallPhase === 'idle' ? 'rgba(6,10,12,0.55)' : 'transparent',
       display: 'flex',
       flexDirection: 'column',
@@ -4687,17 +4724,29 @@ function GlobalBottomNavigation() {
       )}
 
       {/* WhatsApp-style bottom call pill — active call only (dark app chrome + moving border shine) */}
-      {showTopCallBar && (
+      {/* PROFILE-CALL-INLINE: with the profile page open the top rectangle is never drawn; the buttons live in the page's call slot */}
+      {showTopCallBar && !(profilePanelOpen && !panelSlotEl) && (() => {
+        // PROFILE-CALL-GRID: inside the profile page every button gets its caption under it (like a call-screen grid)
+        const pcell = (label: string, order: number, node: React.ReactNode): React.ReactNode => inPanel ? (
+          <div key={label} style={{ order, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            {node}
+            <span style={{ color: '#ffffff', fontSize: 13, fontWeight: 500, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{label}</span>
+          </div>
+        ) : node;
+        const callBarEl = (
         <div
           ref={homeCallBarRef}
+          className={inPanel ? 'stooorna-call-light' : undefined}
           style={{
             pointerEvents: 'auto',
-            position: 'fixed',
-            left: 12,
-            right: 12,
-            top: homeCallDock === 'top' ? 'max(10px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))' : 'auto',
-            bottom: homeCallDock === 'bottom' ? 'max(10px, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))' : 'auto',
-            zIndex: 10960,
+            position: inPanel ? 'relative' : 'fixed',
+            left: inPanel ? undefined : 12,
+            right: inPanel ? undefined : 12,
+            width: inPanel ? '100%' : undefined,
+            visibility: 'visible',
+            top: inPanel ? undefined : (homeCallDock === 'top' ? 'max(10px, max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px)))' : 'auto'),
+            bottom: inPanel ? undefined : (homeCallDock === 'bottom' ? 'max(10px, max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px)))' : 'auto'),
+            zIndex: inPanel ? 1 : 10960,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -4710,14 +4759,34 @@ function GlobalBottomNavigation() {
               100% { transform: rotate(360deg); }
             }
           `}</style>
+          {inPanel && (
+            <>
+              {/* PROFILE-CALL-LIGHT: inside the profile page the call buttons use the same look as the icon bar (black lines + black rounded frame, white) */}
+              <style>{`
+                .stooorna-call-light { gap: 0 !important; }
+                .stooorna-call-light [data-scl="ring"] { animation: none !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; overflow: visible !important; background: transparent !important; }
+                .stooorna-call-light [data-scl="ring"] > div[aria-hidden] { display: none !important; }
+                .stooorna-call-light [data-scl="inner"] { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; justify-items: center !important; align-items: start !important; gap: 22px 8px !important; padding: 24px 14px 20px !important; margin: 0 8px !important; width: auto !important; background: #14181b !important; border: 1px solid #262c30 !important; border-radius: 30px !important; }
+                .stooorna-call-light [data-scl="inner"] button { width: 62px !important; height: 62px !important; border: none !important; background: #22282b !important; color: #ffffff !important; box-shadow: none !important; }
+                .stooorna-call-light [data-scl="inner"] button svg { width: 26px !important; height: 26px !important; }
+                .stooorna-call-light [data-scl="inner"] button[aria-label="Wave and re-ring"] { font-size: 28px !important; }
+                .stooorna-call-light [data-scl="inner"] button[aria-label="Unmute"], .stooorna-call-light [data-scl="inner"] button[aria-label="Speaker on"] { background: #3a4348 !important; }
+                .stooorna-call-light [data-scl="inner"] button[aria-label="End call"], .stooorna-call-light [data-scl="inner"] button[aria-label="Decline"] { background: #e6003a !important; color: #ffffff !important; }
+                .stooorna-call-light [data-scl="inner"] button[aria-label="Answer"] { background: #22c55e !important; color: #ffffff !important; }
+                .stooorna-call-light > p { background: transparent !important; border: none !important; color: #444444 !important; }
+              `}</style>
+              <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '0 8px 8px', width: '100%', maxWidth: 420, boxSizing: 'border-box' }} />
+            </>
+          )}
           {/* Outer ring: rotating cyan shine around the pill — اسحبه بالإصبع للأعلى/الأسفل */}
           <div
+            data-scl="ring"
             {...homeCallDragProps}
             style={{
               touchAction: 'none',
               width: '100%',
               maxWidth: 420,
-              borderRadius: 999,
+              borderRadius: inPanel ? 28 : 999,
               padding: 2,
               position: 'relative',
               overflow: 'hidden',
@@ -4737,22 +4806,26 @@ function GlobalBottomNavigation() {
               }}
             />
             <div
+              data-scl="inner"
               style={{
                 position: 'relative',
                 zIndex: 1,
                 width: '100%',
                 background: 'linear-gradient(180deg, #0c2226 0%, #071416 55%, #050e10 100%)',
-                borderRadius: 999,
-                padding: '10px 14px',
-                display: 'flex',
+                borderRadius: inPanel ? 26 : 999,
+                padding: inPanel ? '22px 14px' : '10px 14px',
+                display: inPanel ? 'grid' : 'flex',
+                gridTemplateColumns: inPanel ? 'repeat(3, 1fr)' : undefined,
+                justifyItems: inPanel ? 'center' : undefined,
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: 8,
+                rowGap: inPanel ? 22 : undefined,
                 boxSizing: 'border-box',
               }}
             >
             {isIncomingRinging ? (
-              <button
+              pcell('Decline', 3, (<button
                 type="button"
                 onClick={() => homeCallAction(() => { ignoreHomeIncoming(); })}
                 aria-label="Decline"
@@ -4763,9 +4836,9 @@ function GlobalBottomNavigation() {
                 }}
               >
                 <X size={20} strokeWidth={2.4} />
-              </button>
+              </button>))
             ) : (
-              <button
+              pcell(homeCallMuted ? 'Unmute' : 'Mute', 3, (<button
                 type="button"
                 onClick={() => homeCallAction(() => toggleHomeCallMute())}
                 aria-label={homeCallMuted ? 'Unmute' : 'Mute'}
@@ -4777,13 +4850,13 @@ function GlobalBottomNavigation() {
                 }}
               >
                 {homeCallMuted ? <MicOff size={20} strokeWidth={2.2} /> : <Mic size={20} strokeWidth={2.2} />}
-              </button>
+              </button>))
             )}
 
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, gap: 6 }}>
+            <div style={inPanel ? { display: 'contents' } : { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, gap: 6 }}>
               {/* Participant list circle — green dot in center; opens full member list */}
               {!isIncomingRinging && (homeCallPhase === 'live' || homeCallPhase === 'connecting') && (
-                <button
+                pcell('Members', 2, (<button
                   type="button"
                   onClick={() => homeCallAction(() => { setHomeCallMembersOpen(o => !o); setHomeCallAddOpen(false); })}
                   aria-label="Call participants"
@@ -4800,9 +4873,9 @@ function GlobalBottomNavigation() {
                     position: 'absolute', bottom: 2, right: 2, width: 8, height: 8, borderRadius: '50%',
                     background: '#22c55e', border: '1.5px solid #0a1a1a',
                   }} />
-                </button>
+                </button>))
               )}
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', ...(inPanel ? { gridColumn: '1 / -1', order: 0, marginBottom: 6 } : {}) }}>
                 {(() => {
                   // Outer bar: at most 3 profiles side-by-side. Prefer joined members; fill gaps when someone leaves.
                   const meId = user?.id ? String(user.id) : '';
@@ -4894,7 +4967,7 @@ function GlobalBottomNavigation() {
               </div>
             </div>
 
-            <button
+            {pcell('Wave', 5, (<button
               type="button"
               onClick={() => homeCallAction(() => {
                 setHomeCallEmojiBurst('👋');
@@ -4913,10 +4986,42 @@ function GlobalBottomNavigation() {
               }}
             >
               👋
-            </button>
+            </button>))}
 
-            {isIncomingRinging ? (
+            {inPanel && !isIncomingRinging && (
+              pcell('Speaker', 1, (<button
+                type="button"
+                onClick={() => homeCallAction(() => toggleHomeCallSpeaker())}
+                aria-label={homeCallSpeakerOn ? 'Speaker off' : 'Speaker on'}
+                style={{
+                  width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.28)',
+                  background: homeCallSpeakerOn ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.12)',
+                  color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                }}
+              >
+                {homeCallSpeakerOn ? <Volume2 size={20} strokeWidth={2.2} /> : <VolumeX size={20} strokeWidth={2.2} />}
+              </button>))
+            )}
+            {inPanel && !isIncomingRinging && (homeCallPhase === 'live' || homeCallPhase === 'connecting') && pcell('Add', 4, (
               <button
+                type="button"
+                onClick={() => homeCallAction(() => {
+                  setHomeCallAddOpen(true);
+                  if (!homeCallFriends.length) setHomeCallPickerOpen(true);
+                })}
+                aria-label="Add people"
+                style={{
+                  width: 44, height: 44, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.28)',
+                  background: 'rgba(255,255,255,0.06)', color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0,
+                }}
+              >
+                <Plus size={20} strokeWidth={2.2} />
+              </button>
+            ))}
+            {isIncomingRinging ? (
+              pcell('Answer', 6, (<button
                 type="button"
                 onClick={() => homeCallAction(() => { void answerHomeIncoming(); })}
                 aria-label="Answer"
@@ -4928,9 +5033,9 @@ function GlobalBottomNavigation() {
                 }}
               >
                 <Phone size={20} strokeWidth={2.3} color="#fff" />
-              </button>
+              </button>))
             ) : (
-              <button
+              pcell('End', 6, (<button
                 type="button"
                 onClick={() => homeCallAction(() => { void leaveHomeGroupCall(); })}
                 aria-label="End call"
@@ -4942,10 +5047,11 @@ function GlobalBottomNavigation() {
                 }}
               >
                 <PhoneOff size={20} strokeWidth={2.3} color="#fff" />
-              </button>
+              </button>))
             )}
             </div>
           </div>
+          {inPanel && <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '8px 8px 0', width: '100%', maxWidth: 420, boxSizing: 'border-box' }} />}
           <p {...homeCallDragProps} style={{
             touchAction: 'none',
             margin: 0, color: 'rgba(180,220,220,0.85)', fontSize: 12, fontWeight: 600,
@@ -5099,7 +5205,9 @@ function GlobalBottomNavigation() {
             </div>
           )}
         </div>
-      )}
+        );
+        return inPanel && panelSlotEl ? createPortal(callBarEl, panelSlotEl) : callBarEl;
+      })()}
     </div>
   ) : null;
 
