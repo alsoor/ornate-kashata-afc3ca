@@ -27061,6 +27061,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     window.addEventListener('stooorna:home-call-ui', h as EventListener);
     return () => window.removeEventListener('stooorna:home-call-ui', h as EventListener);
   }, []);
+  // CALL-BANNER-LABEL: status text (Calling + name, then the duration) drawn inside the green banner
+  const [homeCallBannerLabel, setHomeCallBannerLabel] = useState<string>(() => (typeof window !== 'undefined' ? String((window as any).__stooornaHomeCallLabel || '') : ''));
+  useEffect(() => {
+    const h = (e: Event) => setHomeCallBannerLabel(String((e as CustomEvent).detail?.label || ''));
+    window.addEventListener('stooorna:home-call-label', h as EventListener);
+    return () => window.removeEventListener('stooorna:home-call-label', h as EventListener);
+  }, []);
   useEffect(() => {
     (window as any).__stooornaProfilePanelOpen = profileSlideOpen;
     try { window.dispatchEvent(new CustomEvent('stooorna:profile-panel', { detail: { open: profileSlideOpen } })); } catch { /* */ }
@@ -30222,7 +30229,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                           WebkitTapHighlightColor: 'transparent',
                         }}
                       >
-                        <Headphones size={24} strokeWidth={2.3} />
+                        {homeCallUiActive && homeCallBannerLabel ? (
+                          <span style={{ color: '#ffffff', fontWeight: 800, fontSize: 15, padding: '0 12px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{homeCallBannerLabel}</span>
+                        ) : (
+                          <Headphones size={24} strokeWidth={2.3} />
+                        )}
                       </button>
                     </div>
                   ) : null}

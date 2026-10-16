@@ -4597,6 +4597,19 @@ function GlobalBottomNavigation() {
       ? 'Ringing…'
       : '';
 
+  // CALL-BANNER-LABEL: the call status (Calling + name, then the duration) is shown inside the green banner on the profile page
+  const homeCallBannerLabel = homeCallPhase === 'live'
+    ? formatCallDuration(homeCallElapsedSec)
+    : (homeCallPhase === 'connecting' || homeCallPhase === 'animating')
+      ? `Calling ${peerOnCall?.name || peerOnCall?.username || ''}`.trim()
+      : (homeIncoming && homeCallPhase === 'idle')
+        ? `Incoming ${peerOnCall?.name || peerOnCall?.username || ''}`.trim()
+        : '';
+  useEffect(() => {
+    (window as any).__stooornaHomeCallLabel = homeCallBannerLabel;
+    try { window.dispatchEvent(new CustomEvent('stooorna:home-call-label', { detail: { label: homeCallBannerLabel } })); } catch { /* */ }
+  }, [homeCallBannerLabel]);
+
   const homeIncomingOverlay = null;
   const homeCallSheetShown = homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live';
   // Top sticky call bar: incoming (idle+invite) OR active outgoing/live
@@ -4736,7 +4749,7 @@ function GlobalBottomNavigation() {
         // CALL-PANEL-UP: member / add lists open upward so they stay visible
         const openUp = inPanel || homeCallDock === 'bottom';
         const panelPos: React.CSSProperties = openUp
-          ? { position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '100%', marginTop: 0, marginBottom: 8, zIndex: 40, boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }
+          ? { position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '100%', marginTop: 0, marginBottom: 8, zIndex: 40, background: '#061014', boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }
           : {};
         // CALL-BOX-CLOSED: inside the profile page the call controls sit in a closed box (top, bottom, left and right lines)
         const boxWrap = (kids: React.ReactNode): React.ReactNode => inPanel ? (
@@ -5016,6 +5029,7 @@ function GlobalBottomNavigation() {
               <button
                 type="button"
                 onClick={() => homeCallAction(() => {
+                  setHomeCallMembersOpen(false);
                   setHomeCallAddOpen(true);
                   if (!homeCallFriends.length) setHomeCallPickerOpen(true);
                 })}
@@ -5061,7 +5075,7 @@ function GlobalBottomNavigation() {
             </div>
           </div>
           </>)}
-          <p {...homeCallDragProps} style={{
+          {!inPanel && (<p {...homeCallDragProps} style={{
             touchAction: 'none',
             margin: 0, color: 'rgba(180,220,220,0.85)', fontSize: 12, fontWeight: 600,
             background: 'rgba(6,16,20,0.92)', border: '1px solid rgba(0,188,212,0.2)', borderRadius: 12, padding: '4px 12px',
@@ -5074,7 +5088,7 @@ function GlobalBottomNavigation() {
             {homeCallPhase === 'live' && homeCallMembers.filter(m => m.id !== user?.id && m.joined).length === 0
               ? ' · No one else is here yet…'
               : ''}
-          </p>
+          </p>)}
           {/* In-call participant list (green = active, muted mic when self muted) */}
           {homeCallMembersOpen && !isIncomingRinging && (
             <div style={{
@@ -5091,6 +5105,7 @@ function GlobalBottomNavigation() {
                 <button
                   type="button"
                   onClick={() => homeCallAction(() => {
+                    setHomeCallMembersOpen(false);
                     setHomeCallAddOpen(true);
                     if (!homeCallFriends.length) setHomeCallPickerOpen(true);
                   })}
@@ -5104,6 +5119,18 @@ function GlobalBottomNavigation() {
                   }}
                 >
                   <Plus size={16} strokeWidth={2.6} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHomeCallMembersOpen(false)}
+                  aria-label="Close"
+                  style={{
+                    width: 32, height: 32, borderRadius: '50%', flexShrink: 0, border: 'none',
+                    background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                  }}
+                >
+                  <X size={16} strokeWidth={2.6} />
                 </button>
               </div>
               {homeCallMembers.map(m => {
@@ -5163,7 +5190,21 @@ function GlobalBottomNavigation() {
               maxHeight: 240, overflowY: 'auto',
               ...panelPos,
             }}>
-              <p style={{ margin: '0 0 8px', color: '#00BCD4', fontWeight: 800, fontSize: 13 }}>Add people</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px' }}>
+                <p style={{ margin: 0, flex: 1, color: '#00BCD4', fontWeight: 800, fontSize: 13 }}>Add people</p>
+                <button
+                  type="button"
+                  onClick={() => setHomeCallAddOpen(false)}
+                  aria-label="Close"
+                  style={{
+                    width: 32, height: 32, borderRadius: '50%', flexShrink: 0, border: 'none',
+                    background: 'rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+                  }}
+                >
+                  <X size={16} strokeWidth={2.6} />
+                </button>
+              </div>
               {homeCallFriends.filter(f => !homeCallMembers.some(m => m.id === f.id)).length === 0 && (
                 <p style={{ margin: 0, color: 'rgba(150,200,200,0.55)', fontSize: 12, textAlign: 'center', padding: 12 }}>No more friends to add</p>
               )}
