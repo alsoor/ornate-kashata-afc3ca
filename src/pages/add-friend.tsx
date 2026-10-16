@@ -23718,14 +23718,13 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
               {!friendsLoadingView && friendsView.length === 0 && <p style={{ margin: '18px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No friends to call yet</p>}
               {friendsView.map(f => (
                 <div key={f.friendId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 14, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.05)' }}>
-                  <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
+                  <UserAvatar name={f.username || f.name || '?'} avatarUrl={f.avatarUrl ?? null} size={38} style={{ flexShrink: 0, border: 'none' }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', color: '#d7eeee', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
-                    {f.username ? <span style={{ display: 'block', fontSize: '0.7rem', color: 'rgba(150,200,200,0.65)' }}>@{f.username}</span> : null}
+                    <span style={{ display: 'block', color: '#d7eeee', fontWeight: 700, fontSize: '0.86rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.username ? (String(f.username).startsWith('@') ? f.username : `@${f.username}`) : (f.name || 'Friend')}</span>
                   </div>
                   <button
                     type="button"
-                    aria-label={`Call ${f.name || f.username || 'friend'}`}
+                    aria-label={`Call ${f.username || f.name || 'friend'}`}
                     onClick={() => {
                       closeBubble();
                       try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
@@ -24125,16 +24124,16 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
                 key={f.friendId}
                 type="button"
                 role="menuitem"
-                aria-label={`Call ${f.name || f.username || 'friend'}`}
+                aria-label={`Call ${f.username || f.name || 'friend'}`}
                 onClick={() => {
                   close();
                   try { window.dispatchEvent(new CustomEvent('stooorna:open-home-call-picker', { detail: { friendId: f.friendId, direct: true } })); } catch { /* */ }
                 }}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '5px 6px', borderRadius: 12, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.06)', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
               >
-                <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={34} style={{ flexShrink: 0, border: 'none' }} />
+                <UserAvatar name={f.username || f.name || '?'} avatarUrl={f.avatarUrl ?? null} size={34} style={{ flexShrink: 0, border: 'none' }} />
                 <span style={{ flex: 1, minWidth: 0, color: '#d7eeee', fontWeight: 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {f.name || f.username || 'Friend'}
+                  {f.username ? (String(f.username).startsWith('@') ? f.username : `@${f.username}`) : (f.name || 'Friend')}
                 </span>
                 <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', background: 'rgba(34,197,94,0.14)', border: '1.5px solid rgba(34,197,94,0.75)' }}><Phone size={15} strokeWidth={2.4} /></span>
               </button>
@@ -30277,9 +30276,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                             }}
                             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '5px 6px', borderRadius: 12, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.06)', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
                           >
-                            <UserAvatar name={f.name || f.username || '?'} avatarUrl={f.avatarUrl ?? null} size={34} style={{ flexShrink: 0, border: 'none' }} />
+                            <UserAvatar name={f.username || f.name || '?'} avatarUrl={f.avatarUrl ?? null} size={34} style={{ flexShrink: 0, border: 'none' }} />
                             <span style={{ flex: 1, minWidth: 0, color: '#d7eeee', fontWeight: 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {f.name || f.username || 'Friend'}
+                              {f.username ? (String(f.username).startsWith('@') ? f.username : `@${f.username}`) : (f.name || 'Friend')}
                             </span>
                             <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', background: 'rgba(34,197,94,0.14)', border: '1.5px solid rgba(34,197,94,0.75)' }}><Phone size={15} strokeWidth={2.4} /></span>
                           </button>

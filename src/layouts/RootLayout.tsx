@@ -1564,6 +1564,8 @@ function GlobalBottomNavigation() {
 
   const [homeCallMembers, setHomeCallMembers] = useState<HomeCallMember[]>([]);
   const [homeCallMuted, setHomeCallMuted] = useState(false);
+  // MUTE-SYNC: remote members' mic state (id -> muted), received through the call signal socket
+  const [homeCallMutedIds, setHomeCallMutedIds] = useState<Record<string, boolean>>({});
   const [homeCallSpeakerOn, setHomeCallSpeakerOn] = useState(true);
   const [homeCallEmojiOpen, setHomeCallEmojiOpen] = useState(false);
   const [homeCallEmojiBurst, setHomeCallEmojiBurst] = useState<string | null>(null);
@@ -1970,6 +1972,14 @@ function GlobalBottomNavigation() {
           }
           return;
         }
+        if (type === 'member-muted') {
+          const ch = String(msg.channel || '');
+          const from = String(msg.from || '');
+          if (from && (!ch || !homeCallChannelRef.current || ch === String(homeCallChannelRef.current))) {
+            setHomeCallMutedIds(prev => ({ ...prev, [from]: !!msg.muted }));
+          }
+          return;
+        }
         if (type === 'hangup' || type === 'call-end' || type === 'ended') {
           const ch = String(msg.channel || '');
           if (ch) markHomeCallChannelEnded(ch);
@@ -2363,6 +2373,7 @@ function GlobalBottomNavigation() {
     setHomeCallMembers([]);
     setHomeCallChannel(null);
     setHomeCallMuted(false);
+    setHomeCallMutedIds({});
     setHomeCallSpeakerOn(true);
     setHomeCallEmojiOpen(false);
     setHomeCallMembersOpen(false);
@@ -3611,7 +3622,25 @@ function GlobalBottomNavigation() {
     const next = !homeCallMuted;
     try { void homeCallMicRef.current?.setMuted?.(next); } catch { /* */ }
     setHomeCallMuted(next);
+    broadcastHomeCallMute(next);
   }
+
+  /** MUTE-SYNC: tell every other member in the call whether my mic is muted. */
+  function broadcastHomeCallMute(muted: boolean) {
+    if (!user?.id) return;
+    const channel = homeCallChannelRef.current || homeCallChannel;
+    if (!channel) return;
+    for (const m of homeCallMembers) {
+      if (!m.id || m.id === user.id) continue;
+      sendHomeCallSignal({ type: 'member-muted', to: m.id, from: user.id, channel, muted, at: Date.now() });
+    }
+  }
+
+  // MUTE-SYNC: when someone new joins while I am muted, let them know too
+  useEffect(() => {
+    if (!homeCallMuted || homeCallPhase !== 'live') return;
+    broadcastHomeCallMute(true);
+  }, [homeCallMembers.length, homeCallPhase]);
 
   /** Invite extra friends into an already-live home call (does not restart Agora). */
   async function inviteMoreToHomeCall(friendIds: string[]) {
@@ -4742,7 +4771,7 @@ function GlobalBottomNavigation() {
         const pcell = (label: string, order: number, node: React.ReactNode): React.ReactNode => inPanel ? (
           <div key={label} style={{ order, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, minWidth: 0 }}>
             {node}
-            <span style={{ color: '#ffffff', fontSize: 13, fontWeight: 500, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{label}</span>
+            <span style={{ color: '#000000', fontSize: 13, fontWeight: 500, lineHeight: 1.1, whiteSpace: 'nowrap' }}>{label}</span>
           </div>
         ) : node;
         // CALL-PANEL-UP: member / add lists open upward so they stay visible
@@ -4787,11 +4816,11 @@ function GlobalBottomNavigation() {
                 .stooorna-call-light { gap: 0 !important; }
                 .stooorna-call-light [data-scl="ring"] { animation: none !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; overflow: visible !important; background: transparent !important; }
                 .stooorna-call-light [data-scl="ring"] > div[aria-hidden] { display: none !important; }
-                .stooorna-call-light [data-scl="inner"] { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; justify-items: center !important; align-items: start !important; gap: 22px 8px !important; padding: 24px 14px 20px !important; margin: 0 8px !important; width: auto !important; background: rgba(8,10,12,0.55) !important; -webkit-backdrop-filter: blur(10px) !important; backdrop-filter: blur(10px) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 30px !important; }
-                .stooorna-call-light [data-scl="inner"] button { width: 62px !important; height: 62px !important; border: none !important; background: rgba(255,255,255,0.12) !important; color: #ffffff !important; box-shadow: none !important; }
+                .stooorna-call-light [data-scl="inner"] { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; justify-items: center !important; align-items: start !important; gap: 22px 8px !important; padding: 24px 14px 20px !important; margin: 0 8px !important; width: auto !important; background: transparent !important; border: none !important; box-shadow: none !important; border-radius: 30px !important; }
+                .stooorna-call-light [data-scl="inner"] button { width: 62px !important; height: 62px !important; border: none !important; background: #22282b !important; color: #ffffff !important; box-shadow: none !important; }
                 .stooorna-call-light [data-scl="inner"] button svg { width: 26px !important; height: 26px !important; }
                 .stooorna-call-light [data-scl="inner"] button[aria-label="Wave and re-ring"] { font-size: 28px !important; }
-                .stooorna-call-light [data-scl="inner"] button[aria-label="Unmute"], .stooorna-call-light [data-scl="inner"] button[aria-label="Speaker on"] { background: rgba(255,255,255,0.24) !important; }
+                .stooorna-call-light [data-scl="inner"] button[aria-label="Unmute"], .stooorna-call-light [data-scl="inner"] button[aria-label="Speaker on"] { background: #3a4348 !important; }
                 .stooorna-call-light [data-scl="inner"] button[aria-label="End call"], .stooorna-call-light [data-scl="inner"] button[aria-label="Decline"] { background: #e6003a !important; color: #ffffff !important; }
                 .stooorna-call-light [data-scl="inner"] button[aria-label="Answer"] { background: #22c55e !important; color: #ffffff !important; }
                 .stooorna-call-light > p { background: transparent !important; border: none !important; color: #444444 !important; }
@@ -4933,11 +4962,11 @@ function GlobalBottomNavigation() {
                     <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
                       {outer.map((m, i) => {
                         const isMe = meId && m.id === meId;
-                        const muted = isMe && homeCallMuted;
+                        const muted = (isMe && homeCallMuted) || (!isMe && !!homeCallMutedIds[m.id]);
                         const label = m.name || m.username || '?';
                         return (
+                          <div key={m.id || i} style={{ position: 'relative', width: size, height: size, marginLeft: i === 0 ? 0 : overlap, zIndex: i + 1, flexShrink: 0 }}>
                           <div
-                            key={m.id || i}
                             title={label}
                             style={{
                               width: size, height: size, borderRadius: '50%', overflow: 'hidden',
@@ -4945,8 +4974,7 @@ function GlobalBottomNavigation() {
                               boxShadow: muted
                                 ? '0 0 0 2px rgba(239,68,68,0.55)'
                                 : '0 0 0 2px rgba(34,197,94,0.35)',
-                              marginLeft: i === 0 ? 0 : overlap,
-                              zIndex: i + 1, position: 'relative', flexShrink: 0,
+                              position: 'relative', boxSizing: 'border-box',
                             }}
                           >
                             {m.avatarUrl ? (
@@ -4964,6 +4992,16 @@ function GlobalBottomNavigation() {
                                 <MicOff size={Math.max(12, size * 0.38)} color="#fff" strokeWidth={2.4} />
                               </span>
                             )}
+                          </div>
+                          {muted && (
+                            <span aria-label="Muted" style={{
+                              position: 'absolute', bottom: -3, right: -3, width: 18, height: 18, borderRadius: '50%',
+                              background: '#ef4444', border: '2px solid #fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              zIndex: 5, pointerEvents: 'none',
+                            }}>
+                              <MicOff size={10} color="#fff" strokeWidth={2.8} />
+                            </span>
+                          )}
                           </div>
                         );
                       })}
@@ -5103,24 +5141,6 @@ function GlobalBottomNavigation() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => homeCallAction(() => {
-                    setHomeCallMembersOpen(false);
-                    setHomeCallAddOpen(true);
-                    if (!homeCallFriends.length) setHomeCallPickerOpen(true);
-                  })}
-                  aria-label="Add people"
-                  style={{
-                    width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                    border: '1.5px solid rgba(0,188,212,0.45)',
-                    background: homeCallAddOpen ? 'rgba(0,188,212,0.22)' : 'rgba(0,188,212,0.1)',
-                    color: '#00BCD4', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
-                  }}
-                >
-                  <Plus size={16} strokeWidth={2.6} />
-                </button>
-                <button
-                  type="button"
                   onClick={() => setHomeCallMembersOpen(false)}
                   aria-label="Close"
                   style={{
@@ -5134,7 +5154,7 @@ function GlobalBottomNavigation() {
               </div>
               {homeCallMembers.map(m => {
                 const isMe = user?.id && m.id === user.id;
-                const muted = isMe && homeCallMuted;
+                const muted = (isMe && homeCallMuted) || (!isMe && !!homeCallMutedIds[m.id]);
                 const label = m.name || m.username || 'User';
                 return (
                   <div key={m.id} style={{
