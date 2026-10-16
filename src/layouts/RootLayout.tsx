@@ -4689,7 +4689,7 @@ function GlobalBottomNavigation() {
     return () => window.clearInterval(id);
   }, [homeCallUiActiveNow, profilePanelOpen]);
 
-  if (isPrivacyPage || isVoiceRoom || postComposerOpen || shareSheetOpen || storyCameraOpen || supportChatOpen || companyAuthOpen) return null;
+  // HOOKS-ORDER-FIX: الـ return المبكر نُقل لتحت آخر useEffect (فتح User Control كان يخفي الشريط ويكسر ترتيب الـ hooks = React error #300)
 
   const itemStyle = (active: boolean): React.CSSProperties => ({
     flex: 1,
@@ -4778,6 +4778,8 @@ function GlobalBottomNavigation() {
     (window as any).__stooornaHomeCallLabel = homeCallBannerLabel;
     try { window.dispatchEvent(new CustomEvent('stooorna:home-call-label', { detail: { label: homeCallBannerLabel } })); } catch { /* */ }
   }, [homeCallBannerLabel]);
+
+  if (isPrivacyPage || isVoiceRoom || postComposerOpen || shareSheetOpen || storyCameraOpen || supportChatOpen || companyAuthOpen) return null;
 
   const homeIncomingOverlay = null;
   const homeCallSheetShown = homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live';
