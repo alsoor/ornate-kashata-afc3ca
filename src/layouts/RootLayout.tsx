@@ -1566,6 +1566,11 @@ function GlobalBottomNavigation() {
   const [homeCallMuted, setHomeCallMuted] = useState(false);
   // MUTE-SYNC: remote members' mic state (id -> muted), received through the call signal socket
   const [homeCallMutedIds, setHomeCallMutedIds] = useState<Record<string, boolean>>({});
+  // MUTE-SYNC (Agora-native): the remote mic state is also read straight from Agora ('mute-audio' / 'unmute-audio'),
+  // so the muted badge shows on the other side's avatar even if the signal socket drops 'member-muted'.
+  const homeCallMembersRef = useRef<HomeCallMember[]>([]);
+  useEffect(() => { homeCallMembersRef.current = homeCallMembers; }, [homeCallMembers]);
+  const homeCallUserByUidRef = useRef<Record<string, string>>({});
   const [homeCallSpeakerOn, setHomeCallSpeakerOn] = useState(true);
   const [homeCallEmojiOpen, setHomeCallEmojiOpen] = useState(false);
   const [homeCallEmojiBurst, setHomeCallEmojiBurst] = useState<string | null>(null);
@@ -2374,6 +2379,7 @@ function GlobalBottomNavigation() {
     setHomeCallChannel(null);
     setHomeCallMuted(false);
     setHomeCallMutedIds({});
+    homeCallUserByUidRef.current = {};
     setHomeCallSpeakerOn(true);
     setHomeCallEmojiOpen(false);
     setHomeCallMembersOpen(false);
@@ -2794,6 +2800,7 @@ function GlobalBottomNavigation() {
         }
         const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
         homeCallAgoraRef.current = client;
+        attachHomeCallMuteListener(client, channel);
         client.on('user-published', async (remoteUser: any, mediaType: string) => {
           try {
             await client.subscribe(remoteUser, mediaType);
@@ -3518,6 +3525,7 @@ function GlobalBottomNavigation() {
       }
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' } as any);
       homeCallAgoraRef.current = client;
+      attachHomeCallMuteListener(client, channel);
       client.on('user-published', async (remoteUser: any, mediaType: string) => {
         try {
           await client.subscribe(remoteUser, mediaType);
@@ -3616,6 +3624,35 @@ function GlobalBottomNavigation() {
     if (homeCallPollRef.current) window.clearInterval(homeCallPollRef.current);
     homeCallPollRef.current = window.setInterval(poll, 800);
     try { localStorage.removeItem(`stooorna_home_call_invite_${user.id}`); } catch { /* */ }
+  }
+
+  /** MUTE-SYNC (Agora-native): listen to remote members muting/unmuting their mic and mirror it on their avatar. */
+  function attachHomeCallMuteListener(client: any, channel: string) {
+    const apply = (userId: string, muted: boolean) =>
+      setHomeCallMutedIds(prev => (!!prev[userId] === muted ? prev : { ...prev, [userId]: muted }));
+    const resolveUser = async (uid: string): Promise<string | null> => {
+      const known = homeCallUserByUidRef.current[uid];
+      if (known) return known;
+      const others = homeCallMembersRef.current.filter(m => m.id && m.id !== user?.id);
+      for (const m of others) {
+        try {
+          const r = await fetch(`/api/call/token?channel=${encodeURIComponent(channel)}&uid=${encodeURIComponent(m.id)}`, { credentials: 'include' });
+          if (!r.ok) continue;
+          const d = await r.json() as { uid: number };
+          homeCallUserByUidRef.current[String(d.uid)] = m.id;
+        } catch { /* */ }
+      }
+      if (homeCallUserByUidRef.current[uid]) return homeCallUserByUidRef.current[uid];
+      if (others.length === 1) return others[0].id; // 1-to-1 call: the only other member is the one
+      return null;
+    };
+    try {
+      client.on('user-info-updated', (uid: any, msg: string) => {
+        if (msg !== 'mute-audio' && msg !== 'unmute-audio') return;
+        const muted = msg === 'mute-audio';
+        void resolveUser(String(uid)).then(userId => { if (userId) apply(userId, muted); });
+      });
+    } catch { /* */ }
   }
 
   function toggleHomeCallMute() {
