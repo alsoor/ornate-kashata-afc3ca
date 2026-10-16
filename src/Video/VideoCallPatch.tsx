@@ -17,7 +17,7 @@
  *   import { VideoCallButton } from '@/Video/VideoCallPatch';
  *   <VideoCallButton cameraOn={homeCallIsVideo} onToggle={toggleCamera} />
  */
-import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Video, VideoOff } from 'lucide-react';
 
@@ -37,9 +37,10 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef }: { localRef: DivRef
   const drag = useRef<{ dx: number; dy: number; id: number } | null>(null);
 
   useEffect(() => {
-    const r = anchorRef.current?.getBoundingClientRect();
-    const x = r ? r.right - SELF_W - 10 : window.innerWidth - SELF_W - 14;
-    const y = r ? r.top + 10 : 80;
+    // تبدأ في الزاوية العلوية (أعلى يمين الصفحة) ويمكن سحبها لأي مكان
+    void anchorRef;
+    const x = window.innerWidth - SELF_W - 14;
+    const y = 64;
     setPos({
       x: clamp(x, EDGE, window.innerWidth - SELF_W - EDGE),
       y: clamp(y, EDGE, window.innerHeight - SELF_H - EDGE),
@@ -106,9 +107,11 @@ export type VideoCallStageProps = {
   peerAvatarUrl?: string | null;
   /** يُستدعى عند إغلاق الصفحة (X): أطفئ الكاميرا */
   onLeavePage: () => void;
+  /** أزرار تظهر ثابتة أسفل الشاشة المربعة (Mute / Video Off / End) */
+  controls?: ReactNode;
 };
 
-export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage }: VideoCallStageProps) {
+export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage, controls }: VideoCallStageProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const aliveRef = useRef(true);
   const leaveRef = useRef(onLeavePage);
@@ -128,6 +131,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
     <>
       <div
         ref={stageRef}
+        data-vstage="1"
         style={{
           gridColumn: '1 / -1', order: -1, width: '100%', aspectRatio: '1 / 1', borderRadius: 22,
           overflow: 'hidden', background: '#0b1417', position: 'relative', boxSizing: 'border-box',
@@ -141,6 +145,14 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
         </div>
         {/* شاشة الشخص المتصل عليه — ثابتة */}
         <div ref={remoteRef} style={{ position: 'absolute', inset: 0 }} />
+        {controls && (
+          <div style={{
+            position: 'absolute', left: 0, right: 0, bottom: 16, zIndex: 3, display: 'flex',
+            justifyContent: 'center', alignItems: 'center', gap: 22,
+          }}>
+            {controls}
+          </div>
+        )}
       </div>
       <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} />
     </>

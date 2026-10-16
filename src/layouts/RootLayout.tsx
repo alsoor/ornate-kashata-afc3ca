@@ -14,7 +14,7 @@ function isStoryProfileRoute(pathname: string, search: string): boolean {
   const tab = new URLSearchParams(search || '').get('tab');
   return !(tab === 'search' || tab === 'requests');
 }
-import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, MoreVertical, Clock } from 'lucide-react';
+import { Home, Mic, MicOff, Settings, MessageCircle, X, Building2, Trash2, Menu, PhoneOff, Phone, Smile, Users, Volume2, VolumeX, Radio, Plus, Image as ImageIcon, Video, VideoOff, MoreVertical, Clock } from 'lucide-react';
 const PublicLiveCommentsPanel = lazy(() => import('@/pages/add-friend').then(m => ({ default: m.PublicLiveCommentsPanel })));
 import HomepageSameAsJsonLd from '@/components/HomepageSameAsJsonLd';
 import Website from '@/layouts/Website';
@@ -1551,6 +1551,7 @@ function GlobalBottomNavigation() {
   const homeCallVideoRef = useRef(false);
   const homeCallCamRef = useRef<any>(null);
   const [homeCallIsVideo, setHomeCallIsVideo] = useState(false);
+  const [homeCallVideoDismissed, setHomeCallVideoDismissed] = useState(false); // VIDEO-PATCH: I closed the video screen while the other side still has video
   const [homeCallRemoteVideo, setHomeCallRemoteVideo] = useState(false); // VIDEO-PATCH: someone else in the call has their camera on
   const [pipPos, setPipPos] = useState({ x: 16, y: 80 });
   const localVideoRef = useRef<HTMLDivElement | null>(null);
@@ -3018,6 +3019,7 @@ function GlobalBottomNavigation() {
     }, 700);
     return () => window.clearInterval(t);
   }, [homeCallPhase]);
+  useEffect(() => { if (!homeCallRemoteVideo) setHomeCallVideoDismissed(false); }, [homeCallRemoteVideo]); // VIDEO-PATCH
 
   useEffect(() => {
     if (!user?.id || !homeCallChannel || (homeCallPhase !== 'live' && homeCallPhase !== 'connecting')) return;
@@ -4888,6 +4890,8 @@ function GlobalBottomNavigation() {
                 .stooorna-call-light [data-scl="inner"] button[aria-label="Answer"] { background: #22c55e !important; color: #ffffff !important; }
                 .stooorna-call-light > p { background: transparent !important; border: none !important; color: #444444 !important; }
                 ${VIDEO_CALL_BUTTON_CSS}
+                .stooorna-call-light [data-scl="inner"][data-video-mode="1"] > *:not([data-vstage]) { display: none !important; }
+                .stooorna-call-light [data-scl="inner"][data-video-mode="1"] { display: block !important; padding: 10px !important; }
               `}</style>
             </>
           )}
@@ -4921,6 +4925,7 @@ function GlobalBottomNavigation() {
             />
             <div
               data-scl="inner"
+              data-video-mode={inPanel && !isIncomingRinging && (homeCallIsVideo || (homeCallRemoteVideo && !homeCallVideoDismissed)) ? '1' : undefined}
               style={{
                 position: 'relative',
                 zIndex: 1,
@@ -4939,7 +4944,7 @@ function GlobalBottomNavigation() {
               }}
             >
             {/* VIDEO-PATCH: square screen of the person on the call (fixed) + draggable self view */}
-            {inPanel && (homeCallIsVideo || homeCallRemoteVideo) && !isIncomingRinging && (
+            {inPanel && !isIncomingRinging && (homeCallIsVideo || (homeCallRemoteVideo && !homeCallVideoDismissed)) && (
               <VideoCallStage
                 remoteRef={remoteVideoRef}
                 localRef={localVideoRef}
@@ -4947,6 +4952,37 @@ function GlobalBottomNavigation() {
                 peerName={peerOnCall?.name || peerOnCall?.username || null}
                 peerAvatarUrl={(peerOnCall as any)?.avatarUrl || null}
                 onLeavePage={() => { void stopHomeCallCamera(); }}
+                controls={(
+                  <>
+                    <button
+                      type="button"
+                      aria-label={homeCallMuted ? 'Unmute' : 'Mute'}
+                      onClick={() => homeCallAction(() => toggleHomeCallMute())}
+                      style={{ borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                    >
+                      {homeCallMuted ? <MicOff size={26} strokeWidth={2.2} /> : <Mic size={26} strokeWidth={2.2} />}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={homeCallIsVideo ? 'Video off' : 'Video'}
+                      onClick={() => homeCallAction(() => {
+                        if (homeCallIsVideo) { setHomeCallVideoDismissed(true); void stopHomeCallCamera(); }
+                        else { setHomeCallVideoDismissed(false); void toggleHomeCallVideo(); }
+                      })}
+                      style={{ borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                    >
+                      {homeCallIsVideo ? <VideoOff size={26} strokeWidth={2.2} /> : <Video size={26} strokeWidth={2.2} />}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="End call"
+                      onClick={() => homeCallAction(() => { void leaveHomeGroupCall(); })}
+                      style={{ borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}
+                    >
+                      <PhoneOff size={26} strokeWidth={2.3} color="#fff" />
+                    </button>
+                  </>
+                )}
               />
             )}
             {isIncomingRinging ? (
@@ -5125,7 +5161,7 @@ function GlobalBottomNavigation() {
             {/* VIDEO-PATCH: the Speaker slot is now the Video button — tap = my camera opens and the others see it */}
             {inPanel && !isIncomingRinging && (
               pcell(homeCallIsVideo ? 'Video' : 'Video off', 1, (
-                <VideoCallButton cameraOn={homeCallIsVideo} showLabel={false} onToggle={() => homeCallAction(() => { void toggleHomeCallVideo(); })} />
+                <VideoCallButton cameraOn={homeCallIsVideo} showLabel={false} onToggle={() => homeCallAction(() => { setHomeCallVideoDismissed(false); void toggleHomeCallVideo(); })} />
               ))
             )}
             {inPanel && !isIncomingRinging && (homeCallPhase === 'live' || homeCallPhase === 'connecting') && pcell('Add', 4, (
