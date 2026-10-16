@@ -16958,9 +16958,27 @@ function loadPublicLiveComments(): PublicLiveComment[] {
 
 function savePublicLiveComments(list: PublicLiveComment[]) {
   try {
-    const packed = JSON.stringify(liveCapRows(list));
-    localStorage.setItem(PUBLIC_LIVE_COMMENTS_KEY, packed);
-    try { localStorage.setItem('stooorna_live_chat_store_v2', packed); } catch { /* */ }
+    let packed = JSON.stringify(liveCapRows(list));
+    // CHAT-IMG-PERSIST: الصور المحفوظة كـ data: كبيرة قد تتجاوز سعة localStorage فيفشل الحفظ بصمت وتختفي الرسالة بعد الخروج.
+    // نخفف الصفوف الثقيلة (الأقدم أولاً، ونبقي آخر صورتين) ونعيد المحاولة.
+    const tryStore = (str: string): boolean => {
+      try {
+        localStorage.setItem(PUBLIC_LIVE_COMMENTS_KEY, str);
+        try { localStorage.setItem('stooorna_live_chat_store_v2', str); } catch { /* */ }
+        return true;
+      } catch { return false; }
+    };
+    if (!tryStore(packed)) {
+      const capped = liveCapRows(list);
+      const heavy = capped.map((c, i) => ({ c, i })).filter(x => /^data:/i.test(String(x.c.imageUrl || '')) && String(x.c.imageUrl).length > 120_000);
+      const drop = new Set(heavy.slice(0, Math.max(0, heavy.length - 2)).map(x => x.i));
+      const lighter = capped.map((c, i) => (drop.has(i) ? { ...c, imageUrl: null, text: c.text || '📷' } : c));
+      packed = JSON.stringify(lighter);
+      if (!tryStore(packed)) {
+        try { localStorage.removeItem('stooorna_live_chat_store_v2'); } catch { /* */ }
+        tryStore(packed);
+      }
+    }
     window.dispatchEvent(new CustomEvent(PUBLIC_LIVE_COMMENTS_EVT, { detail: { list } }));
     try {
       const bc = (window as any).__stooornaPublicLiveBc as BroadcastChannel | undefined;
@@ -17732,6 +17750,48 @@ async function uploadLiveChatFile(blob: Blob, userId: string, kind: 'image' | 'v
   }
 
   return { url: null, err: lastErr || 'live-chat media upload failed' };
+}
+
+/** CHAT-IMG-PERSIST: يصغّر صورة الشات (حد أقصى 1600px + JPEG) — رفع أسرع، وتنحفظ محلياً حتى لو خرجت من التطبيق قبل ما يخلص الرفع. */
+async function compressChatImage(blob: Blob, maxSide = 1600, quality = 0.82): Promise<Blob> {
+  try {
+    const t = String(blob.type || '').toLowerCase();
+    if (!t.startsWith('image/') || /gif|svg/.test(t)) return blob;
+    if (blob.size < 300_000) return blob;
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise<HTMLImageElement>((res, rej) => {
+        const i = new Image();
+        i.onload = () => res(i);
+        i.onerror = () => rej(new Error('img'));
+        i.src = url;
+      });
+      const w0 = img.naturalWidth || img.width;
+      const h0 = img.naturalHeight || img.height;
+      if (!w0 || !h0) return blob;
+      const k = Math.min(1, maxSide / Math.max(w0, h0));
+      const w = Math.max(1, Math.round(w0 * k));
+      const h = Math.max(1, Math.round(h0 * k));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d');
+      if (!ctx) return blob;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      const out = await new Promise<Blob | null>(res => cv.toBlob(b => res(b), 'image/jpeg', quality));
+      return out && out.size > 0 && out.size < blob.size ? out : blob;
+    } finally { URL.revokeObjectURL(url); }
+  } catch { return blob; }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string | null> {
+  return new Promise(resolve => {
+    const r = new FileReader();
+    r.onloadend = () => resolve(typeof r.result === 'string' && r.result.startsWith('data:') ? r.result : null);
+    r.onerror = () => resolve(null);
+    r.readAsDataURL(blob);
+  });
 }
 
 async function uploadLiveChatMedia(blob: Blob, userId: string, kind: 'image' | 'video' = 'image'): Promise<{ url: string | null; err: string }> {
@@ -20276,6 +20336,35 @@ export function PublicLiveCommentsPanel({
     };
   }, [comments.length, chatLift]);
 
+  // CHAT-IMG-PERSIST: صورة أرسلتها وما خلص رفعها قبل ما تخرج من التطبيق (بقيت data: محلية) → نكمل رفعها ونرسلها للسيرفر بعد الرجوع
+  const imgRetryDoneRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!myId) return;
+    const t = window.setTimeout(() => {
+      void (async () => {
+        const pending = loadPublicLiveComments()
+          .filter(x => x.userId === myId && /^data:image\//i.test(String(x.imageUrl || '')) && !imgRetryDoneRef.current.has(x.id))
+          .slice(-3);
+        for (const row of pending) {
+          imgRetryDoneRef.current.add(row.id);
+          try {
+            const b = await blobFromLocalUrl(String(row.imageUrl));
+            if (!b || b.size <= 0) continue;
+            const up = await uploadLiveChatMedia(b, myId, 'image');
+            if (!up.url || /^data:/i.test(up.url)) { await postLiveChatToServer(row); continue; }
+            const done: PublicLiveComment = { ...row, imageUrl: up.url };
+            const list = loadPublicLiveComments().map(x => x.id === row.id ? done : x);
+            savePublicLiveComments(list);
+            setComments(list);
+            await postLiveChatToServer(done);
+          } catch { /* retry next session */ }
+        }
+      })();
+    }, 4000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myId]);
+
   const burst = useLiveEmojiBurstSync(LIVE_CHAT_ROOM, myId, chatLift === 1); // EMOJI-BURST-PATCH
   const pushComment = (body: string, imageUrl?: string | null, voice?: { url: string; duration: number } | null) => {
     const trimmed = body.trim().slice(0, 500);
@@ -20363,6 +20452,17 @@ export function PublicLiveCommentsPanel({
           if (!blob) blob = await blobFromLocalUrl(img);
           if (blob && blob.size > 0) {
             const kind: 'image' | 'video' = (blob.type.startsWith('video/') || isLiveChatVideoUrl(img)) ? 'video' : 'image';
+            if (kind === 'image') {
+              // CHAT-IMG-PERSIST: blob: يموت إذا خرجت من التطبيق → نحفظ نسخة صغيرة (data:) فوراً قبل الرفع حتى ما تختفي الصورة
+              blob = await compressChatImage(blob);
+              const du = blob.size < 900_000 ? await blobToDataUrl(blob) : null;
+              if (du) {
+                send = { ...send, imageUrl: du };
+                const keepList = loadPublicLiveComments().map(x => x.id === row.id ? send : x);
+                savePublicLiveComments(keepList);
+                setComments(keepList);
+              }
+            }
             const up = await uploadLiveChatMedia(blob, myId, kind);
             if (up.url) {
               const finalText = (send.text && send.text !== '📷' && send.text !== '🎬')
