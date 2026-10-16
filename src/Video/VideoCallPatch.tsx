@@ -12,10 +12,14 @@
  * الاستخدام في RootLayout:
  *   import { VideoCallStage } from '@/Video/VideoCallPatch';
  *   <VideoCallStage remoteRef={remoteVideoRef} localRef={localVideoRef} cameraOn={homeCallIsVideo} ... />
+ *
+ * زر الفيديو (كان غير مرئي) — ضعه مع بقية أزرار اللوحة (Speaker / Members / Mute / Add / Wave / End):
+ *   import { VideoCallButton } from '@/Video/VideoCallPatch';
+ *   <VideoCallButton cameraOn={homeCallIsVideo} onToggle={toggleCamera} />
  */
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { VideoOff } from 'lucide-react';
+import { Video, VideoOff } from 'lucide-react';
 
 type DivRef = MutableRefObject<HTMLDivElement | null>;
 
@@ -70,7 +74,7 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef }: { localRef: DivRef
       }}
       onPointerCancel={() => { drag.current = null; }}
       style={{
-        position: 'fixed', left: pos.x, top: pos.y, width: SELF_W, height: SELF_H, zIndex: 11000,
+        position: 'fixed', left: pos.x, top: pos.y, width: SELF_W, height: SELF_H, zIndex: 99999,
         borderRadius: 16, overflow: 'hidden', background: '#10181b', touchAction: 'none', userSelect: 'none',
         boxShadow: '0 8px 24px rgba(0,0,0,0.45)', border: '2px solid rgba(255,255,255,0.9)', cursor: 'grab',
       }}
@@ -143,5 +147,32 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
   );
 }
 
-/** CSS خاص بزر Video (يضاف داخل <style> الخاص بلوحة المكالمة) */
-export const VIDEO_CALL_BUTTON_CSS = `.stooorna-call-light [data-scl="inner"] button[aria-label="Video off"] { background: #3a4348 !important; }`;
+/** زر Video — ظاهر دائماً، بنفس شكل أزرار اللوحة (دائرة داكنة + اسم تحتها) */
+export function VideoCallButton({ cameraOn, onToggle, disabled, showLabel = true }: { cameraOn: boolean; onToggle: () => void; disabled?: boolean; showLabel?: boolean }) {
+  const label = cameraOn ? 'Video' : 'Video off';
+  const Icon = cameraOn ? Video : VideoOff;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, visibility: 'visible', opacity: 1 }}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        onClick={onToggle}
+        style={{
+          width: 88, height: 88, borderRadius: '50%', border: 0, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: cameraOn ? '#23282b' : '#3a4348', color: '#fff',
+          visibility: 'visible', opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        <Icon size={34} strokeWidth={2.2} color="#fff" />
+      </button>
+      {showLabel && <span style={{ fontSize: 17, fontWeight: 600, color: '#111' }}>{label}</span>}
+    </div>
+  );
+}
+
+/** CSS خاص بزر Video (يضاف داخل <style> الخاص بلوحة المكالمة) — يضمن أن الزر يظهر دائماً */
+export const VIDEO_CALL_BUTTON_CSS = `.stooorna-call-light [data-scl="inner"] button[aria-label="Video off"] { background: #3a4348 !important; }
+.stooorna-call-light [data-scl="inner"] button[aria-label^="Video"] { display: flex !important; visibility: visible !important; opacity: 1 !important; color: #fff !important; }
+.stooorna-call-light [data-scl="inner"] button[aria-label^="Video"] svg { display: block !important; stroke: currentColor !important; }`;
