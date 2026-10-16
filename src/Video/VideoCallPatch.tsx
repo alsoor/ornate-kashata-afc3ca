@@ -23,8 +23,8 @@ import { Video, VideoOff } from 'lucide-react';
 
 type DivRef = MutableRefObject<HTMLDivElement | null>;
 
-const SELF_W = 104;
-const SELF_H = 140;
+const SELF_W = 160; // تكبير الشاشة الصغيرة
+const SELF_H = 214;
 const EDGE = 6;
 
 function clamp(v: number, min: number, max: number): number {
@@ -32,9 +32,12 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 /** الشاشة الصغيرة للمتصل: تتحرك بالإصبع في كامل الشاشة */
-function DraggableSelfView({ localRef, cameraOn, anchorRef }: { localRef: DivRef; cameraOn: boolean; anchorRef: MutableRefObject<HTMLDivElement | null> }) {
+function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera }: { localRef: DivRef; cameraOn: boolean; anchorRef: MutableRefObject<HTMLDivElement | null>; onSwitchCamera?: () => void }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
-  const drag = useRef<{ dx: number; dy: number; id: number } | null>(null);
+  const drag = useRef<{ dx: number; dy: number; id: number; sx: number; sy: number; moved: boolean } | null>(null);
+  const lastTap = useRef(0); // نقرتين ورا بعض = تبديل الكاميرا (أمامية / خلفية)
+  const switchRef = useRef(onSwitchCamera);
+  switchRef.current = onSwitchCamera;
 
   useEffect(() => {
     // تبدأ في الزاوية العلوية (أعلى يمين الصفحة) ويمكن سحبها لأي مكان
@@ -58,19 +61,26 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef }: { localRef: DivRef
   return createPortal(
     <div
       onPointerDown={e => {
-        drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y, id: e.pointerId };
+        drag.current = { dx: e.clientX - pos.x, dy: e.clientY - pos.y, id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false };
         try { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); } catch { /* */ }
       }}
       onPointerMove={e => {
         const d = drag.current;
         if (!d || d.id !== e.pointerId) return;
+        if (Math.abs(e.clientX - d.sx) > 8 || Math.abs(e.clientY - d.sy) > 8) d.moved = true;
         setPos({
           x: clamp(e.clientX - d.dx, EDGE, window.innerWidth - SELF_W - EDGE),
           y: clamp(e.clientY - d.dy, EDGE, window.innerHeight - SELF_H - EDGE),
         });
       }}
       onPointerUp={e => {
+        const d = drag.current;
         drag.current = null;
+        if (d && !d.moved) {
+          const now = Date.now();
+          if (now - lastTap.current < 380) { lastTap.current = 0; try { switchRef.current?.(); } catch { /* */ } }
+          else lastTap.current = now;
+        }
         try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch { /* */ }
       }}
       onPointerCancel={() => { drag.current = null; }}
@@ -107,11 +117,13 @@ export type VideoCallStageProps = {
   peerAvatarUrl?: string | null;
   /** يُستدعى عند إغلاق الصفحة (X): أطفئ الكاميرا */
   onLeavePage: () => void;
+  /** يُستدعى عند النقر مرتين على الشاشة الصغيرة: تبديل الكاميرا أمامية / خلفية */
+  onSwitchCamera?: () => void;
   /** أزرار تظهر ثابتة أسفل الشاشة المربعة (Mute / Video Off / End) */
   controls?: ReactNode;
 };
 
-export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage, controls }: VideoCallStageProps) {
+export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage, onSwitchCamera, controls }: VideoCallStageProps) {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const aliveRef = useRef(true);
   const leaveRef = useRef(onLeavePage);
@@ -154,7 +166,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
           </div>
         )}
       </div>
-      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} />
+      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} onSwitchCamera={onSwitchCamera} />
     </>
   );
 }

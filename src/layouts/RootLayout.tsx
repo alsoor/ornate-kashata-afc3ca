@@ -1550,6 +1550,7 @@ function GlobalBottomNavigation() {
   const homeCallSessionRef = useRef(0);
   const homeCallVideoRef = useRef(false);
   const homeCallCamRef = useRef<any>(null);
+  const homeCallFacingRef = useRef<'user' | 'environment'>('user'); // VIDEO-PATCH: السيلفي = user ، الخلفية = environment
   const [homeCallIsVideo, setHomeCallIsVideo] = useState(false);
   const [homeCallVideoDismissed, setHomeCallVideoDismissed] = useState(false); // VIDEO-PATCH: I closed the video screen while the other side still has video
   const [homeCallRemoteVideo, setHomeCallRemoteVideo] = useState(false); // VIDEO-PATCH: someone else in the call has their camera on
@@ -2990,7 +2991,7 @@ function GlobalBottomNavigation() {
   useEffect(() => {
     if ((!homeCallIsVideo && !homeCallRemoteVideo) || homeCallPhase === 'idle') return;
     const bind = () => {
-      try { homeCallCamRef.current?.play?.(localVideoRef.current || undefined); } catch { /* */ }
+      try { homeCallCamRef.current?.play?.(localVideoRef.current || undefined, { mirror: homeCallFacingRef.current === 'user' }); } catch { /* */ }
       try {
         const client = homeCallAgoraRef.current;
         const remotes = client?.remoteUsers || [];
@@ -3584,7 +3585,7 @@ function GlobalBottomNavigation() {
             const cam = await AgoraRTC.createCameraVideoTrack();
             homeCallCamRef.current = cam;
             tracks.push(cam);
-            requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined); } catch { /* */ } });
+            requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined, { mirror: homeCallFacingRef.current === 'user' }); } catch { /* */ } });
           } catch { /* camera permission */ }
         }
         await client.publish(tracks);
@@ -3960,16 +3961,55 @@ function GlobalBottomNavigation() {
         return;
       }
       const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+      homeCallFacingRef.current = 'user';
       const cam = await AgoraRTC.createCameraVideoTrack();
       homeCallCamRef.current = cam;
       await client.publish([cam]);
-      requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined); } catch { /* */ } });
+      requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined, { mirror: homeCallFacingRef.current === 'user' }); } catch { /* */ } });
       setHomeCallIsVideo(true);
       homeCallVideoRef.current = true;
     } catch {
       setHomeCallIsVideo(false);
       homeCallVideoRef.current = false;
     }
+  }
+
+  // VIDEO-PATCH: نقرتين على الشاشة الصغيرة = تبديل بين الكاميرا الأمامية (سيلفي) والخلفية
+  const homeCallFlipBusyRef = useRef(false);
+  async function flipHomeCallCamera() {
+    const client = homeCallAgoraRef.current;
+    const old = homeCallCamRef.current;
+    if (!client || !old || homeCallFlipBusyRef.current) return;
+    homeCallFlipBusyRef.current = true;
+    const next: 'user' | 'environment' = homeCallFacingRef.current === 'user' ? 'environment' : 'user';
+    try {
+      const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+      try { await client.unpublish([old]); } catch { /* */ }
+      try { old.stop?.(); old.close?.(); } catch { /* */ }
+      let cam: any = null;
+      try {
+        cam = await AgoraRTC.createCameraVideoTrack({ facingMode: next } as any);
+      } catch {
+        // احتياط: اختيار الكاميرا بالاسم من قائمة الأجهزة
+        try {
+          const cams: any[] = await (AgoraRTC as any).getCameras();
+          const re = next === 'environment' ? /back|rear|environment|خلف/i : /front|user|selfie|أمام/i;
+          const pick = cams.find((c) => re.test(c.label || '')) || (next === 'environment' ? cams[cams.length - 1] : cams[0]);
+          cam = await AgoraRTC.createCameraVideoTrack(pick ? { cameraId: pick.deviceId } : undefined);
+        } catch { /* */ }
+      }
+      if (!cam) {
+        // فشل التبديل: ارجع للكاميرا السابقة
+        cam = await AgoraRTC.createCameraVideoTrack();
+        homeCallFacingRef.current = 'user';
+      } else {
+        homeCallFacingRef.current = next;
+      }
+      homeCallCamRef.current = cam;
+      await client.publish([cam]);
+      requestAnimationFrame(() => { try { cam.play(localVideoRef.current || undefined, { mirror: homeCallFacingRef.current === 'user' }); } catch { /* */ } });
+    } catch { /* */ }
+    homeCallFlipBusyRef.current = false;
   }
 
   // VIDEO-PATCH: leaving the profile page (X) turns the camera Off — the video only lives on that page
@@ -4952,6 +4992,7 @@ function GlobalBottomNavigation() {
                 peerName={peerOnCall?.name || peerOnCall?.username || null}
                 peerAvatarUrl={(peerOnCall as any)?.avatarUrl || null}
                 onLeavePage={() => { void stopHomeCallCamera(); }}
+                onSwitchCamera={() => { void flipHomeCallCamera(); }}
                 controls={(
                   <>
                     <button
