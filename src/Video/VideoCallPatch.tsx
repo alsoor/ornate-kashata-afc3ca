@@ -27,6 +27,18 @@ const SELF_W = 160; // تكبير الشاشة الصغيرة
 const SELF_H = 214;
 const EDGE = 6;
 
+/** المسافة الآمنة السفلية (شريط النظام / الجسچر) بالبكسل */
+function safeBottomPx(): number {
+  try {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:0;bottom:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-bottom:max(env(safe-area-inset-bottom,0px),var(--safe-area-inset-bottom,0px))';
+    document.body.appendChild(d);
+    const v = parseFloat(getComputedStyle(d).paddingBottom) || 0;
+    d.remove();
+    return v;
+  } catch { return 0; }
+}
+
 function clamp(v: number, min: number, max: number): number {
   return Math.min(Math.max(v, min), Math.max(min, max));
 }
@@ -155,6 +167,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
   const stageRef = useRef<HTMLDivElement | null>(null);
   const aliveRef = useRef(true);
   const [showControls, setShowControls] = useState(true); // نقرة على الشاشة = إخفاء/إظهار الأزرار
+  const [maxH, setMaxH] = useState<number | null>(null); // أقصى ارتفاع للشاشة المربعة كي لا تنزل تحت أزرار الجوال
   const leaveRef = useRef(onLeavePage);
   leaveRef.current = onLeavePage;
 
@@ -167,6 +180,36 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
     };
   }, []);
 
+  // يضبط ارتفاع الشاشة المربعة على كل الأجهزة (S22+ / S25 Ultra / ...) بحيث تبقى كاملة فوق أزرار النظام
+  useEffect(() => {
+    const measure = () => {
+      const el = stageRef.current;
+      if (!el) return;
+      const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      const r = el.getBoundingClientRect();
+      let sc = window.scrollY || 0;
+      for (let p: HTMLElement | null = el.parentElement; p; p = p.parentElement) sc += p.scrollTop || 0;
+      // الجهاز اللي يرسم التطبيق تحت أزرار النظام (edge-to-edge) يكون ارتفاع الصفحة = ارتفاع الشاشة
+      const edgeToEdge = Math.abs(window.innerHeight - window.screen.height) < 8;
+      const reserve = Math.max(safeBottomPx(), 0) + 24 + (edgeToEdge ? 48 : 0);
+      const avail = Math.floor(vh - (r.top + sc) - reserve);
+      const width = el.getBoundingClientRect().width;
+      const next = avail < width ? Math.max(avail, 240) : null;
+      setMaxH(prev => (prev === next || (prev !== null && next !== null && Math.abs(prev - next) < 3) ? prev : next));
+    };
+    measure();
+    const timers = [80, 250, 500, 900].map(ms => window.setTimeout(measure, ms));
+    const iv = window.setInterval(measure, 1000);
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => {
+      timers.forEach(t => window.clearTimeout(t));
+      window.clearInterval(iv);
+      window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
+    };
+  }, []);
+
   const label = (peerName || '?').trim();
   return (
     <>
@@ -175,7 +218,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
         data-vstage="1"
         onClick={() => setShowControls(v => !v)}
         style={{
-          gridColumn: '1 / -1', order: -1, width: '100%', aspectRatio: '1 / 1', borderRadius: 22,
+          gridColumn: '1 / -1', order: -1, width: '100%', aspectRatio: '1 / 1', maxHeight: maxH ?? undefined, borderRadius: 22,
           overflow: 'hidden', background: '#0b1417', position: 'relative', boxSizing: 'border-box',
         }}
       >
