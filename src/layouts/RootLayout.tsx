@@ -4601,9 +4601,9 @@ function GlobalBottomNavigation() {
   const homeCallBannerLabel = homeCallPhase === 'live'
     ? formatCallDuration(homeCallElapsedSec)
     : (homeCallPhase === 'connecting' || homeCallPhase === 'animating')
-      ? `Calling ${peerOnCall?.name || peerOnCall?.username || ''}`.trim()
+      ? `Calling ${peerOnCall?.username ? '@' + peerOnCall.username : (peerOnCall?.name || '')}`.trim()
       : (homeIncoming && homeCallPhase === 'idle')
-        ? `Incoming ${peerOnCall?.name || peerOnCall?.username || ''}`.trim()
+        ? `Incoming ${peerOnCall?.username ? '@' + peerOnCall.username : (peerOnCall?.name || '')}`.trim()
         : '';
   useEffect(() => {
     (window as any).__stooornaHomeCallLabel = homeCallBannerLabel;
@@ -4705,11 +4705,10 @@ function GlobalBottomNavigation() {
                   }}
                 >
                   <div style={{ width: 38, height: 38, borderRadius: '50%', overflow: 'hidden', background: 'rgba(0,188,212,0.2)', flexShrink: 0 }}>
-                    {f.avatarUrl ? <img src={f.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (f.name || f.username || '?')[0]}
+                    {f.avatarUrl ? <img src={f.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (f.username || f.name || '?')[0]}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || f.username || 'Friend'}</span>
-                    {f.username ? <span style={{ display: 'block', fontSize: '0.72rem', color: 'rgba(150,200,200,0.65)' }}>@{f.username}</span> : null}
+                    <span style={{ display: 'block', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.username ? `@${f.username}` : (f.name || 'Friend')}</span>
                   </div>
                   <span style={{
                     width: 18, height: 18, borderRadius: 4, border: '2px solid #00BCD4',
@@ -4751,9 +4750,9 @@ function GlobalBottomNavigation() {
         const panelPos: React.CSSProperties = openUp
           ? { position: 'absolute', left: '50%', transform: 'translateX(-50%)', bottom: '100%', marginTop: 0, marginBottom: 8, zIndex: 40, background: '#061014', boxShadow: '0 -8px 24px rgba(0,0,0,0.35)' }
           : {};
-        // CALL-BOX-CLOSED: inside the profile page the call controls sit in a closed box (top, bottom, left and right lines)
+        // CALL-BOX-CLOSED: the outer outlined frame was removed (no border around the call controls)
         const boxWrap = (kids: React.ReactNode): React.ReactNode => inPanel ? (
-          <div style={{ width: '100%', maxWidth: 420, border: '2px solid #111', borderRadius: 6, boxSizing: 'border-box', padding: '8px 0' }}>{kids}</div>
+          <div style={{ width: '100%', maxWidth: 420, boxSizing: 'border-box', padding: '8px 0' }}>{kids}</div>
         ) : kids;
         const callBarEl = (
         <div
@@ -4788,11 +4787,11 @@ function GlobalBottomNavigation() {
                 .stooorna-call-light { gap: 0 !important; }
                 .stooorna-call-light [data-scl="ring"] { animation: none !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; overflow: visible !important; background: transparent !important; }
                 .stooorna-call-light [data-scl="ring"] > div[aria-hidden] { display: none !important; }
-                .stooorna-call-light [data-scl="inner"] { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; justify-items: center !important; align-items: start !important; gap: 22px 8px !important; padding: 24px 14px 20px !important; margin: 0 8px !important; width: auto !important; background: #14181b !important; border: 1px solid #262c30 !important; border-radius: 30px !important; }
-                .stooorna-call-light [data-scl="inner"] button { width: 62px !important; height: 62px !important; border: none !important; background: #22282b !important; color: #ffffff !important; box-shadow: none !important; }
+                .stooorna-call-light [data-scl="inner"] { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; justify-items: center !important; align-items: start !important; gap: 22px 8px !important; padding: 24px 14px 20px !important; margin: 0 8px !important; width: auto !important; background: rgba(8,10,12,0.55) !important; -webkit-backdrop-filter: blur(10px) !important; backdrop-filter: blur(10px) !important; border: 1px solid rgba(255,255,255,0.08) !important; border-radius: 30px !important; }
+                .stooorna-call-light [data-scl="inner"] button { width: 62px !important; height: 62px !important; border: none !important; background: rgba(255,255,255,0.12) !important; color: #ffffff !important; box-shadow: none !important; }
                 .stooorna-call-light [data-scl="inner"] button svg { width: 26px !important; height: 26px !important; }
                 .stooorna-call-light [data-scl="inner"] button[aria-label="Wave and re-ring"] { font-size: 28px !important; }
-                .stooorna-call-light [data-scl="inner"] button[aria-label="Unmute"], .stooorna-call-light [data-scl="inner"] button[aria-label="Speaker on"] { background: #3a4348 !important; }
+                .stooorna-call-light [data-scl="inner"] button[aria-label="Unmute"], .stooorna-call-light [data-scl="inner"] button[aria-label="Speaker on"] { background: rgba(255,255,255,0.24) !important; }
                 .stooorna-call-light [data-scl="inner"] button[aria-label="End call"], .stooorna-call-light [data-scl="inner"] button[aria-label="Decline"] { background: #e6003a !important; color: #ffffff !important; }
                 .stooorna-call-light [data-scl="inner"] button[aria-label="Answer"] { background: #22c55e !important; color: #ffffff !important; }
                 .stooorna-call-light > p { background: transparent !important; border: none !important; color: #444444 !important; }
@@ -5081,10 +5080,10 @@ function GlobalBottomNavigation() {
             background: 'rgba(6,16,20,0.92)', border: '1px solid rgba(0,188,212,0.2)', borderRadius: 12, padding: '4px 12px',
           }}>
             {isIncomingRinging
-              ? `Incoming · ${peerOnCall?.name || peerOnCall?.username || 'Call'}`
+              ? `Incoming · ${peerOnCall?.username ? '@' + peerOnCall.username : (peerOnCall?.name || 'Call')}`
               : homeCallPhase === 'live'
                 ? (homeCallStatusLabel || formatCallDuration(homeCallElapsedSec))
-                : (peerOnCall ? `Calling ${peerOnCall.name || peerOnCall.username || '…'}…` : 'Connecting…')}
+                : (peerOnCall ? `Calling ${peerOnCall.username ? '@' + peerOnCall.username : (peerOnCall.name || '…')}…` : 'Connecting…')}
             {homeCallPhase === 'live' && homeCallMembers.filter(m => m.id !== user?.id && m.joined).length === 0
               ? ' · No one else is here yet…'
               : ''}
@@ -5222,9 +5221,9 @@ function GlobalBottomNavigation() {
                     }}
                   >
                     <div style={{ width: 34, height: 34, borderRadius: '50%', overflow: 'hidden', background: 'rgba(0,188,212,0.2)', flexShrink: 0 }}>
-                      {f.avatarUrl ? <img src={f.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (f.name || f.username || '?')[0]}
+                      {f.avatarUrl ? <img src={f.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (f.username || f.name || '?')[0]}
                     </div>
-                    <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>{f.name || f.username || 'Friend'}</span>
+                    <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>{f.username ? `@${f.username}` : (f.name || 'Friend')}</span>
                     <span style={{
                       width: 18, height: 18, borderRadius: 4, border: '2px solid #00BCD4',
                       background: on ? '#00BCD4' : 'transparent', color: on ? '#041018' : 'transparent',
