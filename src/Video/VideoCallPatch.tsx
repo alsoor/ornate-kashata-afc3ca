@@ -148,13 +148,12 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
   const stageRef = useRef<HTMLDivElement | null>(null); // مكان فارغ داخل الصفحة يحجز الارتفاع فقط
   const aliveRef = useRef(true);
   const [showControls, setShowControls] = useState(true); // نقرة على الشاشة = إخفاء/إظهار الأزرار
-  void setShowControls;
   const [maxH, setMaxH] = useState<number | null>(null); // أقصى ارتفاع للشاشة كي لا تنزل تحت أزرار الجوال
   const [vw, setVw] = useState<number>(() => (typeof window !== 'undefined' ? window.innerWidth : 360)); // عرض الجهاز
   const [top, setTop] = useState<number | null>(null); // مكان الشاشة السفلية من أعلى الجهاز (تتبع المكان الفارغ)
   const leaveRef = useRef(onLeavePage);
   leaveRef.current = onLeavePage;
-  // نقرتين ورا بعض على كاميرتي = تبديل الكاميرا (أمامية / خلفية). النقرة الواحدة ما تقفل الكاميرا؛ الإغلاق من زر Video فقط
+  // نقرة وحدة على شاشتي = تختفي الأزرار ، نقرة ثانية = ترجع. نقرتين ورا بعض = تبديل الكاميرا (أمامية / خلفية). الإغلاق من زر Video فقط
   const tapTimer = useRef<number | null>(null);
   const switchRef = useRef(onSwitchCamera);
   switchRef.current = onSwitchCamera;
@@ -162,14 +161,15 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
   camOnRef.current = cameraOn;
   useEffect(() => () => { if (tapTimer.current != null) { window.clearTimeout(tapTimer.current); tapTimer.current = null; } }, []);
   const onPanelTap = () => {
-    if (!camOnRef.current) return;
     if (tapTimer.current != null) {
+      // نقرتين ورا بعض: تبديل الكاميرا (بدون إخفاء الأزرار)
       window.clearTimeout(tapTimer.current);
       tapTimer.current = null;
-      try { switchRef.current?.(); } catch { /* */ }
-    } else {
-      tapTimer.current = window.setTimeout(() => { tapTimer.current = null; }, 300);
+      if (camOnRef.current) { try { switchRef.current?.(); } catch { /* */ } }
+      return;
     }
+    // نقرة وحدة: ننتظر شوي، إذا ما جت نقرة ثانية نخفي/نرجّع الأزرار
+    tapTimer.current = window.setTimeout(() => { tapTimer.current = null; setShowControls(v => !v); }, 300);
   };
 
   useEffect(() => {
