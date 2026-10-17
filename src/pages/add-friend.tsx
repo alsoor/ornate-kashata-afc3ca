@@ -30538,7 +30538,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     document.body
                   )}
                                     {/* CALL-SLOT: the live call controls (owned by the layout) are drawn here, on this page */}
-                  <div id="stooorna-call-slot" data-call-slot-ready={homeCallUiActive ? '1' : '0'} style={{ width: '100%', maxWidth: 420, flexShrink: 0 }} />
+                  <div id="stooorna-call-slot" data-call-slot-ready={homeCallUiActive ? '1' : '0'} style={profileCallOnly ? { width: '100%', maxWidth: 420, flexShrink: 0 } : { width: '100%', maxWidth: 420, flexShrink: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' } /* CALL-CONTROLS-ONLY-IN-CALL-SHEET: hidden on the normal profile page, shown only in the call sheet opened from the bottom-bar Phone icon */} />
                 </div>
               </div>
             </>,
