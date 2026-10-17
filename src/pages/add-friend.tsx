@@ -10985,7 +10985,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
   const isHiddenPrivate = !isCompanyProfile && friendStateReady && !!profile?.isPrivate && friendState !== 'accepted';
 
-  const sheetShell = sheetMode ? (
+  const sheetSlideEnabled = false; // visitor profiles always open full screen (no side slide)
+  const sheetShell = sheetSlideEnabled && sheetMode ? (
     <motion.div
       key="friend-story-sheet-backdrop"
       initial={{ opacity: 0 }}
@@ -11002,7 +11003,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
     />
   ) : null;
 
-  const panelMotion = sheetMode
+  const panelMotion = sheetSlideEnabled && sheetMode
     ? {
         initial: { x: '100%' },
         animate: { x: 0 },
@@ -11066,6 +11067,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               aria-label={visitorBannerOpen ? 'Hide photo' : 'Show photo'}
               onClick={() => {
                 if (visitorBannerOpen) { setVisitorBannerOpen(false); return; }
+                setFriendMenuOpen(false);
                 setVisitorBannerH(Math.max(240, Math.round(window.innerHeight * 0.62)));
                 setVisitorBannerOpen(true);
               }}
@@ -11261,7 +11263,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             <p style={{ color: '#2563eb', fontSize: '0.74rem', fontWeight: 600, margin: '4px 0 0', letterSpacing: 0.2 }}>{visitorCountry}</p>
           ) : null}
 
-          {friendState === 'accepted' && (
+          {friendState === 'accepted' && !visitorBannerOpen && (
             <div style={{ position: 'relative', marginTop: 8, display: 'flex', justifyContent: 'center' }}>
               {friendMenuOpen && (
                 <div
