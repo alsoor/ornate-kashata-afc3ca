@@ -32,6 +32,8 @@ type DivRef = MutableRefObject<HTMLDivElement | null>;
 const SELF_W = 160; // تكبير الشاشة الصغيرة
 const SELF_H = 214;
 const EDGE = 6;
+const MX = 14; // هامش أبيض بسيط يمين ويسار الشاشتين
+const TOP_Y = 100; // مكان الشاشة العلوية من أعلى الصفحة (كبّر الرقم = تنزل أكثر)
 
 /** المسافة الآمنة السفلية (شريط النظام / الجسچر) بالبكسل */
 function safeBottomPx(): number {
@@ -75,7 +77,7 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera, onTo
   useEffect(() => {
     // تبدأ فوق منطقة البروفايل (تحت زر X) ويمكن سحبها عمودياً
     void anchorRef;
-    setPosY(clamp(76, EDGE, window.innerHeight - H - EDGE));
+    setPosY(clamp(TOP_Y, EDGE, window.innerHeight - H - EDGE));
     const onResize = () => setPosY(p => (p == null ? p : clamp(p, EDGE, window.innerHeight - H - EDGE)));
     window.addEventListener('resize', onResize);
     return () => {
@@ -123,8 +125,8 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera, onTo
       }}
       onPointerCancel={() => { drag.current = null; }}
       style={{
-        position: 'fixed', left: 0, top: posY, width: W, height: H, zIndex: 99999,
-        borderRadius: 0, overflow: 'hidden', background: '#10181b', touchAction: 'none', userSelect: 'none',
+        position: 'fixed', left: MX, top: posY, width: W, height: H, zIndex: 99999,
+        borderRadius: 18, overflow: 'hidden', background: '#10181b', touchAction: 'none', userSelect: 'none',
         boxShadow: '0 8px 24px rgba(0,0,0,0.35)', border: 0, cursor: 'grab',
       }}
     >
@@ -217,7 +219,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
       const edgeToEdge = Math.abs(window.innerHeight - window.screen.height) < 8;
       const reserve = Math.max(safeBottomPx(), 0) + 24 + (edgeToEdge ? 48 : 0);
       const avail = Math.floor(vh - (r.top + sc) - reserve);
-      const width = window.innerWidth;
+      const width = window.innerWidth - MX * 2;
       const next = avail < width ? Math.max(avail, 240) : null;
       setStageH(Math.round(el.getBoundingClientRect().height));
       setMaxH(prev => (prev === next || (prev !== null && next !== null && Math.abs(prev - next) < 3) ? prev : next));
@@ -243,7 +245,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
         data-vstage="1"
         onClick={() => setShowControls(v => !v)}
         style={{
-          gridColumn: '1 / -1', order: -1, width: vw, transform: `translateX(${-shift}px)`, aspectRatio: '1 / 1', maxHeight: maxH ?? undefined, borderRadius: 0,
+          gridColumn: '1 / -1', order: -1, width: vw - MX * 2, height: maxH ?? (vw - MX * 2), transform: `translateX(${MX - shift}px)`, borderRadius: 18,
           overflow: 'hidden', background: '#0b1417', position: 'relative', boxSizing: 'border-box',
         }}
       >
@@ -257,6 +259,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
         <div ref={remoteRef} style={{ position: 'absolute', inset: 0 }} />
         {controls && (
           <div
+            data-vctl="1"
             onClick={e => e.stopPropagation()}
             style={{
               position: 'absolute', left: 0, right: 0, bottom: 16, zIndex: 3, display: 'flex',
@@ -264,11 +267,13 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
               opacity: showControls ? 1 : 0, pointerEvents: showControls ? 'auto' : 'none', transition: 'opacity 0.18s ease',
             }}
           >
+            {/* تصغير أزرار الفيديو الثلاثة (Mute / Video / End) داخل الشاشة فقط */}
+            <style>{VIDEO_STAGE_CONTROLS_CSS}</style>
             {controls}
           </div>
         )}
       </div>
-      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} onSwitchCamera={onSwitchCamera} onToggleCamera={onToggleCamera} size={{ w: vw, h: stageH > 0 ? stageH : Math.min(vw, maxH ?? vw) }} thirdRef={thirdRef} thirdVideoOn={thirdVideoOn} />
+      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} onSwitchCamera={onSwitchCamera} onToggleCamera={onToggleCamera} size={{ w: vw - MX * 2, h: maxH ?? (vw - MX * 2) }} thirdRef={thirdRef} thirdVideoOn={thirdVideoOn} />
     </>
   );
 }
@@ -302,3 +307,7 @@ export function VideoCallButton({ cameraOn, onToggle, disabled, showLabel = true
 export const VIDEO_CALL_BUTTON_CSS = `.stooorna-call-light [data-scl="inner"] button[aria-label="Video off"] { background: #3a4348 !important; }
 .stooorna-call-light [data-scl="inner"] button[aria-label^="Video"] { display: flex !important; visibility: visible !important; opacity: 1 !important; color: #fff !important; }
 .stooorna-call-light [data-scl="inner"] button[aria-label^="Video"] svg { display: block !important; stroke: currentColor !important; }`;
+
+/** حجم أزرار الشاشة السفلية (Mute / Video / End) — غيّر 52 و 22 إذا تبي أصغر أو أكبر */
+export const VIDEO_STAGE_CONTROLS_CSS = `[data-vctl="1"] button { width: 52px !important; height: 52px !important; min-width: 0 !important; min-height: 0 !important; padding: 0 !important; }
+[data-vctl="1"] button svg { width: 22px !important; height: 22px !important; }`;
