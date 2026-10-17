@@ -19145,15 +19145,15 @@ function CallHandsetShimmerIcon({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}>
       <defs>
-        <linearGradient id="stooornaHandsetSilver" gradientUnits="userSpaceOnUse" x1="-14" y1="0" x2="-2" y2="0">
+        <linearGradient id="stooornaHandsetSilver" gradientUnits="userSpaceOnUse" x1="26" y1="0" x2="38" y2="0">
           <stop offset="0" stopColor="#c0c0c0" stopOpacity="0" />
           <stop offset="0.5" stopColor="#d9dde3" stopOpacity="1" />
           <stop offset="1" stopColor="#c0c0c0" stopOpacity="0" />
-          <animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="38 0" dur="1.8s" repeatCount="indefinite" />
+          <animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="-38 0" dur="1.8s" repeatCount="indefinite" />
         </linearGradient>
       </defs>
-      <path d={HANDSET_PATH} fill="#ffffff" stroke="#ffffff" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-      <path d={HANDSET_PATH} fill="url(#stooornaHandsetSilver)" stroke="url(#stooornaHandsetSilver)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      <path transform="translate(24 0) scale(-1 1)" d={HANDSET_PATH} fill="#ffffff" stroke="#ffffff" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      <path transform="translate(24 0) scale(-1 1)" d={HANDSET_PATH} fill="url(#stooornaHandsetSilver)" stroke="url(#stooornaHandsetSilver)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }
