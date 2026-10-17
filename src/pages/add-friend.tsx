@@ -18635,7 +18635,7 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
 
   const tile: React.CSSProperties = {
     flex: 1, minWidth: 0, aspectRatio: '3 / 4', borderRadius: 14, overflow: 'hidden', cursor: 'pointer',
-    border: `1px dashed ${CLR_PRIMARY_DIM}`, background: CLR_CARD_BG, color: '#fff',
+    border: `1px dashed ${CLR_PRIMARY_DIM}`, background: '#000000', color: '#fff',
     display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8,
     fontWeight: 800, fontSize: '0.9rem', padding: 0, position: 'relative',
   };
@@ -18657,15 +18657,15 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
 
       {s.stage === 'working' ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: '40px 10px' }}>
-          <div style={{ width: 46, height: 46, borderRadius: '50%', border: '4px solid rgba(255,255,255,0.15)', borderTopColor: CLR_PRIMARY, animation: 'stooornaSwapSpin 0.9s linear infinite' }} />
+          <div style={{ width: 46, height: 46, borderRadius: '50%', border: '4px solid rgba(0,0,0,0.15)', borderTopColor: CLR_PRIMARY, animation: 'stooornaSwapSpin 0.9s linear infinite' }} />
           <p style={{ margin: 0, textAlign: 'center', fontWeight: 700, fontSize: '0.88rem' }}>{s.msg}</p>
           <div style={{ width: '100%', maxWidth: 320, direction: 'ltr' }}>
-            <div style={{ height: 10, borderRadius: 999, background: 'rgba(255,255,255,0.12)', overflow: 'hidden' }}>
+            <div style={{ height: 10, borderRadius: 999, background: 'rgba(0,0,0,0.12)', overflow: 'hidden' }}>
               <div style={{ width: `${s.progress}%`, height: '100%', borderRadius: 999, background: `linear-gradient(90deg, ${CLR_PRIMARY}, #4dd0e1)`, transition: 'width 0.4s ease' }} />
             </div>
             <p style={{ margin: '8px 0 0', textAlign: 'center', fontWeight: 800, fontSize: '0.95rem', letterSpacing: 0.5 }}>{s.progress}/100</p>
           </div>
-          <button type="button" onClick={vsCancel} style={{ ...btn, width: 160, background: 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }}>إلغاء</button>
+          <button type="button" onClick={vsCancel} style={{ ...btn, width: 160, background: '#000000', color: '#fff', border: '1px solid #000000' }}>إلغاء</button>
         </div>
       ) : (
         <>
@@ -18684,7 +18684,7 @@ function LiveVideoSwapPanel({ onPost, userId }: { onPost: (caption: string, url:
             type="button"
             disabled={!ready}
             onClick={() => void vsRun(userId)}
-            style={{ ...btn, background: ready ? CLR_PRIMARY : 'rgba(255,255,255,0.12)', color: ready ? '#03181b' : 'rgba(255,255,255,0.4)', cursor: ready ? 'pointer' : 'default' }}
+            style={{ ...btn, background: '#000000', color: '#ffffff', cursor: ready ? 'pointer' : 'default' }}
           >
             <Send size={18} /> Share
           </button>
@@ -19774,7 +19774,7 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
       transition={{ type: 'tween', ease: [0.32, 0.72, 0, 1], duration: 0.32 }}
       onClick={e => e.stopPropagation()}
       style={{
-        position: 'fixed', inset: 0, zIndex: 10900, background: '#050d0f', color: '#fff',
+        position: 'fixed', inset: 0, zIndex: 10900, background: '#ffffff', color: '#000000', /* TPL-WHITE-PAGE */
         display: 'flex', flexDirection: 'column', pointerEvents: 'auto',
         paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
@@ -19782,7 +19782,7 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px' }}>
         <span style={{ fontWeight: 800, fontSize: '1rem' }}>Templates</span>
         <button type="button" onClick={onClose} aria-label="Close" style={{
-          width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.1)', color: '#fff',
+          width: 34, height: 34, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.08)', color: '#000000',
           cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}><X size={18} /></button>
       </div>
