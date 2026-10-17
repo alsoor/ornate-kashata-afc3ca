@@ -4670,6 +4670,13 @@ function GlobalBottomNavigation() {
   // green headset banner) instead of floating at the top. Same pill, same buttons, same state.
   const [profilePanelOpen, setProfilePanelOpen] = useState<boolean>(() => typeof window !== 'undefined' && !!(window as any).__stooornaProfilePanelOpen);
   const [panelSlotEl, setPanelSlotEl] = useState<HTMLElement | null>(null);
+  // CALL-SHEET-VIDEO: the two-screen video page is drawn only while the call sheet (bottom-bar Phone icon) is open.
+  const [callSheetOpen, setCallSheetOpen] = useState<boolean>(() => typeof window !== 'undefined' && !!(window as any).__stooornaCallSheetOpen);
+  useEffect(() => {
+    const h = (e: Event) => setCallSheetOpen(!!(e as CustomEvent).detail?.open);
+    window.addEventListener('stooorna:call-sheet', h as EventListener);
+    return () => window.removeEventListener('stooorna:call-sheet', h as EventListener);
+  }, []);
   const homeCallUiActiveNow = homeCallPhase === 'animating' || homeCallPhase === 'connecting' || homeCallPhase === 'live' || !!(homeIncoming && homeCallPhase === 'idle');
   useEffect(() => {
     const h = (e: Event) => setProfilePanelOpen(!!(e as CustomEvent).detail?.open);
@@ -5045,6 +5052,7 @@ function GlobalBottomNavigation() {
                 thirdRef={thirdVideoRef}
                 showSelf={homeCallIsVideo || homeCallStageKeep}
                 thirdVideoOn={homeCallThirdVideo}
+                hidden={!callSheetOpen}
                 controls={(
                   <>
                     <button

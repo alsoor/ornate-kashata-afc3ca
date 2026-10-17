@@ -24066,7 +24066,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
 //  • Call long-press → friends (avatar + name); one tap calls directly.
 // A normal tap still opens the full page exactly as before.
 // ───────────────────────────────────────────────────────────────────────────────────────────
-type DockShortcutKind = 'live' | 'call' | 'ai' | 'settings';
+type DockShortcutKind = 'live' | 'call' | 'chat' | 'ai' | 'settings';
 type DockShortcutState = null | { kind: DockShortcutKind; x: number; top: number; at: number };
 let dockShortcutState: DockShortcutState = null;
 const dockShortcutSubs = new Set<() => void>();
@@ -24096,6 +24096,7 @@ function makeDockLongPress(ms = 450) {
 }
 const liveDockLongPress = makeDockLongPress();
 const callDockLongPress = makeDockLongPress();
+const chatDockLongPress = makeDockLongPress();
 const settingsDockLongPress = makeDockLongPress();
 function openDockShortcut(kind: DockShortcutKind, el: HTMLElement | null) {
   const r = el?.getBoundingClientRect();
@@ -24164,7 +24165,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
     return () => { off = true; };
   }, [kind, user?.id]);
   useEffect(() => {
-    if (kind !== 'call') return;
+    if (kind !== 'call' && kind !== 'chat') return;
     let off = false;
     if (dockFriendsCache.list) setFriends(dockFriendsCache.list);
     void refreshDockFriends().then(list => { if (!off && list) setFriends(list); });
@@ -24176,7 +24177,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
   if (!sc || typeof document === 'undefined' || !user?.id) return null;
   const close = () => dockShortcutSet(null);
   const vw = window.innerWidth;
-  const boxW = sc.kind === 'ai' ? 244 : (sc.kind === 'call' || sc.kind === 'settings') ? 212 : 196; // DOCK-SHORTCUTS: LIVE rows now show names like the Call bubble
+  const boxW = sc.kind === 'ai' ? 244 : (sc.kind === 'call' || sc.kind === 'chat' || sc.kind === 'settings') ? 212 : 196; // DOCK-SHORTCUTS: LIVE rows now show names like the Call bubble
   const boxLeft = Math.max(8, Math.min(vw - boxW - 8, sc.x - boxW / 2));
   const tailLeft = Math.max(14, Math.min(boxW - 14, sc.x - boxLeft));
   const bottom = window.innerHeight - sc.top + 12;
@@ -24224,7 +24225,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
           border: '1.5px solid #0f4040', boxShadow: '0 10px 28px rgba(0,0,0,0.5)',
           animation: 'stooornaDockShortcutPop .18s ease-out', transformOrigin: `${tailLeft}px 100%`,
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
-          maxHeight: 'min(52vh, 360px)', overflowY: (sc.kind === 'call' || sc.kind === 'ai') ? 'auto' : 'visible',
+          maxHeight: 'min(52vh, 360px)', overflowY: (sc.kind === 'call' || sc.kind === 'chat' || sc.kind === 'ai') ? 'auto' : 'visible',
           WebkitOverflowScrolling: 'touch', userSelect: 'none', WebkitUserSelect: 'none',
         }}
       >
@@ -24304,6 +24305,34 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
                   {f.username ? (String(f.username).startsWith('@') ? f.username : `@${f.username}`) : (f.name || 'Friend')}
                 </span>
                 <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#22c55e', background: 'rgba(34,197,94,0.14)', border: '1.5px solid rgba(34,197,94,0.75)' }}><Phone size={15} strokeWidth={2.4} /></span>
+              </button>
+            ))}
+          </>
+        )}
+        {sc.kind === 'chat' && (
+          <>
+            {friends.length === 0 && (
+              <p style={{ margin: '10px 4px', textAlign: 'center', fontSize: '0.74rem', color: 'rgba(150,200,200,0.7)' }}>
+                {dockFriendsCache.list === null ? 'Loading…' : 'No friends to chat with yet'}
+              </p>
+            )}
+            {friends.map(f => (
+              <button
+                key={f.friendId}
+                type="button"
+                role="menuitem"
+                aria-label={`Chat with ${f.username || f.name || 'friend'}`}
+                onClick={() => {
+                  close();
+                  try { window.dispatchEvent(new CustomEvent('stooorna:open-friend-chat', { detail: { friendId: f.friendId, peerName: f.name ?? null, peerUsername: f.username ?? null, peerAvatar: f.avatarUrl ?? null } })); } catch { /* */ }
+                }}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '5px 6px', borderRadius: 12, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.06)', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
+              >
+                <UserAvatar name={f.username || f.name || '?'} avatarUrl={f.avatarUrl ?? null} size={34} style={{ flexShrink: 0, border: 'none' }} />
+                <span style={{ flex: 1, minWidth: 0, color: '#d7eeee', fontWeight: 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {f.username ? (String(f.username).startsWith('@') ? f.username : `@${f.username}`) : (f.name || 'Friend')}
+                </span>
+                <span aria-hidden="true" style={{ width: 30, height: 30, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#3b82f6', background: 'rgba(59,130,246,0.14)', border: '1.5px solid rgba(59,130,246,0.75)' }}><MessageCircle size={15} strokeWidth={2.3} /></span>
               </button>
             ))}
           </>
@@ -27250,6 +27279,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // CALL-ONLY-SHEET: opened from the Call icon in the bottom bar. Same profile page, but only the green call button is shown
   // (no avatar, name, bio, stats row, gear) and the friends list opens by itself under the green button.
   const [profileCallOnly, setProfileCallOnly] = useState(false);
+  // CALL-SHEET-VIDEO: tell the layout when the call sheet is open so the two-screen video page shows only there.
+  useEffect(() => {
+    const open = profileSlideOpen && profileCallOnly;
+    (window as any).__stooornaCallSheetOpen = open;
+    try { window.dispatchEvent(new CustomEvent('stooorna:call-sheet', { detail: { open } })); } catch { /* */ }
+  }, [profileSlideOpen, profileCallOnly]);
+  useEffect(() => () => { (window as any).__stooornaCallSheetOpen = false; try { window.dispatchEvent(new CustomEvent('stooorna:call-sheet', { detail: { open: false } })); } catch { /* */ } }, []);
   const [profileCallFriends, setProfileCallFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
   const [profileCallLoading, setProfileCallLoading] = useState(false);
   useEffect(() => {
@@ -30207,7 +30243,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   >×</button>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8, ...(profileCallOnly && !homeCallUiActive ? { flex: 1, justifyContent: 'center', paddingTop: 0, paddingBottom: 90 } /* CALL-SHEET-CENTERED: green call button sits in the middle of the white screen, friends list opens under it */ : {}) }}>
                   {user && !profileCallOnly && (() => {
                     const myGroup = storyGroups.find(g => g.userId === user?.id);
                     const hasStory = !!myGroup && myGroup.items.length > 0;
@@ -30392,7 +30428,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                   {/* CALL-BANNER: green headset banner under the ON/OFF switch (moved from the bottom bar) */}
                   {user?.id && profileCallOnly ? (
-                    <div style={{ width: '100%', maxWidth: 280, margin: profileCallOnly ? '28px auto 2px' : '12px auto 2px', display: 'flex', justifyContent: 'center' }}>
+                    <div style={{ width: '100%', maxWidth: 280, margin: profileCallOnly ? '0 auto 2px' : '12px auto 2px', display: 'flex', justifyContent: 'center' }}>
                       <button
                         type="button"
                         data-stooorna-call-banner="1"
@@ -30400,8 +30436,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         onPointerDown={(e) => {
                           // not ringing: long-press shows friends above the banner; tap one to call directly
                           if (!profilePlusIncomingCallUi.ringing) {
-                            const el = e.currentTarget;
-                            callDockLongPress.start(() => { setDownCallBubble(null); openDockShortcut('call', el); });
+                            // INSIDE-LONG-PRESS-REMOVED: the green button in the call sheet has no long-press menu any more
+                            // (the long-press names list lives on the bottom-bar Phone / Chat icons only)
                             return;
                           }
                           // ringing: long-press declines the incoming call
@@ -30754,7 +30790,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
                       <button
                         type="button"
-                        onClick={() => { setProfileCallOnly(true); setProfileSlideOpen(true); }}
+                        onPointerDown={(e) => { const el = e.currentTarget; callDockLongPress.start(() => openDockShortcut('call', el)); }} /* long-press: friends with a call icon */
+                        onPointerUp={callDockLongPress.end}
+                        onPointerLeave={callDockLongPress.end}
+                        onPointerCancel={callDockLongPress.end}
+                        onContextMenu={(e) => e.preventDefault()}
+                        onClick={() => {
+                          if (callDockLongPress.st.fired) { callDockLongPress.st.fired = false; return; }
+                          setProfileCallOnly(true); setProfileSlideOpen(true);
+                        }}
                         aria-label="Call"
                         style={{
                           WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
@@ -30776,7 +30820,13 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
                       <button
                         type="button"
+                        onPointerDown={(e) => { const el = e.currentTarget; chatDockLongPress.start(() => openDockShortcut('chat', el)); }} /* long-press: friends with a chat icon */
+                        onPointerUp={chatDockLongPress.end}
+                        onPointerLeave={chatDockLongPress.end}
+                        onPointerCancel={chatDockLongPress.end}
+                        onContextMenu={(e) => e.preventDefault()}
                         onClick={() => {
+                          if (chatDockLongPress.st.fired) { chatDockLongPress.st.fired = false; return; }
                           setAiOpen(true);
                           try { window.dispatchEvent(new CustomEvent('stooorna:open-chat-list')); } catch { /* */ }
                         }}
