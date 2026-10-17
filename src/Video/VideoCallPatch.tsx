@@ -33,6 +33,7 @@ const SELF_W = 160; // تكبير الشاشة الصغيرة
 const SELF_H = 214;
 const EDGE = 6;
 const MX = 14; // هامش أبيض بسيط يمين ويسار الشاشتين
+const CONTROLS_GAP = 64; // المسافة بين أزرار Mute / Video / End (كبّر الرقم = تتباعد أكثر)
 const CONTROLS_SCALE = 0.8; // تصغير أزرار Mute / Video / End (1 = الحجم الأصلي، 0.7 أصغر)
 const TOP_Y = 100; // مكان الشاشة العلوية من أعلى الصفحة (كبّر الرقم = تنزل أكثر)
 
@@ -52,25 +53,10 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(Math.max(v, min), Math.max(min, max));
 }
 
-/** الشاشة العلوية: بنفس حجم السفلية، تنسحب عمودياً، وتنقسم نصفين عند فيديو الشخص الثالث */
-function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera, onToggleCamera, size, thirdRef, thirdVideoOn }: { localRef: DivRef; cameraOn: boolean; anchorRef: MutableRefObject<HTMLDivElement | null>; onSwitchCamera?: () => void; onToggleCamera?: () => void; size: { w: number; h: number }; thirdRef?: DivRef; thirdVideoOn?: boolean }) {
+/** الشاشة العلوية: الأشخاص الثانيين (المتصل عليه + الثالث). بنفس حجم السفلية، تنسحب عمودياً، وتنقسم نصفين بدون فاصل عند فيديو الثالث */
+function DraggableSelfView({ remoteRef, anchorRef, size, thirdRef, thirdVideoOn, peerName, peerAvatarUrl }: { remoteRef: DivRef; anchorRef: MutableRefObject<HTMLDivElement | null>; size: { w: number; h: number }; thirdRef?: DivRef; thirdVideoOn?: boolean; peerName?: string | null; peerAvatarUrl?: string | null }) {
   const [posY, setPosY] = useState<number | null>(null);
-  const drag = useRef<{ dy: number; id: number; sx: number; sy: number; moved: boolean; px: number } | null>(null);
-  // نقرة = فتح/إغلاق الكاميرا ، نقرتين ورا بعض = تبديل الكاميرا (أمامية / خلفية)
-  const tapTimer = useRef<number | null>(null);
-  const lastToggle = useRef(0);
-  const switchRef = useRef(onSwitchCamera);
-  switchRef.current = onSwitchCamera;
-  const toggleRef = useRef(onToggleCamera);
-  toggleRef.current = onToggleCamera;
-  const camOnRef = useRef(cameraOn);
-  camOnRef.current = cameraOn;
-  const fireToggle = () => {
-    const now = Date.now();
-    if (now - lastToggle.current < 900) return; // حماية من الضغط المتكرر أثناء فتح الكاميرا
-    lastToggle.current = now;
-    try { toggleRef.current?.(); } catch { /* */ }
-  };
+  const drag = useRef<{ dy: number; id: number } | null>(null);
   const W = size.w;
   const H = size.h;
   const maxY = () => Math.max(EDGE, window.innerHeight - H - EDGE);
@@ -81,70 +67,44 @@ function DraggableSelfView({ localRef, cameraOn, anchorRef, onSwitchCamera, onTo
     setPosY(clamp(TOP_Y, EDGE, window.innerHeight - H - EDGE));
     const onResize = () => setPosY(p => (p == null ? p : clamp(p, EDGE, window.innerHeight - H - EDGE)));
     window.addEventListener('resize', onResize);
-    return () => {
-      window.removeEventListener('resize', onResize);
-      if (tapTimer.current != null) { window.clearTimeout(tapTimer.current); tapTimer.current = null; }
-    };
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   if (posY == null || typeof document === 'undefined') return null;
   const split = !!thirdVideoOn;
+  const label = (peerName || '?').trim();
 
   return createPortal(
     <div
       onPointerDown={e => {
-        const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-        drag.current = { dy: e.clientY - posY, id: e.pointerId, sx: e.clientX, sy: e.clientY, moved: false, px: e.clientX - rect.left };
+        drag.current = { dy: e.clientY - posY, id: e.pointerId };
         try { (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId); } catch { /* */ }
       }}
       onPointerMove={e => {
         const d = drag.current;
         if (!d || d.id !== e.pointerId) return;
-        if (Math.abs(e.clientX - d.sx) > 8 || Math.abs(e.clientY - d.sy) > 8) d.moved = true;
         setPosY(clamp(e.clientY - d.dy, EDGE, maxY()));
       }}
       onPointerUp={e => {
-        const d = drag.current;
         drag.current = null;
-        // النقر على نصف الشخص الثالث (يمين) لا يغيّر كاميرتي
-        const onThirdHalf = split && !!d && d.px > W / 2;
-        if (d && !d.moved && !onThirdHalf) {
-          if (!camOnRef.current) {
-            // الكاميرا مغلقة: نقرة وحدة تفتحها
-            fireToggle();
-          } else if (tapTimer.current != null) {
-            // نقرتين ورا بعض: تبديل أمامية / خلفية
-            window.clearTimeout(tapTimer.current);
-            tapTimer.current = null;
-            try { switchRef.current?.(); } catch { /* */ }
-          } else {
-            // نقرة وحدة: ننتظر شوي، إذا ما جت نقرة ثانية نقفل الكاميرا
-            tapTimer.current = window.setTimeout(() => { tapTimer.current = null; fireToggle(); }, 300);
-          }
-        }
         try { (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId); } catch { /* */ }
       }}
       onPointerCancel={() => { drag.current = null; }}
       style={{
         position: 'fixed', left: MX, top: posY, width: W, height: H, zIndex: 99999,
-        borderRadius: 18, overflow: 'hidden', background: '#10181b', touchAction: 'none', userSelect: 'none',
+        borderRadius: 18, overflow: 'hidden', background: '#0b1417', touchAction: 'none', userSelect: 'none',
         boxShadow: '0 8px 24px rgba(0,0,0,0.35)', border: 0, cursor: 'grab',
       }}
     >
-      {/* كاميرتي: كامل العرض، أو النصف الأيسر عند انقسام الشاشة (بدون فاصل) */}
+      {/* خلفية قبل وصول الفيديو */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+        {peerAvatarUrl
+          ? <img src={peerAvatarUrl} alt="" style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', opacity: 0.9 }} />
+          : <span style={{ width: 84, height: 84, borderRadius: '50%', background: '#0e7490', color: '#fff', fontWeight: 800, fontSize: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{label[0]}</span>}
+      </div>
+      {/* المتصل عليه: كامل العرض، أو النصف الأيسر عند انقسام الشاشة (بدون فاصل) */}
       <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: split ? '50%' : '100%', overflow: 'hidden' }}>
-        <div ref={localRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
-        {!cameraOn && (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
-            justifyContent: 'center', gap: 6, background: '#10181b', color: '#fff', pointerEvents: 'none',
-          }}>
-            <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Video size={26} strokeWidth={2.2} />
-            </div>
-            <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5 }}>Off</span>
-          </div>
-        )}
+        <div ref={remoteRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
       </div>
       {/* الشخص الثالث: النصف الأيمن، يظهر فقط إذا شغّل الفيديو */}
       {thirdRef && (
@@ -185,11 +145,38 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
   const stageRef = useRef<HTMLDivElement | null>(null); // مكان فارغ داخل الصفحة يحجز الارتفاع فقط
   const aliveRef = useRef(true);
   const [showControls, setShowControls] = useState(true); // نقرة على الشاشة = إخفاء/إظهار الأزرار
+  void setShowControls;
   const [maxH, setMaxH] = useState<number | null>(null); // أقصى ارتفاع للشاشة كي لا تنزل تحت أزرار الجوال
   const [vw, setVw] = useState<number>(() => (typeof window !== 'undefined' ? window.innerWidth : 360)); // عرض الجهاز
   const [top, setTop] = useState<number | null>(null); // مكان الشاشة السفلية من أعلى الجهاز (تتبع المكان الفارغ)
   const leaveRef = useRef(onLeavePage);
   leaveRef.current = onLeavePage;
+  // نقرة = فتح/إغلاق الكاميرا ، نقرتين ورا بعض = تبديل الكاميرا (أمامية / خلفية)
+  const tapTimer = useRef<number | null>(null);
+  const lastToggle = useRef(0);
+  const switchRef = useRef(onSwitchCamera);
+  switchRef.current = onSwitchCamera;
+  const toggleRef = useRef(onToggleCamera);
+  toggleRef.current = onToggleCamera;
+  const camOnRef = useRef(cameraOn);
+  camOnRef.current = cameraOn;
+  const fireToggle = () => {
+    const now = Date.now();
+    if (now - lastToggle.current < 900) return; // حماية من الضغط المتكرر أثناء فتح الكاميرا
+    lastToggle.current = now;
+    try { toggleRef.current?.(); } catch { /* */ }
+  };
+  useEffect(() => () => { if (tapTimer.current != null) { window.clearTimeout(tapTimer.current); tapTimer.current = null; } }, []);
+  const onPanelTap = () => {
+    if (!camOnRef.current) { fireToggle(); return; }
+    if (tapTimer.current != null) {
+      window.clearTimeout(tapTimer.current);
+      tapTimer.current = null;
+      try { switchRef.current?.(); } catch { /* */ }
+    } else {
+      tapTimer.current = window.setTimeout(() => { tapTimer.current = null; fireToggle(); }, 300);
+    }
+  };
 
   useEffect(() => {
     aliveRef.current = true;
@@ -246,7 +233,6 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
 
   const W = vw - MX * 2;
   const H = maxH ?? W;
-  const label = (peerName || '?').trim();
   return (
     <>
       {/* مكان فارغ: يحجز الارتفاع داخل الصفحة (RootLayout يخفي كل شي غيره في وضع الفيديو) */}
@@ -258,21 +244,26 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
       {top != null && typeof document !== 'undefined' && createPortal(
         <div
           data-vpanel="1"
-          onClick={() => setShowControls(v => !v)}
+          onClick={onPanelTap}
           style={{
             position: 'fixed', left: MX, top, width: W, height: H, zIndex: 99990, borderRadius: 18,
             overflow: 'hidden', background: '#0b1417', boxSizing: 'border-box',
           }}
         >
           <style>{VIDEO_STAGE_PANEL_CSS}</style>
-          {/* خلفية قبل وصول الفيديو */}
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {peerAvatarUrl
-              ? <img src={peerAvatarUrl} alt="" style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', opacity: 0.9 }} />
-              : <span style={{ width: 84, height: 84, borderRadius: '50%', background: '#0e7490', color: '#fff', fontWeight: 800, fontSize: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{label[0]}</span>}
-          </div>
-          {/* شاشة الشخص المتصل عليه — ثابتة */}
-          <div ref={remoteRef} style={{ position: 'absolute', inset: 0 }} />
+          {/* كاميرتي أنا (المتصل) — تحت */}
+          <div ref={localRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+          {!cameraOn && (
+            <div style={{
+              position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center',
+              justifyContent: 'center', gap: 6, background: '#10181b', color: '#fff', pointerEvents: 'none',
+            }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.14)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Video size={26} strokeWidth={2.2} />
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.5 }}>Off</span>
+            </div>
+          )}
           {controls && (
             <div
               data-vctl="1"
@@ -284,7 +275,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
               }}
             >
               {/* تصغير أزرار الفيديو الثلاثة (Mute / Video / End) داخل الشاشة فقط */}
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 22, transform: `scale(${CONTROLS_SCALE})`, transformOrigin: 'center bottom' }}>
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: CONTROLS_GAP, transform: `scale(${CONTROLS_SCALE})`, transformOrigin: 'center bottom' }}>
                 {controls}
               </div>
             </div>
@@ -292,7 +283,7 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
         </div>,
         document.body,
       )}
-      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} onSwitchCamera={onSwitchCamera} onToggleCamera={onToggleCamera} size={{ w: W, h: H }} thirdRef={thirdRef} thirdVideoOn={thirdVideoOn} />
+      <DraggableSelfView remoteRef={remoteRef} anchorRef={stageRef} size={{ w: W, h: H }} thirdRef={thirdRef} thirdVideoOn={thirdVideoOn} peerName={peerName} peerAvatarUrl={peerAvatarUrl} />
     </>
   );
 }
