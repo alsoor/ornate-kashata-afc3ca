@@ -10745,6 +10745,10 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const [profile, setProfile] = useState<MiniProfileData | null>(null);
   const [, setLoading] = useState(true);
   const [avatarExpanded, setAvatarExpanded] = useState(false);
+  // Visitor banner: the profile photo fills the top; tap = it drops down, tap again = it rises back
+  const [visitorBannerOpen, setVisitorBannerOpen] = useState(false);
+  const [visitorBannerH, setVisitorBannerH] = useState(0);
+  useBackClose(visitorBannerOpen, () => setVisitorBannerOpen(false));
   const [friendState, setFriendState] = useState<'none' | 'pending' | 'accepted'>(() => friendStateFromCache(authorId));
   // false until we really know whether this person is a friend — until then the add-friend / private-lock UI stays hidden
   const [friendStateReady, setFriendStateReady] = useState<boolean>(() => friendsStateCache !== null);
@@ -10976,6 +10980,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
   const username = profile?.username ?? authorUsername;
   const avatarUrl = resolveMediaUrl(profile?.avatarUrl ?? authorAvatarUrl) || (profile?.avatarUrl ?? authorAvatarUrl);
   const coverUrl = profile?.coverUrl ?? null;
+  const bannerMode = !!avatarUrl;
   const pinnedTrack = pinnedTrackFromProfile(profile);
   // الشركات عامة دائماً — لا تُخفى حتى لو وُسم الحساب خاصاً أو بدون صداقة
   const isHiddenPrivate = !isCompanyProfile && friendStateReady && !!profile?.isPrivate && friendState !== 'accepted';
@@ -11051,11 +11056,38 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         {/* Top bar: close + optional cover strip (short when no cover) */}
         <div style={{
           width: '100%',
-          height: coverUrl ? 72 : 'max(44px, calc(env(safe-area-inset-top, 0px) + 36px))',
+          height: bannerMode ? 'calc(140px + env(safe-area-inset-top, 0px))' : (coverUrl ? 72 : 'max(44px, calc(env(safe-area-inset-top, 0px) + 36px))'),
           position: 'relative',
           background: 'transparent',
         }}>
-          {coverUrl && (
+          {bannerMode && (
+            <div
+              role="button"
+              aria-label={visitorBannerOpen ? 'Hide photo' : 'Show photo'}
+              onClick={() => {
+                if (visitorBannerOpen) { setVisitorBannerOpen(false); return; }
+                setVisitorBannerH(Math.max(240, Math.round(window.innerHeight * 0.62)));
+                setVisitorBannerOpen(true);
+              }}
+              style={{
+                position: 'absolute', left: 0, right: 0, top: 0, zIndex: 1,
+                height: visitorBannerOpen ? visitorBannerH : '100%',
+                overflow: 'hidden', cursor: 'pointer', background: '#e5e7eb',
+                borderRadius: visitorBannerOpen ? '0 0 22px 22px' : 0,
+                boxShadow: visitorBannerOpen ? '0 10px 28px rgba(0,0,0,0.28)' : 'none',
+                transition: 'height .42s cubic-bezier(.32,.72,0,1), border-radius .42s ease, box-shadow .42s ease',
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              <img
+                src={avatarUrl || undefined}
+                alt=""
+                draggable={false}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 22%', display: 'block', userSelect: 'none', WebkitUserSelect: 'none' }}
+              />
+            </div>
+          )}
+          {!bannerMode && coverUrl && (
             <img
               src={coverUrl}
               alt=""
@@ -11070,9 +11102,9 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             aria-label="Close"
             style={{
               position: 'absolute', top: 'max(10px, env(safe-area-inset-top, 0px))', insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
-              background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
-              border: coverUrl ? 'none' : `1px solid ${CLR_PRIMARY_BORDER}`,
-              color: coverUrl ? '#fff' : CLR_PRIMARY,
+              background: (coverUrl || bannerMode) ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
+              border: (coverUrl || bannerMode) ? 'none' : `1px solid ${CLR_PRIMARY_BORDER}`,
+              color: (coverUrl || bannerMode) ? '#fff' : CLR_PRIMARY,
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
             }}
@@ -11098,9 +11130,10 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
         {/* Avatar + stats — pulled up toward the green-circle level */}
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
-          marginTop: coverUrl ? -28 : -4,
+          marginTop: bannerMode ? 8 : (coverUrl ? -28 : -4),
           paddingBottom: 2,
         }}>
+          {!bannerMode && (
           <VipAvatarFrame userId={authorId} size={80}>
             <motion.button
               whileTap={{ scale: 0.94 }}
@@ -11110,6 +11143,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               <UserAvatar name={name || ''} avatarUrl={avatarUrl} size={80} style={{ width: '100%', height: '100%', borderRadius: '50%', border: 'none' }} />
             </motion.button>
           </VipAvatarFrame>
+          )}
 
           <p style={{ color: CLR_TEXT, fontSize: '0.88rem', fontWeight: 700, margin: '6px 0 0' }}>{name || username || '—'}</p>
           {username && <p style={{ color: resolveVipNameStyle(authorId).color || CLR_PRIMARY, fontSize: '0.72rem', fontWeight: 600, margin: '2px 0 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexWrap: 'wrap' }}>@{username}
@@ -27030,8 +27064,23 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // PROFILE-BANNER-SHUTTER: big photo strip above the yellow line; tap = it drops down like a shutter to the call banner, tap again = it rises back
   const [profileBannerOpen, setProfileBannerOpen] = useState(false);
   const [profileBannerH, setProfileBannerH] = useState(0);
+  const [profileBannerMenuOpen, setProfileBannerMenuOpen] = useState(false);
+  const expandProfileBanner = () => {
+    try {
+      const panel = document.querySelector('[data-profile-panel="1"]') as HTMLElement | null;
+      const call = document.querySelector('[data-profile-call-banner="1"]') as HTMLElement | null;
+      if (panel && call) {
+        const pr = panel.getBoundingClientRect();
+        const cr = call.getBoundingClientRect();
+        setProfileBannerH(Math.max(240, Math.round(cr.bottom - pr.top + panel.scrollTop)));
+      } else {
+        setProfileBannerH(Math.round(window.innerHeight * 0.6));
+      }
+    } catch { setProfileBannerH(Math.round(window.innerHeight * 0.6)); }
+    setProfileBannerOpen(true);
+  };
   useBackClose(profileBannerOpen, () => setProfileBannerOpen(false)); // HARDWARE-BACK-PATCH
-  useEffect(() => { if (!profileSlideOpen) setProfileBannerOpen(false); }, [profileSlideOpen]);
+  useEffect(() => { if (!profileSlideOpen) { setProfileBannerOpen(false); setProfileBannerMenuOpen(false); } }, [profileSlideOpen]);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   // [perf] نسخة مؤجّلة من حالة الشيت للوحة الشات الثقيلة (تُحمَّل بعد بدء حركة الشيت لا قبلها)
@@ -30072,18 +30121,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       aria-label={profileBannerOpen ? 'Hide photo' : 'Show photo'}
                       onClick={() => {
                         if (profileBannerOpen) { setProfileBannerOpen(false); return; }
-                        try {
-                          const panel = document.querySelector('[data-profile-panel="1"]') as HTMLElement | null;
-                          const call = document.querySelector('[data-profile-call-banner="1"]') as HTMLElement | null;
-                          if (panel && call) {
-                            const pr = panel.getBoundingClientRect();
-                            const cr = call.getBoundingClientRect();
-                            setProfileBannerH(Math.max(240, Math.round(cr.bottom - pr.top + panel.scrollTop)));
-                          } else {
-                            setProfileBannerH(Math.round(window.innerHeight * 0.6));
-                          }
-                        } catch { setProfileBannerH(Math.round(window.innerHeight * 0.6)); }
-                        setProfileBannerOpen(true);
+                        const myStoryGrp = storyGroups.find(g => g.userId === user?.id);
+                        if (myStoryGrp && myStoryGrp.items.length > 0) { setProfileBannerMenuOpen(true); return; }
+                        expandProfileBanner();
                       }}
                       style={{
                         position: 'absolute', left: 0, right: 0, top: 0, zIndex: 2,
@@ -30114,15 +30154,43 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       style={{
                         position: 'absolute', top: 'calc(12px + env(safe-area-inset-top, 0px))', right: 12, zIndex: 4,
                         width: 34, height: 34, borderRadius: '50%', padding: 0,
-                        background: '#ef4444', border: '2px solid #fff', color: '#fff', cursor: 'pointer',
+                        background: '#ef4444', border: 'none', color: '#fff', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 22, fontWeight: 800, lineHeight: 1,
+                        fontSize: 18, fontWeight: 700, lineHeight: 1,
                         animation: 'stooornaTopPlusPulse 1.8s ease-out infinite',
                         WebkitTapHighlightColor: 'transparent',
                       }}
                     >+</button>
                   </>
                 ) : null}
+                {profileBannerMenuOpen && typeof document !== 'undefined' && createPortal(
+                  <div
+                    onClick={() => setProfileBannerMenuOpen(false)}
+                    style={{ position: 'fixed', inset: 0, zIndex: 16300, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  >
+                    <div
+                      onClick={e => e.stopPropagation()}
+                      style={{ width: 'min(280px, 86vw)', background: '#ffffff', borderRadius: 16, overflow: 'hidden', boxShadow: '0 12px 40px rgba(0,0,0,0.35)' }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileBannerMenuOpen(false);
+                          const g = storyGroups.find(x => x.userId === user?.id);
+                          if (g) setViewerGroupIdx(storyGroups.indexOf(g));
+                        }}
+                        style={{ width: '100%', padding: '16px 18px', border: 'none', background: 'transparent', color: '#0a0a0a', fontSize: 15, fontWeight: 700, textAlign: 'center', cursor: 'pointer' }}
+                      >Story Views</button>
+                      <div style={{ height: 1, background: 'rgba(0,0,0,0.1)' }} />
+                      <button
+                        type="button"
+                        onClick={() => { setProfileBannerMenuOpen(false); expandProfileBanner(); }}
+                        style={{ width: '100%', padding: '16px 18px', border: 'none', background: 'transparent', color: '#0a0a0a', fontSize: 15, fontWeight: 700, textAlign: 'center', cursor: 'pointer' }}
+                      >View Profile Picture</button>
+                    </div>
+                  </div>,
+                  document.body
+                )}
                 <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8, position: 'relative', zIndex: 3 }}>
                   <button
                     type="button"
