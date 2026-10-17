@@ -30381,7 +30381,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         {homeCallUiActive && homeCallBannerLabel ? (
                           <span style={{ color: '#ffffff', fontWeight: 800, fontSize: 15, padding: '0 12px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{homeCallBannerLabel}</span>
                         ) : (
-                          <Phone size={24} strokeWidth={2.3} color="#ffffff" />
+                          <Phone size={24} strokeWidth={2.3} color="#ffffff" fill="#ffffff" style={{ transform: 'scaleX(-1)' }} />
                         )}
                       </button>
                     </div>

@@ -12181,7 +12181,7 @@ export default function SettingsPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             style={{
-              position: 'fixed', inset: 0, zIndex: 10350,
+              position: 'fixed', inset: 0, zIndex: 10395,
               background: 'rgba(0,0,0,0.96)', backdropFilter: 'blur(10px)',
               display: 'flex', flexDirection: 'column',
             }}
@@ -12722,11 +12722,13 @@ export default function SettingsPage() {
         user as { email?: string | null; username?: string | null; name?: string | null },
         profileUsername,
       ) && (
-        <StoryModerationManager
-          users={allUsers as unknown as { id: string; username: string | null; email: string; name?: string | null }[]}
-          onClose={() => setShowOwnerStoryMod(false)}
-          onRefreshUsers={() => { void loadOwnerData(); }}
-        />
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10395 }}>
+          <StoryModerationManager
+            users={allUsers as unknown as { id: string; username: string | null; email: string; name?: string | null }[]}
+            onClose={() => setShowOwnerStoryMod(false)}
+            onRefreshUsers={() => { void loadOwnerData(); }}
+          />
+        </div>
       )}
 
       {/* ── Owner note for Business applicant (one-time) ── */}
