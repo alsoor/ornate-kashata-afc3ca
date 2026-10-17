@@ -759,7 +759,8 @@ function FriendChatPatch() {
     const measure = () => {
       const ir = sheet.inner.getBoundingClientRect();
       const top = sheet.header.getBoundingClientRect().bottom - ir.top;
-      const bottom = sheet.form ? ir.bottom - sheet.form.getBoundingClientRect().top : 90;
+      const fr = sheet.form ? sheet.form.getBoundingClientRect() : null; // DOCK-CHAT-LIST: composer hidden on the chat list -> panel runs down to the bottom
+      const bottom = fr && fr.height > 0 ? ir.bottom - fr.top : (sheet.form ? 12 : 90);
       setRect(p => (Math.abs(p.top - top) < 0.5 && Math.abs(p.bottom - bottom) < 0.5 ? p : { top, bottom }));
       const badge = Array.from(sheet.header.children).find(c => c !== sheet.header.firstElementChild && !c.hasAttribute('data-sfc-portal')) as HTMLElement | undefined;
       const bl = badge ? badge.getBoundingClientRect() : null;
@@ -783,6 +784,15 @@ function FriendChatPatch() {
     if (ta) ta.setAttribute('placeholder', mode === 'chat' ? 'اكتب رسالة…' : 'Ask anything');
     return () => { sheet.header.removeAttribute('data-sfc'); };
   }, [sheet, mode]);
+
+  /* 7b) DOCK-CHAT-LIST: the chat LIST page (no friend open) has no message box at the bottom; it returns when a chat is opened */
+  useEffect(() => {
+    const f = sheet?.form;
+    if (!f) return;
+    if (mode === 'chat' && !peer) f.style.setProperty('display', 'none', 'important');
+    else f.style.removeProperty('display');
+    return () => { f.style.removeProperty('display'); };
+  }, [sheet, mode, peer?.id]);
 
   /* 5b) presence (last seen / typing): fast poll for the open chat, slow poll for the list rectangles */
   useEffect(() => {
@@ -1002,6 +1012,7 @@ function FriendChatPatch() {
         // Inside the chat page the profile picture takes the place of the old back arrow.
         if (modeRef.current !== 'chat') return;
         e.preventDefault(); e.stopPropagation();
+        if (!peerRef.current && !selectModeRef.current) return; // DOCK-CHAT-LIST: on the chat list the profile picture does nothing - only the top handle slides the page down
         navRef.current.goBack();
         return;
       }
@@ -1277,6 +1288,7 @@ function FriendChatPatch() {
         [data-sfc="chat"] > :not(:first-child) { visibility: hidden !important; pointer-events: none !important; }
         [data-sfc="chat"] > [data-sfc-portal] { visibility: visible !important; pointer-events: auto !important; }
         [data-sfc="chat"] [data-sfc-av] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        [data-sfc-av] > span:not([data-sfc-back]) { z-index: 3; }
         @keyframes sfcPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
         @keyframes sfcPop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
       `}</style>
@@ -1299,6 +1311,19 @@ function FriendChatPatch() {
             }}>{totalUnread > 99 ? '99+' : totalUnread}</span>
           )}
         </div>,
+        sheet.avatarWrap,
+      )}
+
+      {/* DOCK-CHAT-BACK: inside a friend's chat the profile picture becomes a black circle with a white back arrow (green dot stays on its corner) -> back to the chat list */}
+      {mode === 'chat' && peer && createPortal(
+        <div
+          data-sfc-back="1"
+          aria-hidden="true"
+          style={{
+            position: 'absolute', inset: 0, borderRadius: '50%', background: '#0a0a0a', color: '#fff',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2, pointerEvents: 'none',
+          }}
+        ><ArrowLeft size={20} strokeWidth={2.6} /></div>,
         sheet.avatarWrap,
       )}
 
