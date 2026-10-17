@@ -207,7 +207,9 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
       const el = stageRef.current;
       if (!el) return;
       // تمديد الشاشة السفلية لكامل عرض الجهاز (تغطي الخلفية البيضاء)
-      const baseLeft = el.getBoundingClientRect().left + shiftRef.current;
+      // نقرأ الإزاحة المطبّقة فعلياً من العنصر نفسه (بدل ما نراكمها) حتى ما تنجرف الشاشة لليسار
+      const applied = parseFloat((el.style.transform.match(/translateX\((-?[\d.]+)px\)/) || [])[1] || '0') || 0;
+      const baseLeft = el.getBoundingClientRect().left - applied;
       shiftRef.current = baseLeft;
       setShift(prev => (Math.abs(prev - baseLeft) < 0.5 ? prev : baseLeft));
       setVw(window.innerWidth);
