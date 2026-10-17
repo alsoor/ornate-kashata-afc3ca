@@ -14,6 +14,103 @@ import AiInfoPanel from './AiInfoPanel'; // APP-ASSISTANT
 import { detectAppIntent, answerAppIntent, intentToPanel, type PanelKind } from './appAssistant'; // APP-ASSISTANT
 import AiReplyWithTables from './AiTableView'; // TABLE-VIEW: tables inside Ai replies (standalone file)
 import { readFileForAi, speak, stopSpeaking, voiceOutputSupported } from './aiCapabilities'; // AI-CAPABILITIES: read files, voice replies
+// VOICE-GUIDE: Kuwaiti spoken guide — now INSIDE this file (no separate aiVoiceGuide.ts needed, so a missing file can never break the build).
+// Plays /stooorna-ai-guide.mp3 if you put a real recording in /public, otherwise the phone's Arabic voice reads VOICE_GUIDE_SENTENCES.
+const VOICE_GUIDE_AUDIO_URL = '/stooorna-ai-guide.mp3';
+const VOICE_GUIDE_SENTENCES: string[] = [
+  'هلا والله! هذا ستوورنا إيه آي.',
+  'من هني تقدر ترسل صور وفيديوهات، وتعدّل على الصور، وحتى تدمج صوت وموسيقى مع الفيديو اللي تبيه.',
+  'وإذا تبي تنشر فيديو أو صورة عادية، اضغط ضغطة طويلة على أيقونة ستوورنا إيه آي، وبتنفتح لك صفحة النشر.',
+  'ارفق الصورة اللي تبيها أو الفيديو، وانشره في التيمبلاتس.',
+  'وإذا تبي تسمع الشرح مرة ثانية، اضغط على زر الصوت اللي تحت. الله يعطيك العافية!',
+];
+let vgAudio: HTMLAudioElement | null = null;
+let vgPlaying = false;
+let vgToken = 0;
+let vgNote = ''; // '' | 'unsupported' | 'silent'  → shown under the button when the phone could not speak
+const vgSubs = new Set<() => void>();
+function vgEmit() { vgSubs.forEach(f => { try { f(); } catch { /* */ } }); }
+function vgSetPlaying(v: boolean) { if (vgPlaying === v) return; vgPlaying = v; vgEmit(); }
+function vgSetNote(n: string) { if (vgNote === n) return; vgNote = n; vgEmit(); }
+function isVoiceGuidePlaying(): boolean { return vgPlaying; }
+function getVoiceGuideNote(): string { return vgNote; }
+function subscribeVoiceGuide(f: () => void): () => void { vgSubs.add(f); return () => { vgSubs.delete(f); }; }
+function voiceGuideSupported(): boolean {
+  if (typeof window === 'undefined') return false;
+  return 'speechSynthesis' in window || typeof Audio !== 'undefined';
+}
+function vgPickArabicVoice(): SpeechSynthesisVoice | null {
+  try {
+    const ar = window.speechSynthesis.getVoices().filter(v => String(v.lang || '').toLowerCase().startsWith('ar'));
+    if (!ar.length) return null;
+    return ar.find(v => /ar[-_]kw/i.test(v.lang)) || ar.find(v => /ar[-_](sa|ae|qa|bh)/i.test(v.lang)) || ar[0];
+  } catch { return null; }
+}
+function vgSpeak(my: number) {
+  const synth = window.speechSynthesis;
+  const go = () => {
+    if (my !== vgToken) return;
+    try { synth.cancel(); } catch { /* */ }
+    const voice = vgPickArabicVoice();
+    const lastIdx = VOICE_GUIDE_SENTENCES.length - 1;
+    let started = false;
+    VOICE_GUIDE_SENTENCES.forEach((text, i) => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = voice?.lang || 'ar-SA';
+      if (voice) u.voice = voice;
+      u.rate = 0.95;
+      u.pitch = 1;
+      u.onstart = () => { started = true; };
+      u.onend = () => { if (my === vgToken && i === lastIdx) vgSetPlaying(false); };
+      u.onerror = (e: SpeechSynthesisErrorEvent) => {
+        const err = String((e as any)?.error || '');
+        if (my === vgToken && err !== 'interrupted' && err !== 'canceled') { vgSetNote('silent'); vgSetPlaying(false); }
+      };
+      synth.speak(u);
+    });
+    // nothing started after a few seconds = this phone / WebView has no usable voice
+    window.setTimeout(() => {
+      if (my !== vgToken || started) return;
+      try { synth.cancel(); } catch { /* */ }
+      vgSetNote('silent');
+      vgSetPlaying(false);
+    }, 3500);
+  };
+  if (synth.getVoices().length > 0) { go(); return; }
+  let done = false;
+  const once = () => { if (done) return; done = true; try { synth.removeEventListener('voiceschanged', once); } catch { /* */ } go(); };
+  try { synth.addEventListener('voiceschanged', once); } catch { /* */ }
+  window.setTimeout(once, 1200);
+}
+function stopVoiceGuide() {
+  vgToken += 1;
+  if (vgAudio) { try { vgAudio.pause(); } catch { /* */ } vgAudio = null; }
+  try { if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel(); } catch { /* */ }
+  vgSetPlaying(false);
+}
+function playVoiceGuide() {
+  if (!voiceGuideSupported()) { vgSetNote('unsupported'); return; }
+  stopVoiceGuide();
+  vgSetNote('');
+  const my = vgToken;
+  vgSetPlaying(true);
+  const fallback = () => {
+    if (my !== vgToken) return;
+    vgAudio = null;
+    if ('speechSynthesis' in window) vgSpeak(my); else { vgSetNote('unsupported'); vgSetPlaying(false); }
+  };
+  try {
+    const a = new Audio(VOICE_GUIDE_AUDIO_URL);
+    a.preload = 'auto';
+    vgAudio = a;
+    let fell = false;
+    const fb = () => { if (fell) return; fell = true; fallback(); };
+    a.onended = () => { if (my === vgToken) { vgAudio = null; vgSetPlaying(false); } };
+    a.onerror = fb; // no recording uploaded (or not an audio file) -> use the Arabic voice instead
+    const pr = a.play();
+    if (pr && typeof pr.catch === 'function') pr.catch(fb);
+  } catch { fallback(); }
+}
 
 interface Attachment {
   id: string;
@@ -1259,6 +1356,40 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     return () => { alive = false; off(); };
   }, [open, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // VOICE-GUIDE: the spoken guide (Kuwaiti) plays by itself when this page opens on its welcome screen, and the "Voice guide" button replays it
+  const [guidePlaying, setGuidePlaying] = useState<boolean>(() => isVoiceGuidePlaying());
+  const [guideNote, setGuideNote] = useState<string>(() => getVoiceGuideNote());
+  useEffect(() => subscribeVoiceGuide(() => { setGuidePlaying(isVoiceGuidePlaying()); setGuideNote(getVoiceGuideNote()); }), []);
+  // REMOVE-GENERAL-CHAT-CHIP: the "Open the general chat" shortcut chip is hidden on the welcome screen (the other chips stay)
+  const quickWrapRef = useRef<HTMLDivElement>(null);
+  const welcomeShown = messages.length === 0;
+  useEffect(() => {
+    const root = quickWrapRef.current;
+    if (!root) return;
+    const hide = () => {
+      root.querySelectorAll('button').forEach(b => {
+        const t = String(b.textContent || '').trim();
+        if (/general chat|الشات العام|الدردشة العامة/i.test(t)) (b as HTMLElement).style.display = 'none';
+      });
+    };
+    hide();
+    const mo = new MutationObserver(hide);
+    mo.observe(root, { childList: true, subtree: true, characterData: true });
+    return () => mo.disconnect();
+  }, [open, welcomeShown]);
+  const hasMessagesRef = useRef(false); hasMessagesRef.current = messages.length > 0;
+  useEffect(() => {
+    if (!open) { stopVoiceGuide(); return; }
+    // the chat list / a friend's chat uses this same sheet: stay silent there
+    const tm = window.setTimeout(() => {
+      if (hasMessagesRef.current) return;
+      if ((window as any).__sfcOpenPeer) return;
+      playVoiceGuide();
+    }, 700);
+    return () => window.clearTimeout(tm);
+  }, [open]);
+  useEffect(() => { if (messages.length > 0) stopVoiceGuide(); }, [messages.length]); // asking something cuts the guide
+
   // PUBLISH-PREFETCH: as soon as the preview box opens, a small "preview size" copy is made and uploaded in the background
   useEffect(() => {
     if (!publishFor) { publishCtl.current?.abort(); publishCtl.current = null; publishPre.current = null; return; }
@@ -1595,11 +1726,32 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
           }}
         >
           {messages.length === 0 && (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
+            <div ref={quickWrapRef} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
               <p style={{ fontSize: 22, fontWeight: 700, color: '#1a1a1a', textAlign: 'center' }}>
                 How can I help you?
               </p>
               <AiQuickActions user={user} onAsk={t => sendMessage(t)} onOpen={k => setInfoPanel(k)} /> {/* APP-ASSISTANT */}
+              {voiceGuideSupported() && ( /* VOICE-GUIDE: button under the quick-action chips — plays / stops the Kuwaiti spoken guide */
+                <button
+                  type="button"
+                  aria-label={guidePlaying ? 'Stop the voice guide' : 'Play the voice guide'}
+                  onClick={e => { e.stopPropagation(); if (guidePlaying) stopVoiceGuide(); else playVoiceGuide(); }}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 999,
+                    border: guidePlaying ? '1px solid #0a1f1a' : '1px solid #e5e5e5',
+                    background: guidePlaying ? '#0a1f1a' : '#f4f4f4', color: guidePlaying ? '#fff' : '#1a1a1a',
+                    fontSize: 15, fontWeight: 600, cursor: 'pointer', WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  {guidePlaying ? <VolumeX size={18} /> : <Volume2 size={18} />}
+                  <span>{guidePlaying ? 'Stop' : 'Voice guide'}</span>
+                </button>
+              )}
+              {guideNote && (
+                <p dir="rtl" style={{ margin: 0, maxWidth: 300, textAlign: 'center', fontSize: 13, lineHeight: 1.5, color: '#6b7280' }}>
+                  ما قدرت أشغّل الصوت على هالجهاز. فعّل صوت عربي من إعدادات الجهاز (تحويل النص إلى كلام)، أو حط تسجيلك باسم stooorna-ai-guide.mp3 داخل مجلد public.
+                </p>
+              )}
             </div>
           )}
 
