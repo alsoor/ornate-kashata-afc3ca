@@ -19139,6 +19139,25 @@ function saveLiveMediaFavs(uid: string, ids: string[]) {
   try { localStorage.setItem(liveMediaFavsKey(uid), JSON.stringify(ids.slice(-500))); } catch { /* */ }
 }
 
+// ── Call handset icon (white) with a silver shimmer sweeping over the handset only ──
+const HANDSET_PATH = 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z';
+function CallHandsetShimmerIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}>
+      <defs>
+        <linearGradient id="stooornaHandsetSilver" gradientUnits="userSpaceOnUse" x1="-14" y1="0" x2="-2" y2="0">
+          <stop offset="0" stopColor="#c0c0c0" stopOpacity="0" />
+          <stop offset="0.5" stopColor="#d9dde3" stopOpacity="1" />
+          <stop offset="1" stopColor="#c0c0c0" stopOpacity="0" />
+          <animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="38 0" dur="1.8s" repeatCount="indefinite" />
+        </linearGradient>
+      </defs>
+      <path d={HANDSET_PATH} fill="#ffffff" stroke="#ffffff" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      <path d={HANDSET_PATH} fill="url(#stooornaHandsetSilver)" stroke="url(#stooornaHandsetSilver)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ── Rail avatar (full-screen public media): "+" add-friend badge on the ring + live ring (yellow + silver shimmer) ──
 // • Publisher is in a voice/video live  → ring turns yellow with a silver light running around it; tap = open the live.
 // • No live                             → tap = open the publisher's profile (as before).
@@ -30331,7 +30350,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         {homeCallUiActive && homeCallBannerLabel ? (
                           <span style={{ color: '#ffffff', fontWeight: 800, fontSize: 15, padding: '0 12px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{homeCallBannerLabel}</span>
                         ) : (
-                          <Headphones size={24} strokeWidth={2.3} />
+                          <CallHandsetShimmerIcon size={24} />
                         )}
                       </button>
                     </div>
