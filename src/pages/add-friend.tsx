@@ -30602,12 +30602,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               onContextMenu={(e) => e.preventDefault()}
               onClick={() => {
                 if (tplLongPress.fired) { tplLongPress.fired = false; return; }
-                if (headerOpen) {
-                  try {
-                    (window as any).__stooornaGrabberLift = true;
-                    window.setTimeout(() => { (window as any).__stooornaGrabberLift = false; }, 800);
-                  } catch { /* */ }
-                }
+                // DOCK-TPL-ICON: tapping the grabber no longer RAISES the sheet (the Templates icon in the bottom bar does that now).
+                // While the sheet is raised, tapping the grabber still drops it.
+                if (headerOpen) return;
                 toggleHeaderOpen();
               }}
               aria-label={headerOpen ? 'Lift header' : 'Show header'}
@@ -30750,8 +30747,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             zIndex: 12050,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             padding: '6px 10px calc(env(safe-area-inset-bottom, 0px) + 2px)',
-            background: 'rgba(4,12,12,0.96)',
-            backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+            background: tplPageOn ? 'transparent' : 'rgba(4,12,12,0.96)', // DOCK-TPL-ICON: raised sheet = only the round Stooorna Ai icon floats at the bottom centre
+            backdropFilter: tplPageOn ? 'none' : 'blur(10px)', WebkitBackdropFilter: tplPageOn ? 'none' : 'blur(10px)',
             borderTop: 'none',
             transform: 'translateY(0)',
             transition: dockSettled ? 'transform 0.25s ease, opacity 0.18s ease' : 'none',
@@ -30791,7 +30788,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
 
                   {/* CALL-DOCK-BUTTON: same design as LIVE / Chat. One tap raises the call sheet (green button + friends list, nothing else). */}
-                  {user?.id && !guestMode && (
+                  {user?.id && !guestMode && !tplPageOn /* DOCK-TPL-ICON: hidden while the sheet is raised */ && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
                       <button
                         type="button"
@@ -30821,7 +30818,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </div>
                   )}
                   {/* CHAT-DOCK-BUTTON: chat — same design as the LIVE button, right beside it. One tap opens the chat list page directly. */}
-                  {user?.id && aiIconVisible && (
+                  {user?.id && aiIconVisible && !tplPageOn /* DOCK-TPL-ICON: hidden while the sheet is raised */ && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
                       <button
                         type="button"
@@ -30859,7 +30856,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       </button>
                     </div>
                   )}
-                  {user?.id && (
+                  {user?.id && !tplPageOn /* DOCK-TPL-ICON: hidden while the sheet is raised */ && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
 <button
                       type="button"
@@ -30888,8 +30885,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </button>
 </div>
                   )}
-                  {/* Stooorna Ai — between LIVE and Templates */}
-                  {user?.id && aiIconVisible && (
+                  {/* Stooorna Ai — DOCK-TPL-ICON: no longer a normal dock icon; it shows alone, centred, while the sheet is raised (Templates page) */}
+                  {user?.id && aiIconVisible && tplPageOn && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
                       <StooornaAiIcon
                         active={aiOpen}
@@ -30900,7 +30897,37 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       />
                     </div>
                   )}
-                  {/* TPL-PAGE-ON-GRABBER: the Templates dock icon was removed — Templates is the page under the grabber line (long-press the line to publish) */}
+                  {/* DOCK-TPL-ICON: Templates icon (last slot, where Stooorna Ai was). One tap raises the sheet and shows the posts; the other icons then hide and Stooorna Ai sits alone in the centre. */}
+                  {user?.id && !guestMode && !tplPageOn && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!headerOpen) return;
+                          try {
+                            (window as any).__stooornaGrabberLift = true;
+                            window.setTimeout(() => { (window as any).__stooornaGrabberLift = false; }, 800);
+                          } catch { /* */ }
+                          toggleHeaderOpen();
+                        }}
+                        aria-label="Templates"
+                        title="Templates"
+                        style={{
+                          WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
+                          width: 44, height: 44, borderRadius: '50%',
+                          border: '1.5px solid #ffffff',
+                          background: 'transparent',
+                          color: tplFresh ? '#facc15' : '#ffffff', // TPL-GRABBER-FRESH: new template posts → yellow, same cue as the grabber line
+                          cursor: 'pointer', padding: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: 'none',
+                        }}
+                      >
+                        <Film size={22} strokeWidth={2.2} />
+                      </button>
+                    </div>
+                  )}
+                  {/* TPL-PAGE-ON-GRABBER: Templates is the page under the grabber line (long-press the line to publish) */}
                   {/* Settings — نُقلت من الهيدر إلى هنا بجانب الأصدقاء والاتصال والبث */}
                   {guestMode ? (
 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 64 }}>
