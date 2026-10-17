@@ -27027,6 +27027,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const [headerOpen, setHeaderOpen] = useState(false);
   const [profileSlideOpen, setProfileSlideOpen] = useState(false);
   useBackClose(profileSlideOpen, () => setProfileSlideOpen(false)); // HARDWARE-BACK-PATCH
+  // PROFILE-BANNER-SHUTTER: big photo strip above the yellow line; tap = it drops down like a shutter to the call banner, tap again = it rises back
+  const [profileBannerOpen, setProfileBannerOpen] = useState(false);
+  const [profileBannerH, setProfileBannerH] = useState(0);
+  useBackClose(profileBannerOpen, () => setProfileBannerOpen(false)); // HARDWARE-BACK-PATCH
+  useEffect(() => { if (!profileSlideOpen) setProfileBannerOpen(false); }, [profileSlideOpen]);
   // Many open broadcasts: scrolling the card list collapses/restores the header + icon row.
   const [liveScrollHidden, setLiveScrollHidden] = useState(false);
   // [perf] نسخة مؤجّلة من حالة الشيت للوحة الشات الثقيلة (تُحمَّل بعد بدء حركة الشيت لا قبلها)
@@ -30034,6 +30039,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 }}
               />
               <div
+                data-profile-panel="1"
                 role="dialog"
                 aria-modal="true"
                 style={{
@@ -30055,7 +30061,50 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   overflowY: 'auto',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
+                {/* PROFILE-BANNER-SHUTTER: large photo above the yellow line. Tap: drops down to the call banner (shutter). Tap again: rises back. */}
+                {(() => {
+                  const bannerUrl = localAvatarUrl || resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null;
+                  if (!user || !bannerUrl) return null;
+                  const collapsedH = 'calc(54px + env(safe-area-inset-top, 0px))';
+                  return (
+                    <div
+                      role="button"
+                      aria-label={profileBannerOpen ? 'Hide photo' : 'Show photo'}
+                      onClick={() => {
+                        if (profileBannerOpen) { setProfileBannerOpen(false); return; }
+                        try {
+                          const panel = document.querySelector('[data-profile-panel="1"]') as HTMLElement | null;
+                          const call = document.querySelector('[data-profile-call-banner="1"]') as HTMLElement | null;
+                          if (panel && call) {
+                            const pr = panel.getBoundingClientRect();
+                            const cr = call.getBoundingClientRect();
+                            setProfileBannerH(Math.max(240, Math.round(cr.bottom - pr.top + panel.scrollTop)));
+                          } else {
+                            setProfileBannerH(Math.round(window.innerHeight * 0.6));
+                          }
+                        } catch { setProfileBannerH(Math.round(window.innerHeight * 0.6)); }
+                        setProfileBannerOpen(true);
+                      }}
+                      style={{
+                        position: 'absolute', left: 0, right: 0, top: 0, zIndex: 2,
+                        height: profileBannerOpen ? profileBannerH : collapsedH,
+                        overflow: 'hidden', cursor: 'pointer', background: '#e5e7eb',
+                        borderRadius: profileBannerOpen ? '0 0 22px 22px' : 0,
+                        boxShadow: profileBannerOpen ? '0 10px 28px rgba(0,0,0,0.28)' : 'none',
+                        transition: 'height .42s cubic-bezier(.32,.72,0,1), border-radius .42s ease, box-shadow .42s ease',
+                        WebkitTapHighlightColor: 'transparent',
+                      }}
+                    >
+                      <img
+                        src={bannerUrl}
+                        alt=""
+                        draggable={false}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 22%', display: 'block', userSelect: 'none', WebkitUserSelect: 'none' }}
+                      />
+                    </div>
+                  );
+                })()}
+                <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8, position: 'relative', zIndex: 3 }}>
                   <button
                     type="button"
                     aria-label="Close"
@@ -30253,7 +30302,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                   {/* CALL-BANNER: green headset banner under the ON/OFF switch (moved from the bottom bar) */}
                   {user?.id ? (
-                    <div style={{ width: '100%', maxWidth: 280, margin: '12px auto 2px', display: 'flex', justifyContent: 'center' }}>
+                    <div data-profile-call-banner="1" style={{ width: '100%', maxWidth: 280, margin: '12px auto 2px', display: 'flex', justifyContent: 'center' }}>
                       <button
                         type="button"
                         onContextMenu={(e) => e.preventDefault()}
