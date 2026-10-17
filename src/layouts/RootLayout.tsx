@@ -5013,7 +5013,7 @@ function GlobalBottomNavigation() {
             />
             <div
               data-scl="inner"
-              data-video-mode={inPanel && !isIncomingRinging && (homeCallIsVideo || homeCallStageKeep || (homeCallRemoteVideo && !homeCallVideoDismissed)) ? '1' : undefined}
+              data-video-mode={inPanel && !isIncomingRinging && (homeCallIsVideo || homeCallStageKeep) ? '1' : undefined}
               style={{
                 position: 'relative',
                 zIndex: 1,
@@ -5032,7 +5032,7 @@ function GlobalBottomNavigation() {
               }}
             >
             {/* VIDEO-PATCH: square screen of the person on the call (fixed) + draggable self view */}
-            {inPanel && !isIncomingRinging && (homeCallIsVideo || homeCallStageKeep || (homeCallRemoteVideo && !homeCallVideoDismissed)) && (
+            {inPanel && !isIncomingRinging && (homeCallIsVideo || homeCallStageKeep || homeCallRemoteVideo) && (
               <VideoCallStage
                 remoteRef={remoteVideoRef}
                 localRef={localVideoRef}
@@ -5043,6 +5043,7 @@ function GlobalBottomNavigation() {
                 onToggleCamera={() => homeCallAction(() => { void toggleSelfCamFromStage(); })}
                 onSwitchCamera={() => { void flipHomeCallCamera(); }}
                 thirdRef={thirdVideoRef}
+                showSelf={homeCallIsVideo || homeCallStageKeep}
                 thirdVideoOn={homeCallThirdVideo}
                 controls={(
                   <>

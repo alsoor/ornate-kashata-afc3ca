@@ -137,11 +137,14 @@ export type VideoCallStageProps = {
   thirdRef?: DivRef;
   /** true فقط عندما الشخص الثالث يشغّل الفيديو (دخوله صوتي لا يقسم الشاشة) */
   thirdVideoOn?: boolean;
+  /** false = كاميرتي مقفلة (مكالمة صوتية): نعرض الشاشة العلوية للآخرين فقط، وتظهر الأزرار الصوتية العادية بدل الشاشة السفلية */
+  showSelf?: boolean;
   /** أزرار تظهر ثابتة أسفل الشاشة المربعة (Mute / Video Off / End) */
   controls?: ReactNode;
 };
 
-export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage, onSwitchCamera, onToggleCamera, controls, thirdRef, thirdVideoOn }: VideoCallStageProps) {
+export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage, onSwitchCamera, onToggleCamera, controls, thirdRef, thirdVideoOn, showSelf = true }: VideoCallStageProps) {
+  void onToggleCamera; // النقر على الشاشة لم يعد يقفل الكاميرا — الإغلاق من زر Video فقط
   const stageRef = useRef<HTMLDivElement | null>(null); // مكان فارغ داخل الصفحة يحجز الارتفاع فقط
   const aliveRef = useRef(true);
   const [showControls, setShowControls] = useState(true); // نقرة على الشاشة = إخفاء/إظهار الأزرار
@@ -151,30 +154,21 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
   const [top, setTop] = useState<number | null>(null); // مكان الشاشة السفلية من أعلى الجهاز (تتبع المكان الفارغ)
   const leaveRef = useRef(onLeavePage);
   leaveRef.current = onLeavePage;
-  // نقرة = فتح/إغلاق الكاميرا ، نقرتين ورا بعض = تبديل الكاميرا (أمامية / خلفية)
+  // نقرتين ورا بعض على كاميرتي = تبديل الكاميرا (أمامية / خلفية). النقرة الواحدة ما تقفل الكاميرا؛ الإغلاق من زر Video فقط
   const tapTimer = useRef<number | null>(null);
-  const lastToggle = useRef(0);
   const switchRef = useRef(onSwitchCamera);
   switchRef.current = onSwitchCamera;
-  const toggleRef = useRef(onToggleCamera);
-  toggleRef.current = onToggleCamera;
   const camOnRef = useRef(cameraOn);
   camOnRef.current = cameraOn;
-  const fireToggle = () => {
-    const now = Date.now();
-    if (now - lastToggle.current < 900) return; // حماية من الضغط المتكرر أثناء فتح الكاميرا
-    lastToggle.current = now;
-    try { toggleRef.current?.(); } catch { /* */ }
-  };
   useEffect(() => () => { if (tapTimer.current != null) { window.clearTimeout(tapTimer.current); tapTimer.current = null; } }, []);
   const onPanelTap = () => {
-    if (!camOnRef.current) { fireToggle(); return; }
+    if (!camOnRef.current) return;
     if (tapTimer.current != null) {
       window.clearTimeout(tapTimer.current);
       tapTimer.current = null;
       try { switchRef.current?.(); } catch { /* */ }
     } else {
-      tapTimer.current = window.setTimeout(() => { tapTimer.current = null; fireToggle(); }, 300);
+      tapTimer.current = window.setTimeout(() => { tapTimer.current = null; }, 300);
     }
   };
 
@@ -239,9 +233,11 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
       <div
         ref={stageRef}
         data-vstage="1"
-        style={{ gridColumn: '1 / -1', order: -1, width: '100%', height: H, boxSizing: 'border-box', pointerEvents: 'none' }}
+        style={showSelf
+          ? { gridColumn: '1 / -1', order: -1, width: '100%', height: H, boxSizing: 'border-box', pointerEvents: 'none' }
+          : { position: 'absolute', width: 0, height: 0, visibility: 'hidden', pointerEvents: 'none' }}
       />
-      {top != null && typeof document !== 'undefined' && createPortal(
+      {showSelf && top != null && typeof document !== 'undefined' && createPortal(
         <div
           data-vpanel="1"
           onClick={onPanelTap}
