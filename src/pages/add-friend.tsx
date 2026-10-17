@@ -11233,7 +11233,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             return null;
           })()}
           {String(user?.id) !== String(authorId) && visitorCountry ? (
-            <p style={{ color: '#000000', fontSize: '0.74rem', fontWeight: 600, margin: '4px 0 0', letterSpacing: 0.2 }}>{visitorCountry}</p>
+            <p style={{ color: '#2563eb', fontSize: '0.74rem', fontWeight: 600, margin: '4px 0 0', letterSpacing: 0.2 }}>{visitorCountry}</p>
           ) : null}
 
           {friendState === 'accepted' && (
