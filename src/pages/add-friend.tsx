@@ -24324,7 +24324,12 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
                 aria-label={`Chat with ${f.username || f.name || 'friend'}`}
                 onClick={() => {
                   close();
-                  try { window.dispatchEvent(new CustomEvent('stooorna:open-friend-chat', { detail: { friendId: f.friendId, peerName: f.name ?? null, peerUsername: f.username ?? null, peerAvatar: f.avatarUrl ?? null } })); } catch { /* */ }
+                  // DOCK-CHAT-DIRECT: long-press Chat -> tap a friend -> opens the Stooorna Ai sheet straight on THAT friend's chat
+                  // (the old 'stooorna:open-friend-chat' event only reached the legacy chat screen, so nothing visible happened)
+                  try { window.dispatchEvent(new CustomEvent('stooorna:ai-open')); } catch { /* */ }
+                  window.setTimeout(() => {
+                    try { window.dispatchEvent(new CustomEvent('stooorna:friend-chat-open', { detail: { peerId: String(f.friendId), peerName: String(f.name || f.username || '') } })); } catch { /* */ }
+                  }, 60);
                 }}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '5px 6px', borderRadius: 12, border: '1px solid rgba(0,188,212,0.18)', background: 'rgba(0,188,212,0.06)', cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}
               >
