@@ -18,15 +18,16 @@ import { readFileForAi, speak, stopSpeaking, voiceOutputSupported } from './aiCa
 // Plays /stooorna-ai-guide.mp3 if you put a real recording in /public, otherwise the phone's Arabic voice reads VOICE_GUIDE_SENTENCES.
 const VOICE_GUIDE_AUDIO_URL = '/stooorna-ai-guide.mp3';
 const VOICE_GUIDE_SENTENCES: string[] = [
-  'هلا والله! هذا ستوورنا إيه آي.',
-  'من هني تقدر ترسل صور وفيديوهات، وتعدّل على الصور، وحتى تدمج صوت وموسيقى مع الفيديو اللي تبيه.',
-  'وإذا تبي تنشر فيديو أو صورة عادية، اضغط ضغطة طويلة على أيقونة ستوورنا إيه آي، وبتنفتح لك صفحة النشر.',
-  'ارفق الصورة اللي تبيها أو الفيديو، وانشره في التيمبلاتس.',
-  'وإذا تبي تسمع الشرح مرة ثانية، اضغط على زر الصوت اللي تحت. الله يعطيك العافية!',
+  '\u0647\u0644\u0627 \u0648\u0627\u0644\u0644\u0647! \u0647\u0630\u0627 \u0633\u062a\u0648\u0648\u0631\u0646\u0627 \u0625\u064a\u0647 \u0622\u064a.',
+  '\u0645\u0646 \u0647\u0646\u064a \u062a\u0642\u062f\u0631 \u062a\u0631\u0633\u0644 \u0635\u0648\u0631 \u0648\u0641\u064a\u062f\u064a\u0648\u0647\u0627\u062a\u060c \u0648\u062a\u0639\u062f\u0651\u0644 \u0639\u0644\u0649 \u0627\u0644\u0635\u0648\u0631\u060c \u0648\u062d\u062a\u0649 \u062a\u062f\u0645\u062c \u0635\u0648\u062a \u0648\u0645\u0648\u0633\u064a\u0642\u0649 \u0645\u0639 \u0627\u0644\u0641\u064a\u062f\u064a\u0648 \u0627\u0644\u0644\u064a \u062a\u0628\u064a\u0647.',
+  '\u0648\u0625\u0630\u0627 \u062a\u0628\u064a \u062a\u0646\u0634\u0631 \u0641\u064a\u062f\u064a\u0648 \u0623\u0648 \u0635\u0648\u0631\u0629 \u0639\u0627\u062f\u064a\u0629\u060c \u0627\u0636\u063a\u0637 \u0636\u063a\u0637\u0629 \u0637\u0648\u064a\u0644\u0629 \u0639\u0644\u0649 \u0623\u064a\u0642\u0648\u0646\u0629 \u0633\u062a\u0648\u0648\u0631\u0646\u0627 \u0625\u064a\u0647 \u0622\u064a\u060c \u0648\u0628\u062a\u0646\u0641\u062a\u062d \u0644\u0643 \u0635\u0641\u062d\u0629 \u0627\u0644\u0646\u0634\u0631.',
+  '\u0627\u0631\u0641\u0642 \u0627\u0644\u0635\u0648\u0631\u0629 \u0627\u0644\u0644\u064a \u062a\u0628\u064a\u0647\u0627 \u0623\u0648 \u0627\u0644\u0641\u064a\u062f\u064a\u0648\u060c \u0648\u0627\u0646\u0634\u0631\u0647 \u0641\u064a \u0627\u0644\u062a\u064a\u0645\u0628\u0644\u0627\u062a\u0633.',
+  '\u0648\u0625\u0630\u0627 \u062a\u0628\u064a \u062a\u0633\u0645\u0639 \u0627\u0644\u0634\u0631\u062d \u0645\u0631\u0629 \u062b\u0627\u0646\u064a\u0629\u060c \u0627\u0636\u063a\u0637 \u0639\u0644\u0649 \u0632\u0631 \u0627\u0644\u0635\u0648\u062a \u0627\u0644\u0644\u064a \u062a\u062d\u062a. \u0627\u0644\u0644\u0647 \u064a\u0639\u0637\u064a\u0643 \u0627\u0644\u0639\u0627\u0641\u064a\u0629!',
 ];
 let vgAudio: HTMLAudioElement | null = null;
 let vgPlaying = false;
 let vgToken = 0;
+let vgAuto = false; // true while the guide was started automatically (no tap)
 let vgNote = ''; // '' | 'unsupported' | 'silent'  → shown under the button when the phone could not speak
 const vgSubs = new Set<() => void>();
 function vgEmit() { vgSubs.forEach(f => { try { f(); } catch { /* */ } }); }
@@ -54,6 +55,8 @@ function vgSpeak(my: number) {
     const voice = vgPickArabicVoice();
     const lastIdx = VOICE_GUIDE_SENTENCES.length - 1;
     let started = false;
+    // small pause after cancel(): some phones drop utterances queued in the same tick as cancel()
+    window.setTimeout(() => { if (my !== vgToken) return; try { synth.resume(); } catch { /* */ }
     VOICE_GUIDE_SENTENCES.forEach((text, i) => {
       const u = new SpeechSynthesisUtterance(text);
       u.lang = voice?.lang || 'ar-SA';
@@ -64,17 +67,21 @@ function vgSpeak(my: number) {
       u.onend = () => { if (my === vgToken && i === lastIdx) vgSetPlaying(false); };
       u.onerror = (e: SpeechSynthesisErrorEvent) => {
         const err = String((e as any)?.error || '');
-        if (my === vgToken && err !== 'interrupted' && err !== 'canceled') { vgSetNote('silent'); vgSetPlaying(false); }
+        if (my === vgToken && err !== 'interrupted' && err !== 'canceled') {
+          // autoplay blocked by the browser (no tap yet) is not an error: stay quiet, the Voice guide button still works
+          if (err === 'not-allowed' && vgAuto) vgSetPlaying(false); else { vgSetNote('silent'); vgSetPlaying(false); }
+        }
       };
       synth.speak(u);
     });
+    }, 80);
     // nothing started after a few seconds = this phone / WebView has no usable voice
     window.setTimeout(() => {
       if (my !== vgToken || started) return;
       try { synth.cancel(); } catch { /* */ }
-      vgSetNote('silent');
+      if (!vgAuto) vgSetNote('silent');
       vgSetPlaying(false);
-    }, 3500);
+    }, 4500);
   };
   if (synth.getVoices().length > 0) { go(); return; }
   let done = false;
@@ -88,7 +95,8 @@ function stopVoiceGuide() {
   try { if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel(); } catch { /* */ }
   vgSetPlaying(false);
 }
-function playVoiceGuide() {
+function playVoiceGuide(auto = false) {
+  vgAuto = auto;
   if (!voiceGuideSupported()) { vgSetNote('unsupported'); return; }
   stopVoiceGuide();
   vgSetNote('');
@@ -1367,9 +1375,9 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     const root = quickWrapRef.current;
     if (!root) return;
     const hide = () => {
-      root.querySelectorAll('button').forEach(b => {
+      root.querySelectorAll('button, [role="button"]').forEach(b => {
         const t = String(b.textContent || '').trim();
-        if (/general chat|الشات العام|الدردشة العامة/i.test(t)) (b as HTMLElement).style.display = 'none';
+        if (/general chat|\u0627\u0644\u0634\u0627\u062a \u0627\u0644\u0639\u0627\u0645|\u0627\u0644\u062f\u0631\u062f\u0634\u0629 \u0627\u0644\u0639\u0627\u0645\u0629/i.test(t)) (b as HTMLElement).style.setProperty('display', 'none', 'important');
       });
     };
     hide();
@@ -1384,7 +1392,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
     const tm = window.setTimeout(() => {
       if (hasMessagesRef.current) return;
       if ((window as any).__sfcOpenPeer) return;
-      playVoiceGuide();
+      playVoiceGuide(true);
     }, 700);
     return () => window.clearTimeout(tm);
   }, [open]);
@@ -1749,7 +1757,7 @@ export default function StooornaAiSheet({ open, onClose, user }: StooornaAiSheet
               )}
               {guideNote && (
                 <p dir="rtl" style={{ margin: 0, maxWidth: 300, textAlign: 'center', fontSize: 13, lineHeight: 1.5, color: '#6b7280' }}>
-                  ما قدرت أشغّل الصوت على هالجهاز. فعّل صوت عربي من إعدادات الجهاز (تحويل النص إلى كلام)، أو حط تسجيلك باسم stooorna-ai-guide.mp3 داخل مجلد public.
+                  {'\u0645\u0627 \u0642\u062f\u0631\u062a \u0623\u0634\u063a\u0651\u0644 \u0627\u0644\u0635\u0648\u062a \u0639\u0644\u0649 \u0647\u0627\u0644\u062c\u0647\u0627\u0632. \u0641\u0639\u0651\u0644 \u0635\u0648\u062a \u0639\u0631\u0628\u064a \u0645\u0646 \u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u062c\u0647\u0627\u0632 (\u062a\u062d\u0648\u064a\u0644 \u0627\u0644\u0646\u0635 \u0625\u0644\u0649 \u0643\u0644\u0627\u0645)\u060c \u0623\u0648 \u062d\u0637 \u062a\u0633\u062c\u064a\u0644\u0643 \u0628\u0627\u0633\u0645 stooorna-ai-guide.mp3 \u062f\u0627\u062e\u0644 \u0645\u062c\u0644\u062f public.'}
                 </p>
               )}
             </div>
