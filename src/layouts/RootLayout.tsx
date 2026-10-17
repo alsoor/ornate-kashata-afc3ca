@@ -5776,6 +5776,23 @@ function GlobalPublicChatHost({ user }: { user: any }) {
     try { return localStorage.getItem('stooorna_public_chat_on') === '1'; } catch { return false; }
   });
   const [open, setOpen] = useState(false);
+  // PUBLIC-CHAT-SWITCH-PATCH: owner switch (settings → User Control). false = no floating icon and no chat layer for anyone.
+  // The panel itself stays mounted (it also hosts Templates), only the chat overlay + floating icon are removed.
+  const [chatAllowed, setChatAllowed] = useState<boolean>(() => {
+    try { return localStorage.getItem('stooorna_public_chat_allowed') !== '0'; } catch { return true; }
+  });
+  const chatAllowedRef = useRef(chatAllowed);
+  chatAllowedRef.current = chatAllowed;
+  useEffect(() => {
+    const h = (e: Event) => {
+      const v = (e as CustomEvent).detail?.enabled;
+      if (typeof v !== 'boolean') return;
+      setChatAllowed(v);
+      if (!v) setOpen(false);
+    };
+    window.addEventListener('stooorna:public-chat-allowed', h as EventListener);
+    return () => window.removeEventListener('stooorna:public-chat-allowed', h as EventListener);
+  }, []);
   const tempChatOnRef = useRef(false); // true while the chat is open only because Stooorna Ai opened it (switch is OFF)
   const [busy, setBusy] = useState(false);
   // someone else is typing in the public chat → "..." dots appear on the side of the floating button
@@ -5830,6 +5847,7 @@ function GlobalPublicChatHost({ user }: { user: any }) {
   // APP-ASSISTANT: "افتح الشات العام" from Stooorna Ai -> turn the general chat on and slide it up
   useEffect(() => {
     const h = () => {
+      if (!chatAllowedRef.current) return; // owner turned the public chat OFF for everyone
       // do NOT save the switch: opening from Stooorna Ai shows the chat only; the floating button must not appear afterwards
       let saved = false;
       try { saved = localStorage.getItem('stooorna_public_chat_on') === '1'; } catch { /* */ }
@@ -5848,7 +5866,7 @@ function GlobalPublicChatHost({ user }: { user: any }) {
   if (!user?.id) return null;
   return (
     <>
-      {on && !open && !tempChatOnRef.current && headerLifted !== false ? ( /* tempChatOnRef: chat that Stooorna Ai opened while the switch is OFF → the floating button must not flash for even one frame while closing */
+      {chatAllowed && on && !open && !tempChatOnRef.current && headerLifted !== false ? ( /* tempChatOnRef: chat that Stooorna Ai opened while the switch is OFF → the floating button must not flash for even one frame while closing */
         <button
           type="button"
           onClick={() => { if (fabMovedRef.current) { fabMovedRef.current = false; return; } setOpen(true); }}
@@ -5935,8 +5953,8 @@ function GlobalPublicChatHost({ user }: { user: any }) {
       <Suspense fallback={null}>
         <PublicLiveCommentsPanel
           user={user}
-          headerOpen={!(on && open)}
-          overlayOpen={on && open}
+          headerOpen={!(chatAllowed && on && open)}
+          overlayOpen={chatAllowed && on && open}
           onOverlayClose={() => setOpen(false)}
           onBusyChange={setBusy}
           onTypersChange={setTypers}

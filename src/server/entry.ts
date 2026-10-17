@@ -1443,6 +1443,46 @@ app.post("/api/app-settings/live-icons", guarded(async (req, res) => {
   res.json({ ok: true, ...sw });
 }));
 
+// ── PUBLIC-CHAT-SWITCH-PATCH: owner switch (User Control) — shows/hides the PUBLIC chat + its floating icon + the ON/OFF profile switch for EVERYONE ──
+// GET  /api/app-settings/public-chat -> { ok, enabled }  (public, never cached)
+// POST /api/app-settings/public-chat { enabled: boolean } (owner/admin only) — saved to disk so it survives restarts/redeploys
+const PUBLIC_CHAT_FILE = () => join(ASSETS_DIR, "stooorna-public-chat-switch.json");
+const publicChatSwitch = (): { enabled: boolean } => {
+  const g = globalThis as typeof globalThis & { __stooornaPublicChatSwitch?: { enabled: boolean } };
+  if (!g.__stooornaPublicChatSwitch) {
+    const sw = { enabled: true };
+    try {
+      const p = PUBLIC_CHAT_FILE();
+      if (existsSync(p)) {
+        const raw = JSON.parse(readFileSync(p, "utf-8"));
+        if (raw?.enabled === false) sw.enabled = false;
+      }
+    } catch (e) {
+      console.error("[public-chat-switch] load failed", e);
+    }
+    g.__stooornaPublicChatSwitch = sw;
+  }
+  return g.__stooornaPublicChatSwitch;
+};
+app.get("/api/app-settings/public-chat", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.json({ ok: true, enabled: publicChatSwitch().enabled });
+});
+app.post("/api/app-settings/public-chat", guarded(async (req, res) => {
+  if (!(await needAdmin(req, res))) return;
+  const body = (req.body || {}) as Record<string, unknown>;
+  if (typeof body.enabled !== "boolean") return deny(res, 400, "enabled_must_be_boolean");
+  const sw = publicChatSwitch();
+  sw.enabled = body.enabled;
+  try {
+    if (!existsSync(ASSETS_DIR)) mkdirSync(ASSETS_DIR, { recursive: true });
+    writeFileSync(PUBLIC_CHAT_FILE(), JSON.stringify({ ...sw, updatedAt: Date.now() }), "utf-8");
+  } catch (e) {
+    console.error("[public-chat-switch] save failed", e);
+  }
+  res.json({ ok: true, enabled: sw.enabled });
+}));
+
 // ── STORE-LINKS-PATCH: owner-set App Store / Google Play links + on/off switch for the white "Open App" banner on the welcome video ──
 // GET  /api/app-settings/store-links -> { ok, appStore, googlePlay, showBanner }  (public, never cached)
 // POST /api/app-settings/store-links { appStore?, googlePlay?, showBanner? } (owner/admin only) — saved to disk like the live-icons switches

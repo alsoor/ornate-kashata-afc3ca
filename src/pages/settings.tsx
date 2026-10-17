@@ -82,6 +82,62 @@ function OwnerLiveIconsControls() {
   );
 }
 
+/** Owner only (User Control): one switch for the PUBLIC chat. OFF = the public chat, its floating chat icon and the
+ *  ON/OFF switch inside every profile disappear for ALL users. ON = they come back. Saved on the server. */
+function OwnerPublicChatControl({ T }: { T: Record<string, any> }) {
+  const [enabled, setEnabled] = useState<boolean>(() => {
+    try { return localStorage.getItem('stooorna_public_chat_allowed') !== '0'; } catch { return true; }
+  });
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ text: string; bad: boolean }>({ text: '', bad: false });
+  useEffect(() => {
+    let live = true;
+    void fetch('/api/app-settings/public-chat', { credentials: 'include', cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (live && d && typeof d.enabled === 'boolean') setEnabled(d.enabled); })
+      .catch(() => {});
+    return () => { live = false; };
+  }, []);
+  const toggle = async () => {
+    if (busy) return;
+    const next = !enabled;
+    setBusy(true);
+    setEnabled(next);
+    try {
+      const r = await fetch('/api/app-settings/public-chat', {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: next }),
+      });
+      if (!r.ok) throw new Error('save_failed');
+      // apply on this device right away (same code path every other device runs after it reads the server value)
+      void import('./add-friend').then(m => m.applyPublicChatAllowed(next)).catch(() => {});
+      setNote({ text: 'تم الحفظ', bad: false });
+    } catch {
+      setEnabled(!next);
+      setNote({ text: 'ما انحفظ - السيرفر ما أكّد', bad: true });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 14px', borderRadius: 12, background: T.surface, border: `1px solid ${T.surfaceBorder}` }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ margin: 0, color: T.text, fontWeight: 800, fontSize: '0.82rem' }}>الشات العام (أيقونة الشات + مفتاح ON)</p>
+          <p style={{ margin: '3px 0 0', color: enabled ? '#86efac' : '#fca5a5', fontSize: '0.7rem', fontWeight: 700 }}>
+            {enabled ? 'ظاهر للجميع' : 'مخفي عن جميع المستخدمين'}
+          </p>
+        </div>
+        <button type="button" aria-label="الشات العام" aria-pressed={enabled} disabled={busy} onClick={() => { void toggle(); }}
+          style={{ width: 48, height: 28, borderRadius: 999, border: 'none', flexShrink: 0, background: enabled ? '#22c55e' : '#4b5563', position: 'relative', cursor: 'pointer', opacity: busy ? 0.7 : 1 }}>
+          <span style={{ position: 'absolute', top: 4, width: 20, height: 20, borderRadius: '50%', background: '#fff', left: enabled ? 24 : 4, transition: 'left 0.15s ease' }} />
+        </button>
+      </div>
+      {note.text && <p style={{ margin: 0, textAlign: 'center', fontSize: '0.72rem', fontWeight: 700, color: note.bad ? '#fca5a5' : '#86efac' }}>{note.text}</p>}
+    </div>
+  );
+}
+
 /** Owner only: "Ai" section — hide the Stooorna Ai icon (bottom bar) from users / from the owner. */
 function OwnerAiControls({ T }: { T: Record<string, any> }) {
   const [hide, setHide] = useState<AiIconHide>(() => readAiIconHide());
@@ -10331,6 +10387,9 @@ export default function SettingsPage() {
                   </div>
                   <span style={{ color: T.primary, fontSize: '1.25rem', lineHeight: 1 }}>‹</span>
                 </motion.button>
+
+                {/* Public chat switch (User Control) — hides the public chat + its icon + the profile ON switch for everyone */}
+                <OwnerPublicChatControl T={T} />
 
                 {/* Ai — hide Stooorna Ai icon from users / owner, right under User Control */}
                 <OwnerAiControls T={T} />

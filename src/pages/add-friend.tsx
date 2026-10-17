@@ -19793,6 +19793,65 @@ function LiveChatVideoStudio({ open, onClose, onPost, userId }: {
   );
 }
 
+// ── PUBLIC-CHAT-SWITCH-PATCH ──────────────────────────────────────────────────────────────────────────
+// Owner switch (settings → User Control). OFF = the public chat, its floating chat icon and the ON/OFF switch in the
+// profile disappear for EVERYONE. The value lives on the server (/api/app-settings/public-chat); every client keeps a
+// cached copy (localStorage) so the first paint is already correct, and re-checks on focus + every 20 s.
+// Anything outside this file (e.g. the layout that draws the floating chat icon) can read
+// window.__stooornaPublicChatAllowed or listen to the 'stooorna:public-chat-allowed' event.
+const PCS_ALLOWED_KEY = 'stooorna_public_chat_allowed';
+const PCS_PREV_KEY = 'stooorna_public_chat_on_prev'; // the user's own ON/OFF choice, restored when the owner re-enables the chat
+let pcsAllowed = (() => { try { return localStorage.getItem(PCS_ALLOWED_KEY) !== '0'; } catch { return true; } })();
+const pcsListeners = new Set<() => void>();
+export function applyPublicChatAllowed(next: boolean) {
+  const changed = next !== pcsAllowed;
+  pcsAllowed = next;
+  if (typeof window === 'undefined') return;
+  try {
+    (window as any).__stooornaPublicChatAllowed = next;
+    localStorage.setItem(PCS_ALLOWED_KEY, next ? '1' : '0');
+    if (!next) {
+      // force the user's own chat switch OFF (remember what it was) so the floating icon + chat go away everywhere
+      if (localStorage.getItem('stooorna_public_chat_on') === '1') localStorage.setItem(PCS_PREV_KEY, '1');
+      localStorage.setItem('stooorna_public_chat_on', '0');
+      (window as any).__stooornaPublicChatOn = false;
+      window.dispatchEvent(new CustomEvent('stooorna:public-chat-switch', { detail: { on: false } }));
+    } else if (localStorage.getItem(PCS_PREV_KEY) === '1') {
+      localStorage.removeItem(PCS_PREV_KEY);
+      localStorage.setItem('stooorna_public_chat_on', '1');
+      (window as any).__stooornaPublicChatOn = true;
+      window.dispatchEvent(new CustomEvent('stooorna:public-chat-switch', { detail: { on: true } }));
+    }
+  } catch { /* */ }
+  if (changed) {
+    pcsListeners.forEach((l) => l());
+    try { window.dispatchEvent(new CustomEvent('stooorna:public-chat-allowed', { detail: { enabled: next } })); } catch { /* */ }
+  }
+}
+async function pcsRefresh() {
+  try {
+    const r = await fetch('/api/app-settings/public-chat', { credentials: 'include', cache: 'no-store' });
+    if (!r.ok) return;
+    const d = await r.json();
+    if (d && typeof d.enabled === 'boolean') applyPublicChatAllowed(d.enabled);
+  } catch { /* offline: keep the cached value */ }
+}
+if (typeof window !== 'undefined' && !(window as any).__stooornaPcsStarted) {
+  (window as any).__stooornaPcsStarted = true;
+  (window as any).__stooornaPublicChatAllowed = pcsAllowed;
+  void pcsRefresh();
+  window.setInterval(() => { if (document.visibilityState !== 'hidden') void pcsRefresh(); }, 20000);
+  window.addEventListener('focus', () => { void pcsRefresh(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void pcsRefresh(); });
+}
+export function usePublicChatAllowed(): boolean {
+  return useSyncExternalStore(
+    (cb) => { pcsListeners.add(cb); return () => { pcsListeners.delete(cb); }; },
+    () => pcsAllowed,
+    () => true,
+  );
+}
+
 export function PublicLiveCommentsPanel({
   user,
   headerOpen,
@@ -24204,7 +24263,7 @@ function DockShortcutHost({ user, navigate, myLiveBroadcastKind, setProfilePlusO
             ]) : ([
               { key: 'profile', label: 'Profile', c: '#00BCD4', rgb: '0,188,212', text: '#67e8f9', icon: <DockUserIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockSettingsStart = '/settings'; dockSettingsNonce += 1; dockSet({ kind: 'settings', x: sc.x }); } }, // Profile = the Settings page on its PROFILE tab (fresh start)
               { key: 'privacy', label: 'Privacy', c: '#22c55e', rgb: '34,197,94', text: '#86efac', icon: <DockShieldIcon size={20} strokeWidth={2.3} />, run: () => { close(); dockSettingsStart = '/privacy'; dockSettingsNonce += 1; dockSet({ kind: 'settings', x: sc.x }); } },
-            ])).map(it => (
+            ])).filter(it => it.key !== 'chat' || pcsAllowed).map(it => (
               <button
                 key={it.key}
                 type="button"
@@ -27160,6 +27219,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
     window.addEventListener('stooorna:public-chat-switch', onSw as EventListener);
     return () => window.removeEventListener('stooorna:public-chat-switch', onSw as EventListener);
   }, [publicChatSwitchOn]);
+  const publicChatAllowed = usePublicChatAllowed(); // PUBLIC-CHAT-SWITCH-PATCH: owner switch (User Control)
   const [publicVoiceMini, setPublicVoiceMini] = useState(false);
   // CALL-IN-PANEL: the layout owns the call. This page tells it when the profile panel is open and draws the slot
   // (under the green headset banner) where the live call controls are placed.
@@ -30274,8 +30334,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '8px 8px 0' }} />
                     </div>
                   ) : null}
-                  {/* مفتاح تشغيل الشات العام — تحت الإطار، بدون خطوط */}
-                  {user?.id ? (
+                  {/* مفتاح تشغيل الشات العام — تحت الإطار، بدون خطوط (يختفي بالكامل إذا أغلقه الأونر من User Control) */}
+                  {user?.id && publicChatAllowed ? (
                     <div style={{ width: '100%', maxWidth: 280, margin: '10px auto 2px', display: 'flex', justifyContent: 'center' }}>
                       <button
                         type="button"
