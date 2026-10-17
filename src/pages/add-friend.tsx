@@ -30148,14 +30148,14 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 })()}
                 {user ? (
                   <>
-                    <style>{`@keyframes stooornaTopPlusPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.55); } 50% { box-shadow: 0 0 0 7px rgba(239,68,68,0); } }`}</style>
+                    <style>{`@keyframes stooornaTopPlusPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.45); } 50% { box-shadow: 0 0 0 3px rgba(239,68,68,0); } }`}</style>
                     <button
                       type="button"
                       aria-label="Add story"
                       onClick={() => { setQuickPublishError(''); setPublishMenuOpen(true); }}
                       style={{
                         position: 'absolute', top: 'calc(12px + env(safe-area-inset-top, 0px))', right: 12, zIndex: 4,
-                        width: 34, height: 34, borderRadius: '50%', padding: 0,
+                        width: 34, height: 34, minWidth: 34, minHeight: 34, boxSizing: 'border-box', flexShrink: 0, borderRadius: '50%', padding: 0,
                         background: '#ef4444', border: 'none', color: '#fff', cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         fontSize: 18, fontWeight: 700, lineHeight: 1,
@@ -30199,7 +30199,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     aria-label="Close"
                     onClick={() => setProfileSlideOpen(false)}
                     style={{
-                      width: 34, height: 34, borderRadius: '50%', border: 'none',
+                      width: 34, height: 34, minWidth: 34, minHeight: 34, boxSizing: 'border-box', padding: 0, flexShrink: 0, borderRadius: '50%', border: 'none',
                       background: 'rgba(0,0,0,0.06)', color: '#111', cursor: 'pointer',
                       fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}
