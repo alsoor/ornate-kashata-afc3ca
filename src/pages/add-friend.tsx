@@ -28077,8 +28077,15 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   const storyDropBoot = useRef(true);
   const storyDropCount = useRef(0);
   const storyDropLive = useRef(false);
+  // ENTRY-RAISED: stories / live status load a moment AFTER mount (0 -> N); that first load is a baseline, not a new publish,
+  // so the sheet stays raised on entry. Drops only react after the settle window below.
+  const storyDropReady = useRef(false);
   useEffect(() => {
-    if (storyDropBoot.current) {
+    const t = window.setTimeout(() => { storyDropReady.current = true; }, 6000);
+    return () => window.clearTimeout(t);
+  }, []);
+  useEffect(() => {
+    if (storyDropBoot.current || !storyDropReady.current) {
       storyDropBoot.current = false;
       storyDropCount.current = storyItemCount;
       storyDropLive.current = !!anyLiveBroadcast;
@@ -30384,7 +30391,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   ) : null}
 
                   {/* CALL-BANNER: green headset banner under the ON/OFF switch (moved from the bottom bar) */}
-                  {user?.id ? (
+                  {user?.id && profileCallOnly ? (
                     <div style={{ width: '100%', maxWidth: 280, margin: profileCallOnly ? '28px auto 2px' : '12px auto 2px', display: 'flex', justifyContent: 'center' }}>
                       <button
                         type="button"
@@ -30742,35 +30749,6 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 {/* PERF: the dock bubble is its own component now — tapping an icon re-renders only the bubble, not this whole page */}
 
 
-                  {user?.id && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
-<button
-                      type="button"
-                      onPointerDown={(e) => { const el = e.currentTarget; liveDockLongPress.start(() => openDockShortcut('live', el)); }} /* DOCK-SHORTCUTS */
-                      onPointerUp={liveDockLongPress.end}
-                      onPointerLeave={liveDockLongPress.end}
-                      onPointerCancel={liveDockLongPress.end}
-                      onContextMenu={(e) => e.preventDefault()}
-                      onClick={(e) => {
-                        if (liveDockLongPress.st.fired) { liveDockLongPress.st.fired = false; return; }
-                        openDockBubble('live', e.currentTarget);
-                      }}
-                      aria-label="Live broadcast"
-                      style={{
-                        WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
-                        width: 44, height: 44, borderRadius: '50%',
-                        border: '1.5px solid #ffffff',
-                        background: 'transparent',
-                        color: (myLiveBroadcastKind || anyLiveBroadcast) ? '#ef4444' : '#ffffff',
-                        cursor: 'pointer',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        boxShadow: 'none',
-                      }}
-                    >
-                      <Radio size={22} strokeWidth={2.2} />
-                    </button>
-</div>
-                  )}
                   {/* CALL-DOCK-BUTTON: same design as LIVE / Chat. One tap raises the call sheet (green button + friends list, nothing else). */}
                   {user?.id && !guestMode && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
@@ -30825,6 +30803,35 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         )}
                       </button>
                     </div>
+                  )}
+                  {user?.id && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
+<button
+                      type="button"
+                      onPointerDown={(e) => { const el = e.currentTarget; liveDockLongPress.start(() => openDockShortcut('live', el)); }} /* DOCK-SHORTCUTS */
+                      onPointerUp={liveDockLongPress.end}
+                      onPointerLeave={liveDockLongPress.end}
+                      onPointerCancel={liveDockLongPress.end}
+                      onContextMenu={(e) => e.preventDefault()}
+                      onClick={(e) => {
+                        if (liveDockLongPress.st.fired) { liveDockLongPress.st.fired = false; return; }
+                        openDockBubble('live', e.currentTarget);
+                      }}
+                      aria-label="Live broadcast"
+                      style={{
+                        WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
+                        width: 44, height: 44, borderRadius: '50%',
+                        border: '1.5px solid #ffffff',
+                        background: 'transparent',
+                        color: (myLiveBroadcastKind || anyLiveBroadcast) ? '#ef4444' : '#ffffff',
+                        cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: 'none',
+                      }}
+                    >
+                      <Radio size={22} strokeWidth={2.2} />
+                    </button>
+</div>
                   )}
                   {/* Stooorna Ai — between LIVE and Templates */}
                   {user?.id && aiIconVisible && (
