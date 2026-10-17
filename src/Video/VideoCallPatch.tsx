@@ -33,6 +33,7 @@ const SELF_W = 160; // تكبير الشاشة الصغيرة
 const SELF_H = 214;
 const EDGE = 6;
 const MX = 14; // هامش أبيض بسيط يمين ويسار الشاشتين
+const CONTROLS_SCALE = 0.8; // تصغير أزرار Mute / Video / End (1 = الحجم الأصلي، 0.7 أصغر)
 const TOP_Y = 100; // مكان الشاشة العلوية من أعلى الصفحة (كبّر الرقم = تنزل أكثر)
 
 /** المسافة الآمنة السفلية (شريط النظام / الجسچر) بالبكسل */
@@ -181,14 +182,12 @@ export type VideoCallStageProps = {
 };
 
 export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAvatarUrl, onLeavePage, onSwitchCamera, onToggleCamera, controls, thirdRef, thirdVideoOn }: VideoCallStageProps) {
-  const stageRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null); // مكان فارغ داخل الصفحة يحجز الارتفاع فقط
   const aliveRef = useRef(true);
   const [showControls, setShowControls] = useState(true); // نقرة على الشاشة = إخفاء/إظهار الأزرار
-  const [maxH, setMaxH] = useState<number | null>(null); // أقصى ارتفاع للشاشة المربعة كي لا تنزل تحت أزرار الجوال
-  const [vw, setVw] = useState<number>(() => (typeof window !== 'undefined' ? window.innerWidth : 360)); // عرض الشاشة كاملاً
-  const [shift, setShift] = useState(0); // إزاحة لتغطية الخلفية البيضاء يمين ويسار
-  const [stageH, setStageH] = useState(0); // ارتفاع الشاشة السفلية الفعلي (تستخدمه العلوية)
-  const shiftRef = useRef(0);
+  const [maxH, setMaxH] = useState<number | null>(null); // أقصى ارتفاع للشاشة كي لا تنزل تحت أزرار الجوال
+  const [vw, setVw] = useState<number>(() => (typeof window !== 'undefined' ? window.innerWidth : 360)); // عرض الجهاز
+  const [top, setTop] = useState<number | null>(null); // مكان الشاشة السفلية من أعلى الجهاز (تتبع المكان الفارغ)
   const leaveRef = useRef(onLeavePage);
   leaveRef.current = onLeavePage;
 
@@ -201,29 +200,20 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
     };
   }, []);
 
-  // يضبط ارتفاع الشاشة المربعة على كل الأجهزة (S22+ / S25 Ultra / ...) بحيث تبقى كاملة فوق أزرار النظام
+  // يضبط ارتفاع الشاشة على كل الأجهزة (S22+ / S25 Ultra / ...) بحيث تبقى كاملة فوق أزرار النظام
   useEffect(() => {
     const measure = () => {
       const el = stageRef.current;
       if (!el) return;
-      // تمديد الشاشة السفلية لكامل عرض الجهاز (تغطي الخلفية البيضاء)
-      // نقرأ الإزاحة المطبّقة فعلياً من العنصر نفسه (بدل ما نراكمها) حتى ما تنجرف الشاشة لليسار
-      const applied = parseFloat((el.style.transform.match(/translateX\((-?[\d.]+)px\)/) || [])[1] || '0') || 0;
-      const baseLeft = el.getBoundingClientRect().left - applied;
-      shiftRef.current = baseLeft;
-      setShift(prev => (Math.abs(prev - baseLeft) < 0.5 ? prev : baseLeft));
       setVw(window.innerWidth);
       const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
       const r = el.getBoundingClientRect();
-      let sc = window.scrollY || 0;
-      for (let p: HTMLElement | null = el.parentElement; p; p = p.parentElement) sc += p.scrollTop || 0;
       // الجهاز اللي يرسم التطبيق تحت أزرار النظام (edge-to-edge) يكون ارتفاع الصفحة = ارتفاع الشاشة
       const edgeToEdge = Math.abs(window.innerHeight - window.screen.height) < 8;
       const reserve = Math.max(safeBottomPx(), 0) + 24 + (edgeToEdge ? 48 : 0);
-      const avail = Math.floor(vh - (r.top + sc) - reserve);
+      const avail = Math.floor(vh - r.top - reserve);
       const width = window.innerWidth - MX * 2;
       const next = avail < width ? Math.max(avail, 240) : null;
-      setStageH(Math.round(el.getBoundingClientRect().height));
       setMaxH(prev => (prev === next || (prev !== null && next !== null && Math.abs(prev - next) < 3) ? prev : next));
     };
     measure();
@@ -239,46 +229,79 @@ export function VideoCallStage({ remoteRef, localRef, cameraOn, peerName, peerAv
     };
   }, []);
 
+  // الشاشة السفلية تُرسم خارج حاويات الصفحة (portal) حتى ما يقصّها أي overflow ولا عرض الحاوية؛ نتتبع مكان المكان الفارغ كل إطار
+  useEffect(() => {
+    let raf = 0;
+    const track = () => {
+      const el = stageRef.current;
+      if (el) {
+        const t = Math.round(el.getBoundingClientRect().top);
+        setTop(prev => (prev === t ? prev : t));
+      }
+      raf = window.requestAnimationFrame(track);
+    };
+    raf = window.requestAnimationFrame(track);
+    return () => window.cancelAnimationFrame(raf);
+  }, []);
+
+  const W = vw - MX * 2;
+  const H = maxH ?? W;
   const label = (peerName || '?').trim();
   return (
     <>
+      {/* مكان فارغ: يحجز الارتفاع داخل الصفحة (RootLayout يخفي كل شي غيره في وضع الفيديو) */}
       <div
         ref={stageRef}
         data-vstage="1"
-        onClick={() => setShowControls(v => !v)}
-        style={{
-          gridColumn: '1 / -1', order: -1, width: vw - MX * 2, height: maxH ?? (vw - MX * 2), transform: `translateX(${MX - shift}px)`, borderRadius: 18,
-          overflow: 'hidden', background: '#0b1417', position: 'relative', boxSizing: 'border-box',
-        }}
-      >
-        {/* خلفية قبل وصول الفيديو */}
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {peerAvatarUrl
-            ? <img src={peerAvatarUrl} alt="" style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', opacity: 0.9 }} />
-            : <span style={{ width: 84, height: 84, borderRadius: '50%', background: '#0e7490', color: '#fff', fontWeight: 800, fontSize: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{label[0]}</span>}
-        </div>
-        {/* شاشة الشخص المتصل عليه — ثابتة */}
-        <div ref={remoteRef} style={{ position: 'absolute', inset: 0 }} />
-        {controls && (
-          <div
-            data-vctl="1"
-            onClick={e => e.stopPropagation()}
-            style={{
-              position: 'absolute', left: 0, right: 0, bottom: 16, zIndex: 3, display: 'flex',
-              justifyContent: 'center', alignItems: 'center', gap: 22,
-              opacity: showControls ? 1 : 0, pointerEvents: showControls ? 'auto' : 'none', transition: 'opacity 0.18s ease',
-            }}
-          >
-            {/* تصغير أزرار الفيديو الثلاثة (Mute / Video / End) داخل الشاشة فقط */}
-            <style>{VIDEO_STAGE_CONTROLS_CSS}</style>
-            {controls}
+        style={{ gridColumn: '1 / -1', order: -1, width: '100%', height: H, boxSizing: 'border-box', pointerEvents: 'none' }}
+      />
+      {top != null && typeof document !== 'undefined' && createPortal(
+        <div
+          data-vpanel="1"
+          onClick={() => setShowControls(v => !v)}
+          style={{
+            position: 'fixed', left: MX, top, width: W, height: H, zIndex: 99990, borderRadius: 18,
+            overflow: 'hidden', background: '#0b1417', boxSizing: 'border-box',
+          }}
+        >
+          <style>{VIDEO_STAGE_PANEL_CSS}</style>
+          {/* خلفية قبل وصول الفيديو */}
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {peerAvatarUrl
+              ? <img src={peerAvatarUrl} alt="" style={{ width: 84, height: 84, borderRadius: '50%', objectFit: 'cover', opacity: 0.9 }} />
+              : <span style={{ width: 84, height: 84, borderRadius: '50%', background: '#0e7490', color: '#fff', fontWeight: 800, fontSize: 32, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{label[0]}</span>}
           </div>
-        )}
-      </div>
-      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} onSwitchCamera={onSwitchCamera} onToggleCamera={onToggleCamera} size={{ w: vw - MX * 2, h: maxH ?? (vw - MX * 2) }} thirdRef={thirdRef} thirdVideoOn={thirdVideoOn} />
+          {/* شاشة الشخص المتصل عليه — ثابتة */}
+          <div ref={remoteRef} style={{ position: 'absolute', inset: 0 }} />
+          {controls && (
+            <div
+              data-vctl="1"
+              onClick={e => e.stopPropagation()}
+              style={{
+                position: 'absolute', left: 0, right: 0, bottom: 16, zIndex: 3, display: 'flex',
+                justifyContent: 'center', alignItems: 'center', gap: 22,
+                opacity: showControls ? 1 : 0, pointerEvents: showControls ? 'auto' : 'none', transition: 'opacity 0.18s ease',
+              }}
+            >
+              {/* تصغير أزرار الفيديو الثلاثة (Mute / Video / End) داخل الشاشة فقط */}
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 22, transform: `scale(${CONTROLS_SCALE})`, transformOrigin: 'center bottom' }}>
+                {controls}
+              </div>
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+      <DraggableSelfView localRef={localRef} cameraOn={cameraOn} anchorRef={stageRef} onSwitchCamera={onSwitchCamera} onToggleCamera={onToggleCamera} size={{ w: W, h: H }} thirdRef={thirdRef} thirdVideoOn={thirdVideoOn} />
     </>
   );
 }
+
+/** شكل أزرار الشاشة السفلية بعد ما صارت خارج .stooorna-call-light (نفس ألوان وأحجام اللوحة) */
+export const VIDEO_STAGE_PANEL_CSS = `[data-vpanel="1"] button { width: 62px; height: 62px; border: none; border-radius: 50%; background: #22282b; color: #fff; box-shadow: none; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+[data-vpanel="1"] button svg { width: 26px; height: 26px; }
+[data-vpanel="1"] button[aria-label="Unmute"], [data-vpanel="1"] button[aria-label="Video off"] { background: #3a4348; }
+[data-vpanel="1"] button[aria-label="End call"] { background: #e6003a; color: #fff; }`;
 
 /** زر Video — ظاهر دائماً، بنفس شكل أزرار اللوحة (دائرة داكنة + اسم تحتها) */
 export function VideoCallButton({ cameraOn, onToggle, disabled, showLabel = true }: { cameraOn: boolean; onToggle: () => void; disabled?: boolean; showLabel?: boolean }) {

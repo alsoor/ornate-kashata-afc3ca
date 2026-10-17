@@ -1558,6 +1558,18 @@ function GlobalBottomNavigation() {
   const [pipPos, setPipPos] = useState({ x: 16, y: 80 });
   const localVideoRef = useRef<HTMLDivElement | null>(null);
   const remoteVideoRef = useRef<HTMLDivElement | null>(null);
+  const thirdVideoRef = useRef<HTMLDivElement | null>(null); // VIDEO-PATCH: third person's video (top screen splits in two)
+  const [homeCallThirdVideo, setHomeCallThirdVideo] = useState(false); // VIDEO-PATCH: true only when a 3rd person has camera on
+  // VIDEO-PATCH: first remote video -> bottom screen, second remote video -> right half of the top screen
+  const routeHomeCallRemoteVideos = () => {
+    try {
+      const rs = ((homeCallAgoraRef.current as any)?.remoteUsers || []).filter((u: any) => !!u.videoTrack);
+      rs.forEach((u: any, i: number) => {
+        const el = i === 0 ? remoteVideoRef.current : thirdVideoRef.current;
+        try { u.videoTrack.play(el || undefined); } catch { /* */ }
+      });
+    } catch { /* */ }
+  };
   const homeCallLiveStartedAt = useRef<number | null>(null);
   const [homeCallFriends, setHomeCallFriends] = useState<HomeCallFriend[]>([]);
   const [homeCallSelected, setHomeCallSelected] = useState<Record<string, boolean>>({});
@@ -2819,7 +2831,7 @@ function GlobalBottomNavigation() {
               try { remoteUser.audioTrack?.play(el); } catch { remoteUser.audioTrack?.play(); }
             }
             if (mediaType === 'video') {
-              requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
+              requestAnimationFrame(() => { try { routeHomeCallRemoteVideos(); } catch { /* */ } });
             }
             if (homeCallPhaseRef.current === 'connecting' || homeCallPhaseRef.current === 'animating') {
               setHomeCallPhase('live');
@@ -2996,10 +3008,8 @@ function GlobalBottomNavigation() {
       try { homeCallCamRef.current?.play?.(localVideoRef.current || undefined, { mirror: homeCallFacingRef.current === 'user' }); } catch { /* */ }
       try {
         const client = homeCallAgoraRef.current;
-        const remotes = client?.remoteUsers || [];
-        for (const ru of remotes) {
-          if (ru.videoTrack) ru.videoTrack.play(remoteVideoRef.current || undefined);
-        }
+        void client;
+        routeHomeCallRemoteVideos();
       } catch { /* */ }
     };
     bind();
@@ -3013,11 +3023,12 @@ function GlobalBottomNavigation() {
 
   // VIDEO-PATCH: detect when the other side opens / closes their camera
   useEffect(() => {
-    if (homeCallPhase === 'idle') { setHomeCallRemoteVideo(false); return; }
+    if (homeCallPhase === 'idle') { setHomeCallRemoteVideo(false); setHomeCallThirdVideo(false); return; }
     const t = window.setInterval(() => {
       try {
         const rs = homeCallAgoraRef.current?.remoteUsers || [];
         setHomeCallRemoteVideo(rs.some((u: any) => !!u.hasVideo));
+        setHomeCallThirdVideo(rs.filter((u: any) => !!u.hasVideo).length >= 2);
       } catch { /* */ }
     }, 700);
     return () => window.clearInterval(t);
@@ -3550,7 +3561,7 @@ function GlobalBottomNavigation() {
           await client.subscribe(remoteUser, mediaType);
           if (mediaType === 'audio') remoteUser.audioTrack?.play();
           if (mediaType === 'video') {
-            requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
+            requestAnimationFrame(() => { try { routeHomeCallRemoteVideos(); } catch { /* */ } });
           }
           if (homeCallPhaseRef.current === 'connecting') {
             setHomeCallPhase('live');
@@ -3606,7 +3617,7 @@ function GlobalBottomNavigation() {
             }
             if (remoteUser.hasVideo) {
               await client.subscribe(remoteUser, 'video');
-              requestAnimationFrame(() => { try { remoteUser.videoTrack?.play(remoteVideoRef.current || undefined); } catch { /* */ } });
+              requestAnimationFrame(() => { try { routeHomeCallRemoteVideos(); } catch { /* */ } });
             }
           } catch { /* */ }
         }));
@@ -5031,6 +5042,8 @@ function GlobalBottomNavigation() {
                 onLeavePage={() => { setHomeCallStageKeep(false); void stopHomeCallCamera(); }}
                 onToggleCamera={() => homeCallAction(() => { void toggleSelfCamFromStage(); })}
                 onSwitchCamera={() => { void flipHomeCallCamera(); }}
+                thirdRef={thirdVideoRef}
+                thirdVideoOn={homeCallThirdVideo}
                 controls={(
                   <>
                     <button
