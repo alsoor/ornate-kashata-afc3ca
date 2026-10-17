@@ -18849,7 +18849,7 @@ function LiveMediaTile({ c, liked, name, commentCount, onLike, onOpen, onOpenPro
           />
         ) : null}
       </div>
-      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 800, color: CLR_TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
+      <p style={{ margin: '4px 0 0', fontSize: '0.74rem', fontWeight: 800, color: '#000000', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</p>
     </div>
   );
 }
@@ -21145,7 +21145,7 @@ export function PublicLiveCommentsPanel({
               position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 'var(--stooorna-tpl-top, 0px)', bottom: 0, /* TPL-PAGE-ON-GRABBER */ /* TPL-FULL-BOTTOM: posts run to the screen bottom; only the round icon floats over them */
               display: 'flex', flexDirection: 'column',
               padding: '6px 10px 0',
-              background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+              background: '#ffffff',
               visibility: tplShown ? 'visible' : 'hidden',
               pointerEvents: tplShown ? 'auto' : 'none',
               transform: tplShown ? 'translateY(0)' : 'translateY(105%)',
@@ -21156,11 +21156,11 @@ export function PublicLiveCommentsPanel({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
-              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,188,212,0.14)', color: '#00BCD4' }}>
+              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', color: '#000000' }}>
                 <Film size={15} strokeWidth={2.2} />
               </span>
-              <p style={{ margin: 0, flex: 1, color: '#7ee8f5', fontWeight: 800, fontSize: '0.98rem' }}>Post</p>
-              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(250,204,21,0.14)', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 800, fontSize: '0.98rem' }}>Post</p>
+              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#000000', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#facc15' : 'none'} />
               </button>
             </div>
@@ -21172,7 +21172,7 @@ export function PublicLiveCommentsPanel({
               }}
             >
               {mediaPosts.length === 0 ? (
-                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No Templates yet</p>
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>No Templates yet</p>
               ) : (
                 <>
         {LIVE_MEDIA_STACKED ? mediaPosts.map(vc => (
@@ -21233,17 +21233,17 @@ export function PublicLiveCommentsPanel({
               position: 'fixed', zIndex: 10085, left: 0, right: 0, top: 'var(--stooorna-tpl-top, 0px)', bottom: 0, /* TPL-FULL-BOTTOM */ /* TPL-PAGE-ON-GRABBER: Favorites sits at the same level as Templates, grabber line stays visible */
               display: 'flex', flexDirection: 'column',
               padding: '6px 10px 0',
-              background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
+              background: '#ffffff',
               borderTop: '1.5px solid rgba(250,204,21,0.8)',
               pointerEvents: 'auto',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
-              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(250,204,21,0.14)', color: '#facc15' }}>
-                <Bookmark size={15} strokeWidth={2.2} fill="#facc15" />
+              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000000', color: '#ffffff' }}>
+                <Bookmark size={15} strokeWidth={2.2} fill="#ffffff" />
               </span>
-              <p style={{ margin: 0, flex: 1, color: '#facc15', fontWeight: 800, fontSize: '0.98rem' }}>Favorites</p>
-              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: 'rgba(255,255,255,0.08)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 800, fontSize: '0.98rem' }}>Favorites</p>
+              <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#000000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <X size={15} strokeWidth={2.4} />
               </button>
             </div>
@@ -21254,7 +21254,7 @@ export function PublicLiveCommentsPanel({
               }}
             >
               {favPosts.length === 0 ? (
-                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(150,200,200,0.65)' }}>No favorites yet</p>
+                <p style={{ margin: '28px 0', textAlign: 'center', fontSize: '0.78rem', color: 'rgba(0,0,0,0.55)' }}>No favorites yet</p>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, direction: 'ltr' }}>
                   {favPosts.map(vc => (
