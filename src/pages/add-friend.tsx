@@ -21160,7 +21160,7 @@ export function PublicLiveCommentsPanel({
                 <Film size={15} strokeWidth={2.2} />
               </span>
               <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 800, fontSize: '0.98rem' }}>Post</p>
-              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#000000', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button type="button" aria-label="Favorites" onClick={() => setTplFavOpen(true)} style={{ position: 'relative', width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#ffffff', color: '#facc15', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <Bookmark size={15} strokeWidth={2.2} fill={favPosts.length > 0 ? '#facc15' : 'none'} />
               </button>
             </div>
@@ -21239,8 +21239,8 @@ export function PublicLiveCommentsPanel({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexShrink: 0, padding: '0 4px' }}>
-              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000000', color: '#ffffff' }}>
-                <Bookmark size={15} strokeWidth={2.2} fill="#ffffff" />
+              <span style={{ width: 30, height: 30, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#ffffff', color: '#facc15' }}>
+                <Bookmark size={15} strokeWidth={2.2} fill="#facc15" />
               </span>
               <p style={{ margin: 0, flex: 1, color: '#000000', fontWeight: 800, fontSize: '0.98rem' }}>Favorites</p>
               <button type="button" aria-label="Close favorites" onClick={closeFavBubble} style={{ width: 30, height: 30, borderRadius: '50%', border: 'none', background: '#000000', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
