@@ -589,6 +589,26 @@ function FriendChatPatch() {
       setRecents(prev => { const next: Recent[] = [{ id: h.id, name: h.name, avatar: h.avatar ?? null, ts: Date.now() }, ...prev.filter(r => r.id !== h.id)]; saveRecents(me.id, next); return next; });
     }
   }, [reqTick, sheet, me?.id, mode, friends, unread, recents.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  // CHAT-DOCK-BUTTON: the chat icon in the bottom bar opens the chat list page directly (no Stooorna Ai page, no composer rectangle)
+  const wantList = useRef(0);
+  const [listReq, setListReq] = useState(0);
+  useEffect(() => {
+    const onList = () => {
+      wantList.current = Date.now();
+      setListReq(n => n + 1);
+      try { if (!scanSheet()) openAiSheet(); } catch { /* */ }
+    };
+    window.addEventListener(OPEN_CHAT_LIST_EVENT, onList);
+    return () => window.removeEventListener(OPEN_CHAT_LIST_EVENT, onList);
+  }, []);
+  useEffect(() => {
+    if (!wantList.current) return;
+    if (Date.now() - wantList.current > 15000) { wantList.current = 0; return; }
+    if (!sheet) { const tm = window.setTimeout(() => setListReq(n => n + 1), 300); return () => window.clearTimeout(tm); }
+    wantList.current = 0;
+    autoPick.current = false;
+    setPeer(null); setListOpen(false); setSelectMode(false); setSelected([]); setMode('chat');
+  }, [listReq, sheet]); // eslint-disable-line react-hooks/exhaustive-deps
   const typingSent = useRef(0);
   const lpDone = useRef(0); // SEND-SOUND: time of the last long-press on "+"
   const [picker, setPicker] = useState<string | null>(null);
@@ -952,7 +972,8 @@ function FriendChatPatch() {
   const goBack = () => {
     if (selectModeRef.current) { setSelectMode(false); setSelected([]); return; }
     if (peerRef.current) { setPeer(null); setListOpen(false); return; }
-    backToAi();
+    // CHAT-DOCK-BUTTON: the chat is standalone now (opened from the bottom bar) -> leaving the list closes the page
+    try { window.dispatchEvent(new CustomEvent('stooorna:ai-close')); } catch { /* */ }
   };
   const navRef = useRef({ enterChat, backToAi, goBack }); navRef.current = { enterChat, backToAi, goBack };
 
@@ -977,8 +998,11 @@ function FriendChatPatch() {
       const t = e.target as HTMLElement | null;
       if (!t) return;
       if (sheet.avatarWrap.contains(t)) {
+        // CHAT-DOCK-BUTTON: on the Stooorna Ai page the profile picture no longer opens the chat (entry = bottom-bar chat button).
+        // Inside the chat page the profile picture takes the place of the old back arrow.
+        if (modeRef.current !== 'chat') return;
         e.preventDefault(); e.stopPropagation();
-        if (modeRef.current === 'chat') navRef.current.goBack(); else navRef.current.enterChat();
+        navRef.current.goBack();
         return;
       }
       if (modeRef.current !== 'chat') return;
@@ -1061,7 +1085,7 @@ function FriendChatPatch() {
 
   const openUnread = mode === 'chat' ? Object.fromEntries(Object.entries(unread).filter(([k]) => k !== peer?.id)) : unread;
   const totalUnread = Object.values(openUnread).reduce((a, b) => a + b, 0);
-  const showIcon = mode === 'chat' || totalUnread > 0;
+  const showIcon = false; // CHAT-DOCK-BUTTON: the user's own profile picture stays visible (replaces the back arrow); unread count moved to the bottom-bar chat button
   const openPeer = (f: Friend) => {
     setPeer({ id: f.id, name: f.name, avatar: f.avatar ?? null }); setListOpen(false); setSelectMode(false); setSelected([]);
     if (me) {
@@ -1252,7 +1276,7 @@ function FriendChatPatch() {
       <style>{`
         [data-sfc="chat"] > :not(:first-child) { visibility: hidden !important; pointer-events: none !important; }
         [data-sfc="chat"] > [data-sfc-portal] { visibility: visible !important; pointer-events: auto !important; }
-        [data-sfc-av] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        [data-sfc="chat"] [data-sfc-av] { cursor: pointer; -webkit-tap-highlight-color: transparent; }
         @keyframes sfcPulse { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
         @keyframes sfcPop { from { opacity: 0; transform: translateY(-6px) scale(0.98); } to { opacity: 1; transform: none; } }
       `}</style>
@@ -1765,6 +1789,7 @@ const emptyStyle: React.CSSProperties = { margin: '10px 8px', color: '#6b7280', 
 const REFRESH_EVENT = 'stooorna:friend-chat-refresh';
 const PREVIEW_EVENT = 'stooorna:friend-chat-preview';
 const OPEN_EVENT = 'stooorna:friend-chat-open';
+const OPEN_CHAT_LIST_EVENT = 'stooorna:open-chat-list'; // CHAT-DOCK-BUTTON: bottom-bar chat button -> opens the chat list page directly
 const normName = (s: string) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
 const previewKey = (me: string) => `stooorna_friend_chat_preview_v1_${me}`;
 const readPreviews = (me: string): Record<string, { text: string; ts: number }> => {

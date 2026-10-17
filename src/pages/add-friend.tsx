@@ -30748,6 +30748,39 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </button>
 </div>
                   )}
+                  {/* CHAT-DOCK-BUTTON: chat — same design as the LIVE button, right beside it. One tap opens the chat list page directly. */}
+                  {user?.id && aiIconVisible && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAiOpen(true);
+                          try { window.dispatchEvent(new CustomEvent('stooorna:open-chat-list')); } catch { /* */ }
+                        }}
+                        aria-label="Chat"
+                        style={{
+                          WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
+                          position: 'relative',
+                          width: 44, height: 44, borderRadius: '50%',
+                          border: '1.5px solid #ffffff',
+                          background: 'transparent',
+                          color: aiUnread > 0 ? '#3b82f6' : '#ffffff',
+                          cursor: 'pointer', padding: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: 'none',
+                        }}
+                      >
+                        <MessageCircle size={22} strokeWidth={2.2} />
+                        {aiUnread > 0 && (
+                          <span aria-hidden="true" style={{
+                            position: 'absolute', top: -5, right: -5, minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box',
+                            borderRadius: 9, background: '#ef4444', color: '#fff', border: '2px solid #04100f',
+                            fontSize: 11, fontWeight: 800, lineHeight: '14px', textAlign: 'center', pointerEvents: 'none',
+                          }}>{aiUnread > 99 ? '99+' : aiUnread}</span>
+                        )}
+                      </button>
+                    </div>
+                  )}
                   {/* Stooorna Ai — between LIVE and Templates */}
                   {user?.id && aiIconVisible && (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
