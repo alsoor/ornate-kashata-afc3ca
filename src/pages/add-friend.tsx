@@ -23785,7 +23785,7 @@ function DockBubbleHost({ guestMode, user, navigate, myLiveBroadcastKind, setPro
         aria-hidden={!active}
         onClick={e => e.stopPropagation()}
         style={{
-          position: 'fixed', zIndex: dockBubble.kind === 'call' ? 16100 : 10076, left: 0, right: 0, top: 0, bottom: dockBubble.kind === 'call' ? 0 : 'var(--stooorna-bottom-bar-h, 96px)',
+          position: 'fixed', zIndex: dockBubble.kind === 'call' ? 16100 : (dockBubble.kind === 'settings' && (window as any).__stooornaProfilePanelOpen) ? 16100 : 10076, left: 0, right: 0, top: 0, bottom: (dockBubble.kind === 'call' || (dockBubble.kind === 'settings' && (window as any).__stooornaProfilePanelOpen)) ? 0 : 'var(--stooorna-bottom-bar-h, 96px)',
           display: 'flex', flexDirection: 'column',
           padding: dockBubble.kind === 'settings' ? 'env(safe-area-inset-top, 0px) 0 0' : dockBubble.kind === 'call' ? 'calc(env(safe-area-inset-top, 0px) + 10px) 14px env(safe-area-inset-bottom, 0px)' : 'calc(env(safe-area-inset-top, 0px) + 10px) 14px 0',
           background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
@@ -30064,6 +30064,47 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   overflowY: 'auto',
                 }}
               >
+                {/* Settings gear — moved here from the bottom dock (same look, same colors, same spinning gear) */}
+                {user?.id && !guestMode && (
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.9 }}
+                    onPointerDown={(e) => { const el = e.currentTarget as HTMLElement; settingsDockLongPress.start(() => openDockShortcut('settings', el)); }}
+                    onPointerUp={settingsDockLongPress.end}
+                    onPointerLeave={settingsDockLongPress.end}
+                    onPointerCancel={settingsDockLongPress.end}
+                    onContextMenu={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      if (settingsDockLongPress.st.fired) { settingsDockLongPress.st.fired = false; return; }
+                      dockSettingsStartSet('/settings');
+                      try { sessionStorage.setItem('stooorna_settings_alert_seen', String(Date.now())); } catch { /* */ }
+                      setDockSettingsGray(false);
+                      openDockBubble('settings', e.currentTarget);
+                    }}
+                    aria-label="Settings"
+                    title="Settings"
+                    style={{
+                      position: 'absolute', right: 27, top: 'calc(env(safe-area-inset-top, 0px) + 84px)', zIndex: 5,
+                      WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
+                      width: 44, height: 44, borderRadius: '50%',
+                      border: `1.5px solid ${dockSettingsGray ? '#4b5563' : '#9ca3af'}`,
+                      background: 'transparent',
+                      color: dockSettingsGray ? '#4b5563' : '#9ca3af',
+                      cursor: 'pointer', padding: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      boxShadow: 'none',
+                    }}
+                  >
+                    <style>{`@keyframes stooornaDockGearSpin { to { transform: rotate(360deg); } }`}</style>
+                    <span
+                      aria-hidden="true"
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'stooornaDockGearSpin 9s linear infinite', willChange: 'transform' }}
+                    >
+                      <Settings size={22} strokeWidth={2.2} />
+                    </span>
+                  </motion.button>
+                )}
+
                 <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8 }}>
                   <button
                     type="button"
@@ -30340,7 +30381,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         {homeCallUiActive && homeCallBannerLabel ? (
                           <span style={{ color: '#ffffff', fontWeight: 800, fontSize: 15, padding: '0 12px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{homeCallBannerLabel}</span>
                         ) : (
-                          <Headphones size={24} strokeWidth={2.3} />
+                          <Phone size={24} strokeWidth={2.3} color="#ffffff" />
                         )}
                       </button>
                     </div>
@@ -30690,47 +30731,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   <button type="button" onClick={() => chooseGuestLang('en')} aria-pressed={guestLang === 'en'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 10, fontWeight: guestLang === 'en' ? 600 : 300, color: guestLang === 'en' ? '#00BCD4' : 'rgba(255,255,255,0.6)' }}>En</button>
 </div>
 </div>
-) : (
-<div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
-<motion.button
-                    type="button"
-                    whileTap={{ scale: 0.9 }}
-                    onPointerDown={(e) => { const el = e.currentTarget as HTMLElement; settingsDockLongPress.start(() => openDockShortcut('settings', el)); }} /* DOCK-SHORTCUTS */
-                    onPointerUp={settingsDockLongPress.end}
-                    onPointerLeave={settingsDockLongPress.end}
-                    onPointerCancel={settingsDockLongPress.end}
-                    onContextMenu={(e) => e.preventDefault()}
-                    onClick={(e) => {
-                        if (settingsDockLongPress.st.fired) { settingsDockLongPress.st.fired = false; return; } // DOCK-SHORTCUTS
-                        dockSettingsStartSet('/settings'); // a normal tap always opens the Settings page itself
-                        try { sessionStorage.setItem('stooorna_settings_alert_seen', String(Date.now())); } catch { /* */ }
-                        setDockSettingsGray(false);
-                        openDockBubble('settings', e.currentTarget);
-                      }}
-                    aria-label="Settings"
-                    title="Settings"
-                    style={{
-                      WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
-                      width: 44, height: 44, borderRadius: '50%',
-                      // Settings only: gray icon + gray frame (the other dock icons stay white)
-                      border: `1.5px solid ${dockSettingsGray ? '#4b5563' : '#9ca3af'}`,
-                      background: 'transparent',
-                      color: dockSettingsGray ? '#4b5563' : '#9ca3af',
-                      cursor: 'pointer', padding: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: 'none',
-                    }}
-                  >
-                    <style>{`@keyframes stooornaDockGearSpin { to { transform: rotate(360deg); } }`}</style>
-                    <span
-                      aria-hidden="true"
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'stooornaDockGearSpin 9s linear infinite', willChange: 'transform' }}
-                    >
-                      <Settings size={22} strokeWidth={2.2} />
-                    </span>
-                  </motion.button>
-</div>
-)}
+) : null}
                 </div>
           </div>
           </BottomHeaderPortal>
