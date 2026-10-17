@@ -10736,6 +10736,15 @@ function friendStateFromCache(id: string): 'none' | 'pending' | 'accepted' {
   return 'none';
 }
 export function FriendStoryProfile({ authorId, authorName, authorUsername, authorAvatarUrl, onClose, onOpenPost, onToggleLike, isCompanyProfile = false, sheetMode = false, riseFromBottom = false, hideLiveButton = false, zBase }: FriendStoryProfileProps) {
+  // VISITOR-LIGHT-THEME: white page, black text/buttons (same colors as the owner's own profile panel)
+  const PAGE_BG = '#ffffff';
+  const CLR_PRIMARY = '#000000';
+  const CLR_PRIMARY_DIM = 'rgba(0,0,0,0.45)';
+  const CLR_PRIMARY_FAINT = 'rgba(0,0,0,0.06)';
+  const CLR_PRIMARY_BORDER = 'rgba(0,0,0,0.25)';
+  const CLR_TEXT = '#000000';
+  const CLR_TEXT_DIM = 'rgba(0,0,0,0.55)';
+  const CLR_NAV_BORDER = 'rgba(0,0,0,0.12)';
   const navigate = useNavigate();
   // Layering (all relative to Z): backdrop = Z, panel = Z+1, followers list = Z+60, nested profile = Z+200, media lightbox = Z+300
   const Z = typeof zBase === 'number' ? zBase : 13040;
@@ -11070,8 +11079,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             aria-label="Close"
             style={{
               position: 'absolute', top: 'max(10px, env(safe-area-inset-top, 0px))', insetInlineStart: 10, width: 32, height: 32, borderRadius: '50%',
-              background: coverUrl ? 'rgba(0,0,0,0.25)' : 'rgba(0,188,212,0.12)',
-              border: coverUrl ? 'none' : `1px solid ${CLR_PRIMARY_BORDER}`,
+              background: coverUrl ? 'rgba(0,0,0,0.25)' : '#efefef',
+              border: 'none',
               color: coverUrl ? '#fff' : CLR_PRIMARY,
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2,
@@ -11134,14 +11143,14 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               const likedHere = authorPosts.some(p => !!(p as any).likedByMe || !!(p as any).isLiked);
               const ic = (color: string, child: React.ReactNode) => (
                 <span style={{
-                  width: 24, height: 24, borderRadius: '50%', border: '1.5px solid rgba(225,225,225,0.35)',
-                  background: 'rgba(225,225,225,0.1)', color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 24, height: 24, borderRadius: '50%', border: '1.5px solid #000',
+                  background: '#ffffff', color, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>{child}</span>
               );
               return (
                 <>
                   {hiddenFollowers ? (
-                    ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <Lock size={12} strokeWidth={2.2} />)
+                    ic(liveActive ? '#22c55e' : '#000000', <Lock size={12} strokeWidth={2.2} />)
                   ) : (
                     <button
                       type="button"
@@ -11150,12 +11159,12 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                       title="Followers"
                       style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', WebkitTapHighlightColor: 'transparent' }}
                     >
-                      {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <Users size={12} strokeWidth={2.3} />)}
+                      {ic(liveActive ? '#22c55e' : '#000000', <Users size={12} strokeWidth={2.3} />)}
                     </button>
                   )}
-                  {ic(liveActive ? '#ef4444' : 'rgba(230,230,230,0.9)', <Radio size={12} strokeWidth={2.3} />)}
-                  {ic(liveActive ? '#22c55e' : 'rgba(230,230,230,0.9)', <MapPin size={12} strokeWidth={2.3} />)}
-                  {ic(likedHere ? '#ef4444' : 'rgba(230,230,230,0.9)', <Heart size={12} strokeWidth={2.3} fill={likedHere ? '#ef4444' : 'none'} />)}
+                  {ic(liveActive ? '#ef4444' : '#000000', <Radio size={12} strokeWidth={2.3} />)}
+                  {ic(liveActive ? '#22c55e' : '#000000', <MapPin size={12} strokeWidth={2.3} />)}
+                  {ic(likedHere ? '#ef4444' : '#000000', <Heart size={12} strokeWidth={2.3} fill={likedHere ? '#ef4444' : 'none'} />)}
                 </>
               );
             })()}
@@ -11224,7 +11233,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
             return null;
           })()}
           {String(user?.id) !== String(authorId) && visitorCountry ? (
-            <p style={{ color: '#2563eb', fontSize: '0.74rem', fontWeight: 600, margin: '4px 0 0', letterSpacing: 0.2 }}>{visitorCountry}</p>
+            <p style={{ color: '#000000', fontSize: '0.74rem', fontWeight: 600, margin: '4px 0 0', letterSpacing: 0.2 }}>{visitorCountry}</p>
           ) : null}
 
           {friendState === 'accepted' && (
@@ -11255,15 +11264,15 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                   style={{
                     position: 'absolute', top: 26, left: '50%', transform: 'translateX(-50%)',
                     zIndex: 42, minWidth: 168, padding: 6, borderRadius: 12,
-                    background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))',
-                    boxShadow: 'var(--shadow-lg)', direction: 'ltr',
+                    background: '#ffffff', border: '1px solid #000000',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.18)', direction: 'ltr',
                   }}
                 >
                   <button
                     type="button"
                     onClick={() => { setFriendMenuOpen(false); void removeFriendship(); }}
                     disabled={friendLoading}
-                    style={{ width: '100%', padding: '10px 12px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--foreground))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'left', fontSize: '0.82rem', fontWeight: 700 }}
+                    style={{ width: '100%', padding: '10px 12px', border: 'none', borderRadius: 8, background: 'transparent', color: '#000000', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'left', fontSize: '0.82rem', fontWeight: 700 }}
                   >
                     Delete Friend
                   </button>
@@ -11271,7 +11280,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                     type="button"
                     onClick={() => { setFriendMenuOpen(false); void blockUser(); }}
                     disabled={friendLoading}
-                    style={{ width: '100%', padding: '10px 12px', border: 'none', borderRadius: 8, background: 'transparent', color: 'hsl(var(--destructive))', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'left', fontSize: '0.82rem', fontWeight: 700 }}
+                    style={{ width: '100%', padding: '10px 12px', border: 'none', borderRadius: 8, background: 'transparent', color: '#ef4444', cursor: friendLoading ? 'default' : 'pointer', textAlign: 'left', fontSize: '0.82rem', fontWeight: 700 }}
                   >
                     Block
                   </button>
@@ -11290,8 +11299,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
               title="Post notifications"
               style={{
                 width: 32, height: 32, borderRadius: '50%', marginTop: 4, flexShrink: 0,
-                background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.28)',
-                color: '#fff', cursor: 'pointer', padding: 0,
+                background: '#ffffff', border: '1.5px solid #000000',
+                color: '#000000', cursor: 'pointer', padding: 0,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 WebkitTapHighlightColor: 'transparent',
               }}
@@ -11461,8 +11470,8 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
                 onClick={(e) => e.stopPropagation()}
                 style={{
-                  width: '100%', maxWidth: 320, borderRadius: 22, background: '#0b1f21',
-                  border: `1px solid ${CLR_PRIMARY_BORDER}`, boxShadow: '0 20px 60px rgba(0,0,0,0.6)', padding: '16px 12px 10px',
+                  width: '100%', maxWidth: 320, borderRadius: 22, background: '#ffffff',
+                  border: `1px solid ${CLR_PRIMARY_BORDER}`, boxShadow: '0 20px 60px rgba(0,0,0,0.35)', padding: '16px 12px 10px',
                   position: 'relative',
                 }}
               >
@@ -11501,7 +11510,7 @@ export function FriendStoryProfile({ authorId, authorName, authorUsername, autho
                         WebkitTapHighlightColor: 'transparent',
                       }}
                     >
-                      <opt.Icon size={22} strokeWidth={2} color={active ? CLR_PRIMARY : '#fff'} />
+                      <opt.Icon size={22} strokeWidth={2} color={active ? CLR_PRIMARY : '#000000'} />
                       <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <span style={{ fontSize: '0.92rem', fontWeight: 700 }}>{opt.label}</span>
                         <span style={{ fontSize: '0.7rem', color: CLR_TEXT_DIM }}>{opt.sub}</span>
@@ -19137,25 +19146,6 @@ function loadLiveMediaFavs(uid: string): string[] {
 }
 function saveLiveMediaFavs(uid: string, ids: string[]) {
   try { localStorage.setItem(liveMediaFavsKey(uid), JSON.stringify(ids.slice(-500))); } catch { /* */ }
-}
-
-// ── Call handset icon (white) with a silver shimmer sweeping over the handset only ──
-const HANDSET_PATH = 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z';
-function CallHandsetShimmerIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true" style={{ display: 'block', overflow: 'visible' }}>
-      <defs>
-        <linearGradient id="stooornaHandsetSilver" gradientUnits="userSpaceOnUse" x1="26" y1="0" x2="38" y2="0">
-          <stop offset="0" stopColor="#c0c0c0" stopOpacity="0" />
-          <stop offset="0.5" stopColor="#d9dde3" stopOpacity="1" />
-          <stop offset="1" stopColor="#c0c0c0" stopOpacity="0" />
-          <animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="-38 0" dur="1.8s" repeatCount="indefinite" />
-        </linearGradient>
-      </defs>
-      <path transform="translate(24 0) scale(-1 1)" d={HANDSET_PATH} fill="#ffffff" stroke="#ffffff" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-      <path transform="translate(24 0) scale(-1 1)" d={HANDSET_PATH} fill="url(#stooornaHandsetSilver)" stroke="url(#stooornaHandsetSilver)" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 // ── Rail avatar (full-screen public media): "+" add-friend badge on the ring + live ring (yellow + silver shimmer) ──
@@ -30350,7 +30340,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         {homeCallUiActive && homeCallBannerLabel ? (
                           <span style={{ color: '#ffffff', fontWeight: 800, fontSize: 15, padding: '0 12px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{homeCallBannerLabel}</span>
                         ) : (
-                          <CallHandsetShimmerIcon size={24} />
+                          <Headphones size={24} strokeWidth={2.3} />
                         )}
                       </button>
                     </div>
