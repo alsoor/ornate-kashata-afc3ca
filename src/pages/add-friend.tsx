@@ -30065,7 +30065,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 {(() => {
                   const bannerUrl = localAvatarUrl || resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null;
                   if (!user || !bannerUrl) return null;
-                  const collapsedH = 'calc(54px + env(safe-area-inset-top, 0px))';
+                  const collapsedH = 'calc(190px + env(safe-area-inset-top, 0px))';
                   return (
                     <div
                       role="button"
@@ -30104,6 +30104,25 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </div>
                   );
                 })()}
+                {user ? (
+                  <>
+                    <style>{`@keyframes stooornaTopPlusPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.55); } 50% { box-shadow: 0 0 0 7px rgba(239,68,68,0); } }`}</style>
+                    <button
+                      type="button"
+                      aria-label="Add story"
+                      onClick={() => { setQuickPublishError(''); setPublishMenuOpen(true); }}
+                      style={{
+                        position: 'absolute', top: 'calc(12px + env(safe-area-inset-top, 0px))', right: 12, zIndex: 4,
+                        width: 34, height: 34, borderRadius: '50%', padding: 0,
+                        background: '#ef4444', border: '2px solid #fff', color: '#fff', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 22, fontWeight: 800, lineHeight: 1,
+                        animation: 'stooornaTopPlusPulse 1.8s ease-out infinite',
+                        WebkitTapHighlightColor: 'transparent',
+                      }}
+                    >+</button>
+                  </>
+                ) : null}
                 <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 8, position: 'relative', zIndex: 3 }}>
                   <button
                     type="button"
@@ -30118,46 +30137,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8 }}>
-                  {user && (() => {
-                    const myGroup = storyGroups.find(g => g.userId === user?.id);
-                    const hasStory = !!myGroup && myGroup.items.length > 0;
-                    const allSeen = hasStory && myGroup!.items.every(i => i.seen);
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (myGroup) {
-                            setViewerGroupIdx(storyGroups.indexOf(myGroup));
-                          } else {
-                            setPublishMenuOpen(true);
-                          }
-                        }}
-                        style={{
-                          width: 88, height: 88, borderRadius: '50%', padding: 0, background: 'none',
-                          border: hasStory ? '3px solid #0ea5e9' : '2.5px solid #0ea5e9',
-                          boxShadow: hasStory && !allSeen ? '0 0 12px rgba(14,165,233,0.4)' : '0 0 8px rgba(14,165,233,0.2)',
-                          cursor: 'pointer', position: 'relative', overflow: 'visible',
-                        }}
-                      >
-                        <div style={{ position: 'absolute', inset: 3, borderRadius: '50%', overflow: 'hidden' }}>
-                          <UserAvatar
-                            name={user?.name ?? ''}
-                            avatarUrl={localAvatarUrl || resolveMediaUrl((user as any)?.avatarUrl) || readCachedProfileMedia(user?.id, 'avatar') || (user as any)?.avatarUrl || null}
-                            size={82}
-                            style={{ width: '100%', height: '100%', border: 'none', boxShadow: 'none', borderRadius: '50%', display: 'block' }}
-                          />
-                        </div>
-                        <span
-                          onClick={e => { e.stopPropagation(); setQuickPublishError(''); setPublishMenuOpen(true); }}
-                          style={{
-                            position: 'absolute', bottom: 2, right: 2, width: 22, height: 22, borderRadius: '50%',
-                            background: '#ef4444', border: '2px solid #fff', color: '#fff',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800,
-                          }}
-                        >+</span>
-                      </button>
-                    );
-                  })()}
+                  {/* Story ring removed: spacer keeps the layout below unchanged */}
+                  <div aria-hidden style={{ height: 88, width: 88, flexShrink: 0 }} />
                   {myUsername ? (
                     <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0a0a0a' }}>@{myUsername}</p>
                   ) : null}
