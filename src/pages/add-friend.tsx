@@ -21142,7 +21142,7 @@ export function PublicLiveCommentsPanel({
             onTouchEnd={e => e.stopPropagation()}
             onWheel={e => e.stopPropagation()}
             style={{
-              position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 'var(--stooorna-tpl-top, 0px)', bottom: 'var(--stooorna-bottom-bar-h, 96px)', /* TPL-PAGE-ON-GRABBER */
+              position: 'fixed', zIndex: 10075, left: 0, right: 0, top: 'var(--stooorna-tpl-top, 0px)', bottom: 0, /* TPL-PAGE-ON-GRABBER */ /* TPL-FULL-BOTTOM: posts run to the screen bottom; only the round icon floats over them */
               display: 'flex', flexDirection: 'column',
               padding: '6px 10px 0',
               background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
@@ -21167,7 +21167,7 @@ export function PublicLiveCommentsPanel({
             <div
               style={{
                 flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-                touchAction: 'pan-y', padding: LIVE_MEDIA_STACKED ? 0 : '0 2px 12px',
+                touchAction: 'pan-y', padding: LIVE_MEDIA_STACKED ? 0 : '0 2px calc(env(safe-area-inset-bottom, 0px) + 72px)',
                 scrollSnapType: LIVE_MEDIA_STACKED ? 'y mandatory' : undefined,
               }}
             >
@@ -21230,7 +21230,7 @@ export function PublicLiveCommentsPanel({
             onWheel={e => e.stopPropagation()}
             style={{
               // FULL PAGE (dark green-black accent line on top) over the Templates page, down to the dock
-              position: 'fixed', zIndex: 10085, left: 0, right: 0, top: 'var(--stooorna-tpl-top, 0px)', bottom: 'var(--stooorna-bottom-bar-h, 96px)', /* TPL-PAGE-ON-GRABBER: Favorites sits at the same level as Templates, grabber line stays visible */
+              position: 'fixed', zIndex: 10085, left: 0, right: 0, top: 'var(--stooorna-tpl-top, 0px)', bottom: 0, /* TPL-FULL-BOTTOM */ /* TPL-PAGE-ON-GRABBER: Favorites sits at the same level as Templates, grabber line stays visible */
               display: 'flex', flexDirection: 'column',
               padding: '6px 10px 0',
               background: 'linear-gradient(165deg, rgba(14,36,40,0.99) 0%, rgba(8,18,20,0.99) 60%, rgba(6,14,16,1) 100%)',
@@ -21250,7 +21250,7 @@ export function PublicLiveCommentsPanel({
             <div
               style={{
                 flex: 1, minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain',
-                touchAction: 'pan-y', padding: '0 2px 12px',
+                touchAction: 'pan-y', padding: '0 2px calc(env(safe-area-inset-bottom, 0px) + 72px)',
               }}
             >
               {favPosts.length === 0 ? (
@@ -30749,7 +30749,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
             borderTop: 'none',
             transform: 'translateY(0)',
             transition: dockSettled ? 'transform 0.25s ease, opacity 0.18s ease' : 'none',
-            opacity: dockSettled ? 1 : 0, // DOCK-SETTLE
+            opacity: dockSettled ? 1 : 0, pointerEvents: tplPageOn ? 'none' : undefined, // DOCK-SETTLE
             overflow: 'hidden',
           } : { display: 'flex', justifyContent: 'center', padding: '8px 0 10px', position: 'relative' }}>
                 <div style={guestMode ? {
@@ -30884,7 +30884,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   )}
                   {/* Stooorna Ai — DOCK-TPL-ICON: no longer a normal dock icon; it shows alone, centred, while the sheet is raised (Templates page) */}
                   {user?.id && aiIconVisible && tplPageOn && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40, pointerEvents: 'auto' }}>
                       <StooornaAiIcon
                         active={aiOpen}
                         unread={aiOpen ? 0 : aiUnread} /* AI-ICON-UNREAD */
