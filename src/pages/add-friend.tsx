@@ -19680,6 +19680,7 @@ function tplLongPressStart(onFire: () => void) {
     onFire();
   }, 450);
 }
+void tplLongPressStart; // DOCK-AI-PUBLISH: the grabber long-press was moved to the Stooorna Ai icon; keep the helper referenced
 void (() => TplLongPressHint); // TPL-PAGE-ON-GRABBER: the dock icon hint is no longer rendered (icon removed)
 function tplLongPressEnd() {
   if (tplLongPress.timer) { window.clearTimeout(tplLongPress.timer); tplLongPress.timer = 0; }
@@ -30591,11 +30592,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
           <div data-stooorna-header-grabber="1" style={{ display: 'flex', justifyContent: 'center', paddingBottom: 4 }}>
             <motion.button
               whileTap={{ scale: 0.9 }}
-              onPointerDown={() => tplLongPressStart(() => { // TPL-PAGE-ON-GRABBER: long-press the grabber line = Templates publish page
-                if (!user?.id) return;
-                try { localStorage.setItem(TPL_HINT_DONE_KEY, '1'); window.dispatchEvent(new CustomEvent('stooorna:tpl-hint-done')); } catch { /* */ }
-                try { window.dispatchEvent(new CustomEvent('stooorna:templates-studio')); } catch { /* */ }
-              })}
+              /* DOCK-AI-PUBLISH: long-press on the grabber line no longer opens the publish page — it now lives on the animated Stooorna Ai icon (was: tplLongPressStart → 'stooorna:templates-studio') */
               onPointerUp={tplLongPressEnd}
               onPointerLeave={tplLongPressEnd}
               onPointerCancel={tplLongPressEnd}
@@ -30892,7 +30889,11 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                         active={aiOpen}
                         unread={aiOpen ? 0 : aiUnread} /* AI-ICON-UNREAD */
                         onClick={() => setAiOpen(v => !v)}
-                        onLongPress={(el) => openDockShortcut('ai', el)} /* DOCK-SHORTCUTS */
+                        onLongPress={() => { // DOCK-AI-PUBLISH: long-press = Templates publish page (Video / Photo / Share); the old shortcuts menu (openDockShortcut('ai', el)) is no longer opened
+                          if (!user?.id) return;
+                          try { localStorage.setItem(TPL_HINT_DONE_KEY, '1'); window.dispatchEvent(new CustomEvent('stooorna:tpl-hint-done')); } catch { /* */ }
+                          try { window.dispatchEvent(new CustomEvent('stooorna:templates-studio')); } catch { /* */ }
+                        }}
                         size={44}
                       />
                     </div>
