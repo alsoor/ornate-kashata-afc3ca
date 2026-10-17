@@ -27247,6 +27247,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   // PROFILE-CALL-INLINE: the friends list opens under the green Call banner, on the profile page itself (no separate dark page).
   const [profileCallListOpen, setProfileCallListOpen] = useState(false);
   const [downCallBubble, setDownCallBubble] = useState<null | { x: number; top: number }>(null);
+  // CALL-ONLY-SHEET: opened from the Call icon in the bottom bar. Same profile page, but only the green call button is shown
+  // (no avatar, name, bio, stats row, gear) and the friends list opens by itself under the green button.
+  const [profileCallOnly, setProfileCallOnly] = useState(false);
   const [profileCallFriends, setProfileCallFriends] = useState<Friend[]>(() => dockFriendsCache.list ?? []);
   const [profileCallLoading, setProfileCallLoading] = useState(false);
   useEffect(() => {
@@ -27294,6 +27297,23 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
   }, [user?.id]);
   const profilePlusCallPressRef = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
   const profilePlusIncomingCallUi = useSyncExternalStore(subscribeIncomingCall, getIncomingCallSnapshot, getIncomingCallSnapshot);
+  // CALL-ONLY-SHEET: once the sheet has risen, open the friends list under the green button automatically.
+  // The green button itself stays, so tapping it again re-opens the list after it was dismissed.
+  useEffect(() => {
+    if (!profileSlideOpen) {
+      setDownCallBubble(null);
+      const t = window.setTimeout(() => setProfileCallOnly(false), 400);
+      return () => window.clearTimeout(t);
+    }
+    if (!profileCallOnly || homeCallUiActive || profilePlusIncomingCallUi.ringing) return;
+    const t = window.setTimeout(() => {
+      const el = document.querySelector('[data-stooorna-call-banner="1"]') as HTMLElement | null;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setDownCallBubble({ x: r.left + r.width / 2, top: r.bottom });
+    }, 360);
+    return () => window.clearTimeout(t);
+  }, [profileSlideOpen, profileCallOnly]);
   const lastFeedScrollTopRef = useRef(0);
   const feedScrollRafRef = useRef(0);
 
@@ -29937,7 +29957,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
               <button
                 type="button"
                 aria-label="Profile menu"
-                onClick={() => setProfileSlideOpen(true)}
+                onClick={() => { setProfileCallOnly(false); setProfileSlideOpen(true); }}
                 style={{
                   position: 'absolute', left: 8, top: 6, zIndex: 8,
                   width: 28, height: 20,
@@ -30115,7 +30135,8 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   background: '#ffffff',
                   color: '#0a0a0a',
                   boxShadow: profileSlideOpen ? '0 12px 40px rgba(0,0,0,0.2)' : 'none',
-                  transform: profileSlideOpen ? 'translateY(0)' : 'translateY(-105%)',
+                  transform: profileSlideOpen ? 'translateY(0)' : (profileCallOnly ? 'translateY(105%)' : 'translateY(-105%)'),
+                  animation: profileSlideOpen && profileCallOnly ? 'stooornaCallSheetRise .32s cubic-bezier(.2,.8,.2,1)' : undefined,
                   transition: profileSlideOpen ? 'transform .32s cubic-bezier(.2,.8,.2,1)' : 'transform .32s cubic-bezier(.2,.8,.2,1), visibility 0s linear .32s',
                   visibility: profileSlideOpen ? 'visible' : 'hidden',
                   display: 'flex', flexDirection: 'column',
@@ -30124,8 +30145,9 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                   overflowY: 'auto',
                 }}
               >
+                <style>{`@keyframes stooornaCallSheetRise { from { transform: translateY(105%); } to { transform: translateY(0); } }`}</style>
                 {/* Settings gear — moved here from the bottom dock (same look, same colors, same spinning gear) */}
-                {user?.id && !guestMode && (
+                {user?.id && !guestMode && !profileCallOnly && (
                   <motion.button
                     type="button"
                     whileTap={{ scale: 0.9 }}
@@ -30179,7 +30201,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 8 }}>
-                  {user && (() => {
+                  {user && !profileCallOnly && (() => {
                     const myGroup = storyGroups.find(g => g.userId === user?.id);
                     const hasStory = !!myGroup && myGroup.items.length > 0;
                     const allSeen = hasStory && myGroup!.items.every(i => i.seen);
@@ -30219,10 +30241,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       </button>
                     );
                   })()}
-                  {myUsername ? (
+                  {myUsername && !profileCallOnly ? (
                     <p style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0a0a0a' }}>@{myUsername}</p>
                   ) : null}
-                  {myBio ? (
+                  {profileCallOnly ? null : myBio ? (
                     <p style={{ margin: 0, fontSize: '0.88rem', fontWeight: 500, color: '#444', textAlign: 'center', lineHeight: 1.45, maxWidth: 280 }}>
                       {myBio}
                     </p>
@@ -30230,7 +30252,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     <p style={{ margin: 0, fontSize: '0.82rem', color: '#999', textAlign: 'center' }}>No bio</p>
                   )}
 
-                  {user?.id ? (
+                  {user?.id && !profileCallOnly ? (
                     <div style={{ width: '100%', maxWidth: 280, margin: '8px auto 2px' }}>
                       <div style={{ height: 2, background: '#111', borderRadius: 2, margin: '0 8px 8px' }} />
                   {/* Five section buttons under the purple dots — black frame + slow silver shine */}
@@ -30335,7 +30357,7 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                     </div>
                   ) : null}
                   {/* مفتاح تشغيل الشات العام — تحت الإطار، بدون خطوط (يختفي بالكامل إذا أغلقه الأونر من User Control) */}
-                  {user?.id && publicChatAllowed ? (
+                  {user?.id && publicChatAllowed && !profileCallOnly ? (
                     <div style={{ width: '100%', maxWidth: 280, margin: '10px auto 2px', display: 'flex', justifyContent: 'center' }}>
                       <button
                         type="button"
@@ -30363,9 +30385,10 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
 
                   {/* CALL-BANNER: green headset banner under the ON/OFF switch (moved from the bottom bar) */}
                   {user?.id ? (
-                    <div style={{ width: '100%', maxWidth: 280, margin: '12px auto 2px', display: 'flex', justifyContent: 'center' }}>
+                    <div style={{ width: '100%', maxWidth: 280, margin: profileCallOnly ? '28px auto 2px' : '12px auto 2px', display: 'flex', justifyContent: 'center' }}>
                       <button
                         type="button"
+                        data-stooorna-call-banner="1"
                         onContextMenu={(e) => e.preventDefault()}
                         onPointerDown={(e) => {
                           // not ringing: long-press shows friends above the banner; tap one to call directly
@@ -30747,6 +30770,28 @@ useEffect(() => { latestUserRef.current = user; }, [user]);
                       <Radio size={22} strokeWidth={2.2} />
                     </button>
 </div>
+                  )}
+                  {/* CALL-DOCK-BUTTON: same design as LIVE / Chat. One tap raises the call sheet (green button + friends list, nothing else). */}
+                  {user?.id && !guestMode && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0, minWidth: 40 }}>
+                      <button
+                        type="button"
+                        onClick={() => { setProfileCallOnly(true); setProfileSlideOpen(true); }}
+                        aria-label="Call"
+                        style={{
+                          WebkitTouchCallout: 'none', userSelect: 'none', touchAction: 'manipulation',
+                          width: 44, height: 44, borderRadius: '50%',
+                          border: '1.5px solid #ffffff',
+                          background: 'transparent',
+                          color: (callHistoryDotState.joined || anyInCall || profilePlusIncomingCallUi.ringing) ? '#22c55e' : '#ffffff',
+                          cursor: 'pointer', padding: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          boxShadow: 'none',
+                        }}
+                      >
+                        <Phone size={22} strokeWidth={2.2} />
+                      </button>
+                    </div>
                   )}
                   {/* CHAT-DOCK-BUTTON: chat — same design as the LIVE button, right beside it. One tap opens the chat list page directly. */}
                   {user?.id && aiIconVisible && (
